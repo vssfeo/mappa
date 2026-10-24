@@ -60,6 +60,47 @@ export function bearing(a: LonLat, b: LonLat): number {
   return (toDeg(Math.atan2(y, x)) + 360) % 360
 }
 
+/** Point reached from `origin` along `azimuth` after `meters`. */
+export function destination(
+  origin: LonLat,
+  azimuth: number,
+  meters: number,
+): LonLat {
+  const angular = meters / EARTH_RADIUS
+  const theta = toRad(azimuth)
+  const lat1 = toRad(origin[1])
+  const lon1 = toRad(origin[0])
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(angular) +
+      Math.cos(lat1) * Math.sin(angular) * Math.cos(theta),
+  )
+  const lon2 =
+    lon1 +
+    Math.atan2(
+      Math.sin(theta) * Math.sin(angular) * Math.cos(lat1),
+      Math.cos(angular) - Math.sin(lat1) * Math.sin(lat2),
+    )
+  return [wrapLongitude(toDeg(lon2)), toDeg(lat2)]
+}
+
+/**
+ * Polygon approximating a geodesic circle. The first click is the centre,
+ * the second fixes the radius. The ring is open; callers close it.
+ */
+export function circlePolygon(
+  center: LonLat,
+  edge: LonLat,
+  steps = 64,
+): LonLat[] {
+  const radius = distance(center, edge)
+  if (!Number.isFinite(radius) || radius < 0.5) return []
+  const start = bearing(center, edge)
+  const count = Math.max(12, Math.min(256, Math.round(steps)))
+  return Array.from({ length: count }, (_, index) =>
+    destination(center, start + (index * 360) / count, radius),
+  )
+}
+
 /** Geographic midpoint of a segment. */
 export function midpoint(a: LonLat, b: LonLat): LonLat {
   const lat1 = toRad(a[1])

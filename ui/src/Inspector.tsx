@@ -4,6 +4,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import {
   AlertTriangle,
   CheckCircle2,
+  Circle,
   Clock3,
   Database,
   Download,
@@ -665,6 +666,12 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
                           onClick={(event) => event.stopPropagation()}
                           onKeyDown={(event) => event.stopPropagation()}
                         >
+                          <span className="marker-style-caption">
+                            {tx(
+                              'Стиль точки: иконка и цвет',
+                              'Point style: icon and colour',
+                            )}
+                          </span>
                           <input
                             value={marker.folder ?? ''}
                             onChange={(event) =>
@@ -801,10 +808,15 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
 
   const selected = features.find((item) => item.id === selectedFeatureId)
   const drawing =
-    featureMode === 'draw-line' || featureMode === 'draw-polygon'
-  const minimum = featureMode === 'draw-line' ? 2 : 3
+    featureMode === 'draw-line' ||
+    featureMode === 'draw-polygon' ||
+    featureMode === 'draw-circle'
+  const minimum =
+    featureMode === 'draw-line' || featureMode === 'draw-circle' ? 2 : 3
 
-  const startDraw = (mode: 'draw-line' | 'draw-polygon') => {
+  const startDraw = (
+    mode: 'draw-line' | 'draw-polygon' | 'draw-circle',
+  ) => {
     setFeatureMode(featureMode === mode ? 'off' : mode)
     showToast(
       mode === 'draw-line'
@@ -812,10 +824,15 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
             'Кликайте вершины линии. Enter — сохранить, Esc — отмена',
             'Click line vertices. Enter saves, Esc cancels',
           )
-        : tx(
-            'Кликайте вершины полигона. Enter — сохранить, Esc — отмена',
-            'Click polygon vertices. Enter saves, Esc cancels',
-          ),
+        : mode === 'draw-circle'
+          ? tx(
+              'Кликайте центр, затем край круга. Esc — отмена',
+              'Click the centre, then the circle edge. Esc cancels',
+            )
+          : tx(
+              'Кликайте вершины полигона. Enter — сохранить, Esc — отмена',
+              'Click polygon vertices. Enter saves, Esc cancels',
+            ),
     )
   }
 
@@ -955,12 +972,25 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
           </button>
           <button
             type="button"
+            className={`ghost-button${featureMode === 'draw-circle' ? ' is-active' : ''}`}
+            onClick={() => startDraw('draw-circle')}
+            aria-pressed={featureMode === 'draw-circle'}
+          >
+            <Circle size={14} />
+            {tx('Круг', 'Circle')}
+          </button>
+          <button
+            type="button"
             className={`ghost-button${featureMode === 'edit' ? ' is-active' : ''}`}
             onClick={() => setFeatureMode(featureMode === 'edit' ? 'off' : 'edit')}
             aria-pressed={featureMode === 'edit'}
+            title={tx(
+              'Перетаскивайте точки, вершины линий и полигонов',
+              'Drag points, line vertices and polygon vertices',
+            )}
           >
             <PenLine size={14} />
-            {tx('Вершины', 'Vertices')}
+            {tx('Правка', 'Edit')}
           </button>
         </div>
 
@@ -992,9 +1022,18 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
               </button>
             </div>
             <div className="marker-coords">
-              {tx('Вершин:', 'Vertices:')} {formatCount(draftPoints.length)} ·{' '}
-              {tx('минимум', 'minimum')} {minimum}
-              {draftPoints.length >= 2 &&
+              {featureMode === 'draw-circle'
+                ? tx('Круг: центр и радиус', 'Circle: centre and radius')
+                : tx('Вершин:', 'Vertices:')}{' '}
+              {featureMode === 'draw-circle'
+                ? draftPoints.length >= 2
+                  ? `${tx('радиус', 'radius')} ${formatDistance(
+                      distance(draftPoints[0], draftPoints[1]),
+                    )}`
+                  : `${tx('минимум', 'minimum')} ${minimum}`
+                : `${formatCount(draftPoints.length)} · ${tx('минимум', 'minimum')} ${minimum}`}
+              {featureMode !== 'draw-circle' &&
+                draftPoints.length >= 2 &&
                 ` · ${formatDistance(pathLength(draftPoints))}`}
               {featureMode === 'draw-polygon' &&
                 draftPoints.length >= 3 &&
@@ -1003,9 +1042,12 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
           </>
         )}
 
+        <div className="section-heading">
+          <span>{tx('Цвет новых объектов', 'Colour for new features')}</span>
+        </div>
         <div
           className="feature-colors"
-          aria-label={tx('Цвет объекта', 'Feature colour')}
+          aria-label={tx('Цвет новых объектов', 'Colour for new features')}
         >
           {FEATURE_COLORS.map((color) => (
             <button
@@ -1101,6 +1143,34 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
               ` · вершин ${formatCount(selected.coordinates.length)}`,
               ` · ${formatCount(selected.coordinates.length)} vertices`,
             )}
+          </div>
+          <div className="section-heading">
+            <span>
+              {selected.kind === 'polygon'
+                ? tx('Цвет полигона', 'Polygon colour')
+                : tx('Цвет линии', 'Line colour')}
+            </span>
+            <span className="mono">{selected.color}</span>
+          </div>
+          <div
+            className="feature-colors"
+            aria-label={
+              selected.kind === 'polygon'
+                ? tx('Цвет полигона', 'Polygon colour')
+                : tx('Цвет линии', 'Line colour')
+            }
+          >
+            {FEATURE_COLORS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                className={`feature-color${selected.color === color ? ' is-active' : ''}`}
+                style={{ background: color }}
+                onClick={() => updateFeature(selected.id, { color })}
+                aria-label={tx(`Цвет ${color}`, `Colour ${color}`)}
+                aria-pressed={selected.color === color}
+              />
+            ))}
           </div>
           <div className="marker-actions">
             <button

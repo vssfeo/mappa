@@ -12,6 +12,7 @@ const shortcuts: { keys: string[]; label: MessageKey }[] = [
   { keys: ['P'], label: 'shortcuts.markers' },
   { keys: ['L'], label: 'shortcuts.line' },
   { keys: ['Shift', 'L'], label: 'shortcuts.polygon' },
+  { keys: ['O'], label: 'shortcuts.circle' },
   { keys: ['E'], label: 'shortcuts.vertices' },
   { keys: ['Enter'], label: 'shortcuts.finish' },
   { keys: ['Delete'], label: 'shortcuts.delete' },

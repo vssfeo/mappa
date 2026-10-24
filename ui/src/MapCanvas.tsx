@@ -9,6 +9,7 @@ import {
 import 'maplibre-gl/dist/maplibre-gl.css'
 import {
   bearing,
+  circlePolygon,
   distance,
   formatArea,
   formatAzimuth,
@@ -419,7 +420,31 @@ const vectorEditData = (
   }
 }
 
+const circleDraftData = (center: LonLat, edge: LonLat) => {
+  const ring = circlePolygon(center, edge, 64)
+  const features: object[] = [
+    pointFeature(center),
+    pointFeature(edge),
+    {
+      type: 'Feature',
+      properties: {},
+      geometry: { type: 'LineString', coordinates: [center, edge] },
+    },
+  ]
+  if (ring.length >= 3) {
+    features.push({
+      type: 'Feature',
+      properties: {},
+      geometry: { type: 'Polygon', coordinates: [closeRing(ring)] },
+    })
+  }
+  return { type: 'FeatureCollection', features }
+}
+
 const draftData = (points: LonLat[], mode: FeatureMode) => {
+  if (mode === 'draw-circle' && points.length >= 2) {
+    return circleDraftData(points[0], points[1])
+  }
   const features: object[] = points.map(pointFeature)
   if (points.length >= 2) {
     features.push({
@@ -1386,7 +1411,11 @@ export function MapCanvas({
     if (!ready || !map) return
     const draft = map.getSource('feature-draft') as GeoJSONSource | undefined
     draft?.setData(draftData(draftPoints, featureMode) as never)
-    if (featureMode !== 'draw-line' && featureMode !== 'draw-polygon') {
+    if (
+      featureMode !== 'draw-line' &&
+      featureMode !== 'draw-polygon' &&
+      featureMode !== 'draw-circle'
+    ) {
       const preview = map.getSource('feature-preview') as
         | GeoJSONSource
         | undefined
@@ -1448,7 +1477,13 @@ export function MapCanvas({
   useEffect(() => {
     const map = mapRef.current
     if (!ready || !map) return
-    if (featureMode !== 'draw-line' && featureMode !== 'draw-polygon') return
+    if (
+      featureMode !== 'draw-line' &&
+      featureMode !== 'draw-polygon' &&
+      featureMode !== 'draw-circle'
+    ) {
+      return
+    }
     const canvas = map.getCanvas()
     canvas.style.cursor = 'crosshair'
     map.doubleClickZoom.disable()
@@ -1459,6 +1494,13 @@ export function MapCanvas({
       onAddDraftPoint(
         snapping ? snapToVectors(map, target).point : target,
       )
+      // A circle only needs its centre and one radius point.
+      if (
+        featureMode === 'draw-circle' &&
+        draftPointsRef.current.length >= 1
+      ) {
+        onFinishDraft()
+      }
     }
     const onFinish = (event: MapMouseEvent) => {
       event.preventDefault()
@@ -1475,6 +1517,10 @@ export function MapCanvas({
       if (!source) return
       const points = draftPointsRef.current
       const last = points[points.length - 1]
+      if (last && cursor && featureMode === 'draw-circle') {
+        source.setData(circleDraftData(last, cursor) as never)
+        return
+      }
       source.setData(
         (last && cursor
           ? {
@@ -1954,7 +2000,10 @@ export function MapCanvas({
     }
     // Markers must not swallow clicks while a drawing/measure tool is active.
     const toolActive =
-      drawing || measureMode !== null || featureMode !== 'off' || placingMarker
+      drawing ||
+      measureMode !== null ||
+      (featureMode !== 'off' && featureMode !== 'edit') ||
+      placingMarker
     const previous = mapMarkersRef.current
     const next = new Map<
       string,
@@ -1976,12 +2025,15 @@ export function MapCanvas({
           }
           applyMarkerStyle(existing.element, marker)
           existing.element.style.pointerEvents = toolActive ? 'none' : ''
+          existing.element.style.cursor =
+            featureMode === 'edit' ? 'grab' : ''
           existing.handle.setLngLat([marker.lon, marker.lat])
           next.set(marker.id, existing)
           continue
         }
         const element = markerElement(marker, selected)
         if (toolActive) element.style.pointerEvents = 'none'
+        if (featureMode === 'edit') element.style.cursor = 'grab'
         element.addEventListener('click', (event) => {
           event.stopPropagation()
           onSelectMarker(marker.id)
@@ -2015,6 +2067,114 @@ export function MapCanvas({
     onMoveMarker,
     onSelectMarker,
   ])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!ready || !map) return
+    const container = map.getContainer()
+    const tooltip = document.createElement('div')
+    tooltip.className = 'feature-tooltip'
+    tooltip.setAttribute('role', 'tooltip')
+    tooltip.hidden = true
+    container.appendChild(tooltip)
+    let frame = 0
+    let pending: MapMouseEvent['point'] | null = null
+    let lastAt = 0
+
+    const hide = () => {
+      pending = null
+      tooltip.hidden = true
+    }
+    const show = () => {
+      frame = 0
+      if (!pending) return
+      const layers: string[] = []
+      for (const id of ['feature-fill', 'feature-line']) {
+        if (map.getLayer(id)) layers.push(id)
+      }
+      for (const layer of vectorLayers) {
+        for (const suffix of ['fill', 'line', 'point']) {
+          const id = `vector-${layer.id}-${suffix}`
+          if (map.getLayer(id)) layers.push(id)
+        }
+      }
+      if (layers.length === 0) {
+        hide()
+        return
+      }
+      const hit = map.queryRenderedFeatures(pending, { layers })[0]
+      if (!hit) {
+        hide()
+        return
+      }
+      const properties = hit.properties ?? {}
+      const raw = [
+        properties.name,
+        properties.Name,
+        properties.NAME,
+        properties.title,
+        properties.label,
+      ].find((value) => typeof value === 'string' && value.trim())
+      let label = typeof raw === 'string' ? raw.trim() : ''
+      if (!label && typeof hit.source === 'string') {
+        label =
+          vectorLayers.find((layer) => hit.source === `vector-${layer.id}`)
+            ?.name ?? ''
+      }
+      if (!label) {
+        hide()
+        return
+      }
+      tooltip.textContent = label.slice(0, 120)
+      tooltip.hidden = false
+      const x = Math.max(
+        8,
+        Math.min(
+          container.clientWidth - tooltip.offsetWidth - 8,
+          pending.x + 14,
+        ),
+      )
+      const y = Math.max(
+        8,
+        Math.min(
+          container.clientHeight - tooltip.offsetHeight - 8,
+          pending.y + 14,
+        ),
+      )
+      tooltip.style.transform = `translate(${x}px, ${y}px)`
+    }
+    const onMove = (event: MapMouseEvent) => {
+      if (
+        drawing ||
+        measureMode !== null ||
+        placingMarker ||
+        featureMode === 'draw-line' ||
+        featureMode === 'draw-polygon' ||
+        featureMode === 'draw-circle'
+      ) {
+        hide()
+        return
+      }
+      const now = performance.now()
+      if (now - lastAt < 80) return
+      lastAt = now
+      pending = event.point
+      if (frame === 0) frame = requestAnimationFrame(show)
+    }
+
+    map.on('mousemove', onMove)
+    map.on('mouseout', hide)
+    map.on('movestart', hide)
+    map.on('zoomstart', hide)
+    return () => {
+      if (frame !== 0) cancelAnimationFrame(frame)
+      map.off('mousemove', onMove)
+      map.off('mouseout', hide)
+      map.off('movestart', hide)
+      map.off('zoomstart', hide)
+      tooltip.remove()
+    }
+  }, [drawing, featureMode, measureMode, placingMarker, ready, vectorLayers])
 
   // Remove HTML markers only when the canvas unmounts; dependency-driven
   // re-renders now update the existing handles in place.

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import {
+  Circle,
   Columns2,
   Crop,
   Download,
@@ -279,14 +280,23 @@ function App() {
         return
       }
 
-      if (event.key === 'Enter' && (featureMode === 'draw-line' || featureMode === 'draw-polygon')) {
+      if (
+        event.key === 'Enter' &&
+        (featureMode === 'draw-line' ||
+          featureMode === 'draw-polygon' ||
+          featureMode === 'draw-circle')
+      ) {
         event.preventDefault()
         finishDraft()
         return
       }
 
       if (event.key === 'Backspace') {
-        if (featureMode === 'draw-line' || featureMode === 'draw-polygon') {
+        if (
+          featureMode === 'draw-line' ||
+          featureMode === 'draw-polygon' ||
+          featureMode === 'draw-circle'
+        ) {
           event.preventDefault()
           undoDraftPoint()
           return
@@ -344,6 +354,12 @@ function App() {
               ),
             )
           }
+          break
+        case 'o':
+          event.preventDefault()
+          setFeatureMode('draw-circle')
+          setPanel('features')
+          showToast(t('hud.drawCircle'))
           break
         case 'e':
           event.preventDefault()
@@ -448,6 +464,7 @@ function App() {
     setPlacingMarker,
     setShortcutsOpen,
     showToast,
+    t,
     toggleFieldMode,
     toggleTheme,
     tx,
@@ -523,6 +540,14 @@ function App() {
       if (id) setPanel('markers')
     },
     [setPanel, setSelectedMarker],
+  )
+
+  const onSelectFeature = useCallback(
+    (id: string | null) => {
+      selectFeature(id)
+      if (id) setPanel('features')
+    },
+    [selectFeature, setPanel],
   )
 
   const resolveCommand = useCallback(
@@ -653,7 +678,9 @@ function App() {
         ? t('hud.drawLine')
         : featureMode === 'draw-polygon'
           ? t('hud.drawPolygon')
-          : featureMode === 'edit'
+          : featureMode === 'draw-circle'
+            ? t('hud.drawCircle')
+            : featureMode === 'edit'
             ? selectedVector
               ? tx(
                   'Тяните вершины · клик по точке на сегменте — вставить · правый клик — удалить',
@@ -979,10 +1006,23 @@ function App() {
         },
       },
       {
+        id: 'draw-circle',
+        label: tx('Нарисовать круг', 'Draw circle'),
+        group: tx('Объекты', 'Features'),
+        hint: 'O',
+        keywords: ['circle', 'круг', 'радиус', 'radius'],
+        icon: Circle,
+        action: () => {
+          setFeatureMode('draw-circle')
+          setPanel('features')
+          showToast(t('hud.drawCircle'))
+        },
+      },
+      {
         id: 'edit-features',
         label: tx(
-          'Редактировать линии и полигоны',
-          'Edit lines and polygons',
+          'Редактировать точки, линии и полигоны',
+          'Edit points, lines and polygons',
         ),
         group: tx('Объекты', 'Features'),
         hint: 'E',
@@ -1064,6 +1104,7 @@ function App() {
       setProviderId,
       setShortcutsOpen,
       showToast,
+      t,
       toggleFieldMode,
       toggleTheme,
       tx,
@@ -1116,7 +1157,7 @@ function App() {
             onMeasurePoint={addMeasurePoint}
             onAddDraftPoint={addDraftPoint}
             onFinishDraft={finishDraft}
-            onSelectFeature={selectFeature}
+            onSelectFeature={onSelectFeature}
             onMoveFeatureVertex={moveFeatureVertex}
             onDeleteFeatureVertex={deleteFeatureVertex}
             onSelectVectorFeature={selectVectorFeature}

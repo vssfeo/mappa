@@ -2236,6 +2236,26 @@
   outline-offset: -2px;
 }
 
+.feature-tooltip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 7;
+  max-width: 280px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-glass);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.35;
+  pointer-events: none;
+  box-shadow: var(--shadow-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .grid-label {
   padding: 1px 4px;
   border-radius: 4px;
@@ -2281,6 +2301,14 @@
 .gpkg-layer span {
   color: var(--muted);
   font-size: 11px;
+}
+
+.marker-style-caption {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .marker-filter-grid {

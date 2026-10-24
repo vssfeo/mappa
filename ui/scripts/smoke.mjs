@@ -187,6 +187,41 @@ try {
   await page.keyboard.press('Escape')
   await page.waitForTimeout(250)
 
+  await page.keyboard.press('o')
+  await page.waitForTimeout(250)
+  const circleCenter = { x: measureBox.x + 350, y: measureBox.y + 300 }
+  await page.mouse.click(circleCenter.x, circleCenter.y)
+  await page.waitForTimeout(150)
+  await page.mouse.move(circleCenter.x + 80, circleCenter.y)
+  await page.waitForTimeout(250)
+  await page.mouse.click(circleCenter.x + 80, circleCenter.y)
+  await page.waitForTimeout(350)
+  if ((await page.locator('.feature-dot').count()) !== 1) {
+    fail('circle was not saved as a polygon')
+  }
+  const circleName = await page
+    .locator('.inspector .marker-name-input')
+    .first()
+    .inputValue()
+  if (!circleName.startsWith('Круг')) {
+    fail(`circle has an unexpected name (${circleName})`)
+  }
+  await page.mouse.move(circleCenter.x, circleCenter.y)
+  await page.waitForTimeout(350)
+  const tooltip = page.locator('.feature-tooltip')
+  if (!(await tooltip.isVisible())) {
+    fail('feature tooltip did not appear on hover')
+  } else if (!(await tooltip.innerText()).includes('Круг')) {
+    fail(`feature tooltip has an unexpected label (${await tooltip.innerText()})`)
+  }
+  await page
+    .locator('.inspector button', { hasText: 'Удалить объект' })
+    .first()
+    .click()
+  await page.waitForTimeout(250)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(250)
+
   await page.keyboard.press('l')
   await page.waitForTimeout(250)
   if (!(await page.locator('.draw-hint').innerText()).includes('линии')) {
@@ -290,6 +325,54 @@ try {
   const statusCoords = await page.locator('.status-coords').innerText()
   if (!/^\d{1,2}[NS] \d+E \d+N$/.test(statusCoords)) {
     fail(`status bar did not switch to UTM (${statusCoords})`)
+  }
+
+  const markerCoordsBefore = await page
+    .locator('.marker-coords')
+    .first()
+    .innerText()
+  await page.evaluate(() => (document.activeElement)?.blur())
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(200)
+  await page.keyboard.press('e')
+  await page.waitForTimeout(250)
+  const pin = page.locator('.map-marker').first()
+  const pinBox = await pin.boundingBox()
+  if (!pinBox) {
+    fail('marker pin has no bounding box')
+  } else {
+    await page.mouse.move(
+      pinBox.x + pinBox.width / 2,
+      pinBox.y + pinBox.height / 2,
+    )
+    await page.mouse.down()
+    await page.mouse.move(
+      pinBox.x + pinBox.width / 2 + 70,
+      pinBox.y + pinBox.height / 2 + 45,
+      { steps: 8 },
+    )
+    await page.mouse.up()
+    await page.waitForTimeout(300)
+    await pin.click()
+    await page.waitForTimeout(300)
+    if ((await page.locator('.inspector h2').innerText()) !== 'Метки') {
+      fail('clicking a point in edit mode did not open the point editor')
+    }
+    const markerCoordsAfter = await page
+      .locator('.marker-coords')
+      .first()
+      .innerText()
+    if (markerCoordsBefore === markerCoordsAfter) {
+      fail('point was not moved in edit mode')
+    }
+    await page
+      .locator('select[aria-label="Иконка метки"]')
+      .selectOption('🚩')
+    await page.waitForTimeout(250)
+    const pointIcon = await page.locator('.marker-dot').first().innerText()
+    if (!pointIcon.includes('🚩')) {
+      fail('point icon did not change')
+    }
   }
   await page.keyboard.press('Escape')
   await page.waitForTimeout(200)

@@ -1,6 +1,7 @@
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import {
   Box,
+  Circle,
   Compass,
   Crop,
   LocateFixed,
@@ -66,10 +67,12 @@ export function MapHud({ map }: MapHudProps) {
     }
   }
 
-  const toggleFeature = (mode: 'draw-line' | 'draw-polygon') => {
+  const toggleFeature = (
+    mode: 'draw-line' | 'draw-polygon' | 'draw-circle',
+  ) => {
     const state = useAppStore.getState()
     if (state.featureMode === mode) {
-      const minimum = mode === 'draw-line' ? 2 : 3
+      const minimum = mode === 'draw-line' || mode === 'draw-circle' ? 2 : 3
       if (state.draftPoints.length >= minimum) state.finishDraft()
       else state.cancelDraft()
       return
@@ -79,7 +82,9 @@ export function MapHud({ map }: MapHudProps) {
     showToast(
       mode === 'draw-line'
         ? t('hud.drawLine')
-        : t('hud.drawPolygon'),
+        : mode === 'draw-circle'
+          ? t('hud.drawCircle')
+          : t('hud.drawPolygon'),
     )
   }
 
@@ -213,6 +218,16 @@ export function MapHud({ map }: MapHudProps) {
           title={`${t('hud.polygon')} (Shift+L)`}
         >
           <Pentagon size={16} />
+        </button>
+        <button
+          type="button"
+          className={`hud-button${featureMode === 'draw-circle' ? ' is-active' : ''}`}
+          onClick={() => toggleFeature('draw-circle')}
+          aria-label={t('hud.circle')}
+          aria-pressed={featureMode === 'draw-circle'}
+          title={`${t('hud.circle')} (O)`}
+        >
+          <Circle size={16} />
         </button>
         <button
           type="button"

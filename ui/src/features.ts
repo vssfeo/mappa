@@ -19,7 +19,12 @@ export interface MapFeature {
   description?: string
 }
 
-export type FeatureMode = 'off' | 'draw-line' | 'draw-polygon' | 'edit'
+export type FeatureMode =
+  | 'off'
+  | 'draw-line'
+  | 'draw-polygon'
+  | 'draw-circle'
+  | 'edit'
 
 export const MAX_FEATURES = 2_000
 export const MAX_VERTICES = 10_000
@@ -233,6 +238,9 @@ export function normalizeDraft(points: LonLat[]): LonLat[] {
   return result
 }
 
-export function draftReady(points: LonLat[], mode: 'draw-line' | 'draw-polygon') {
-  return points.length >= (mode === 'draw-line' ? 2 : 3)
+export function draftReady(
+  points: LonLat[],
+  mode: 'draw-line' | 'draw-polygon' | 'draw-circle',
+) {
+  return points.length >= (mode === 'draw-line' || mode === 'draw-circle' ? 2 : 3)
 }

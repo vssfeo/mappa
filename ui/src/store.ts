@@ -12,7 +12,7 @@ import {
   type FeatureMode,
   type MapFeature,
 } from './features.ts'
-import type { LonLat } from './geo'
+import { circlePolygon, type LonLat } from './geo.ts'
 import { setActiveLocale, tr, type Locale } from './locale.ts'
 import type { CoordinateFormat, MapMarker } from './markers'
 import { PROVIDERS, type ProviderId } from './providers.ts'
@@ -719,9 +719,16 @@ export const useAppStore = create<AppState>()(
       set((state) => ({ draftPoints: state.draftPoints.slice(0, -1) })),
     finishDraft: () =>
       set((state) => {
+        const circle = state.featureMode === 'draw-circle'
         const kind =
-          state.featureMode === 'draw-polygon' ? 'polygon' : 'line'
-        const points = normalizeDraft(state.draftPoints)
+          state.featureMode === 'draw-polygon' || circle
+            ? 'polygon'
+            : 'line'
+        const draft = normalizeDraft(state.draftPoints)
+        const points =
+          circle && draft.length >= 2
+            ? circlePolygon(draft[0], draft[1], 64)
+            : draft
         const minimum = kind === 'line' ? 2 : 3
         if (state.featureMode === 'off' || points.length < minimum) {
           return {}
@@ -733,8 +740,9 @@ export const useAppStore = create<AppState>()(
           state.features.filter((item) => item.kind === kind).length + 1
         const feature: MapFeature = {
           id: featureId(),
-          name:
-            kind === 'line'
+          name: circle
+            ? tr(`Круг ${ordinal}`, `Circle ${ordinal}`)
+            : kind === 'line'
               ? tr(`Линия ${ordinal}`, `Line ${ordinal}`)
               : tr(`Полигон ${ordinal}`, `Polygon ${ordinal}`),
           kind,

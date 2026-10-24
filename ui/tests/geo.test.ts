@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   bearing,
+  circlePolygon,
+  destination,
   distance,
   formatDms,
   lonLatToUtm,
@@ -35,6 +37,25 @@ test('initial bearing is measured clockwise from north', () => {
   close(bearing([0, 0], [0, -1]), 180, 1e-9)
   close(bearing([0, 0], [-1, 0]), 270, 1e-9)
 })
+
+test('destination follows a great-circle bearing', () => {
+  const north = destination([37.6, 55.7], 0, 1000)
+  close(distance([37.6, 55.7], north), 1000, 1)
+  close(north[0], 37.6, 1e-9)
+  const east = destination([0, 0], 90, 1000)
+  close(east[0], 1000 / (EARTH_RADIUS * Math.PI / 180), 1e-6)
+})
+
+test('circle polygon keeps the requested radius', () => {
+  const center: [number, number] = [37.6, 55.7]
+  const edge: [number, number] = [37.62, 55.7]
+  const ring = circlePolygon(center, edge, 64)
+  assert.equal(ring.length, 64)
+  for (const point of ring) close(distance(center, point), distance(center, edge), 1)
+  assert.deepEqual(circlePolygon(center, center), [])
+})
+
+const EARTH_RADIUS = 6_371_008.8
 
 test('spherical polygon area of a one-degree square at the equator', () => {
   const square = polygonArea([
