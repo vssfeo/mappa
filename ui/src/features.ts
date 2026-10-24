@@ -210,6 +210,45 @@ export function featuresToGeoJSON(features: MapFeature[]): string {
   return `${JSON.stringify(collection, null, 2)}\n`
 }
 
+const xmlEscape = (value: string): string =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+
+/** Serializes features as GPX 1.1 tracks; polygons are closed tracks. */
+export function featuresToGpx(features: MapFeature[]): string {
+  const tracks = features.map((feature) => {
+    const points =
+      feature.kind === 'polygon'
+        ? closeRing(feature.coordinates)
+        : feature.coordinates
+    const description = feature.description
+      ? `\n    <desc>${xmlEscape(feature.description)}</desc>`
+      : ''
+    const vertices = points
+      .map(
+        ([lon, lat]) =>
+          `      <trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}" />`,
+      )
+      .join('\n')
+    return `  <trk>
+    <name>${xmlEscape(feature.name)}</name>${description}
+    <type>${feature.kind}</type>
+    <trkseg>
+${vertices}
+    </trkseg>
+  </trk>`
+  })
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Mappa" xmlns="http://www.topografix.com/GPX/1/1">
+${tracks.join('\n')}
+</gpx>
+`
+}
+
 export const closeRing = (points: LonLat[]): LonLat[] => {
   if (points.length < 3) return points
   const first = points[0]

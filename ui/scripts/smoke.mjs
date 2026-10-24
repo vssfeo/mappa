@@ -272,6 +272,9 @@ try {
   }
   await page.keyboard.press('Enter')
   await page.waitForTimeout(350)
+  if ((await page.locator('.inspector button', { hasText: 'GPX' }).count()) === 0) {
+    fail('GPX export button is missing')
+  }
   const polygonDownload = page.locator('.inspector button', {
     hasText: 'Скачать',
   })

@@ -1038,10 +1038,10 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
     }
   }
 
-  const runExport = async () => {
+  const runExport = async (format: 'geojson' | 'gpx' = 'geojson') => {
     setBusy('export')
     try {
-      const path = await exportFeatureFile()
+      const path = await exportFeatureFile(format)
       if (path) {
         showToast(
           tx(
@@ -1194,7 +1194,7 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
 
       <section className="section">
         <div className="section-heading">
-          <span>GeoJSON</span>
+          <span>GeoJSON / GPX</span>
           <span className="mono">WGS84</span>
         </div>
         <div className="marker-actions">
@@ -1239,6 +1239,30 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
               <Save size={14} />
             )}
             {tx('Экспорт', 'Export')}
+          </button>
+          <button
+            type="button"
+            className="ghost-button"
+            onClick={() => void runExport('gpx')}
+            disabled={!isNative || busy !== null || features.length === 0}
+            title={
+              isNative
+                ? tx(
+                    'Экспорт треков GPX; полигоны станут замкнутыми треками',
+                    'Export GPX tracks; polygons become closed tracks',
+                  )
+                : tx(
+                    'Доступно в нативном приложении',
+                    'Available in the native app',
+                  )
+            }
+          >
+            {busy === 'export' ? (
+              <Loader2 size={14} className="spin" />
+            ) : (
+              <FileDown size={14} />
+            )}
+            GPX
           </button>
         </div>
       </section>

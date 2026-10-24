@@ -4,6 +4,7 @@ import { open, save } from '@tauri-apps/plugin-dialog'
 import {
   MAX_FEATURES,
   featuresToGeoJSON,
+  featuresToGpx,
   parseFeatureGeoJSON,
   type MapFeature,
 } from './features'
@@ -43,18 +44,29 @@ export async function importFeatureFile(): Promise<FeatureImport | null> {
   return { features: accepted, skipped: parsed.length - accepted.length }
 }
 
-export async function exportFeatureFile(): Promise<string | null> {
+export type FeatureExportFormat = 'geojson' | 'gpx'
+
+export async function exportFeatureFile(
+  format: FeatureExportFormat = 'geojson',
+): Promise<string | null> {
   requireNative()
   const features = useAppStore.getState().features
   if (features.length === 0) {
     throw new Error(tr('Нет линий или полигонов для экспорта', 'No lines or polygons to export'))
   }
+  const gpx = format === 'gpx'
   const path = await save({
-    title: tr('Экспорт линий и полигонов', 'Export lines and polygons'),
-    defaultPath: 'mappa-features.geojson',
-    filters: [{ name: 'GeoJSON', extensions: ['geojson'] }],
+    title: gpx
+      ? tr('Экспорт треков GPX', 'Export GPX tracks')
+      : tr('Экспорт линий и полигонов', 'Export lines and polygons'),
+    defaultPath: gpx ? 'mappa-features.gpx' : 'mappa-features.geojson',
+    filters: [
+      gpx
+        ? { name: 'GPX', extensions: ['gpx'] }
+        : { name: 'GeoJSON', extensions: ['geojson'] },
+    ],
   })
   if (typeof path !== 'string' || path.length === 0) return null
-  await writeTextFile(path, featuresToGeoJSON(features))
+  await writeTextFile(path, gpx ? featuresToGpx(features) : featuresToGeoJSON(features))
   return path
 }

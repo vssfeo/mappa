@@ -7,6 +7,7 @@ import {
   featureArea,
   featureLength,
   featuresToGeoJSON,
+  featuresToGpx,
   normalizeDraft,
   parseFeatureGeoJSON,
   type MapFeature,
@@ -215,4 +216,25 @@ test('one broken entry does not discard valid features', () => {
   )
   assert.equal(parsed.length, 1)
   assert.equal(parsed[0].name, 'ok')
+})
+
+test('GPX export writes tracks and closes polygon rings', () => {
+  const route = line([
+    [37.6, 55.75],
+    [37.7, 55.76],
+  ])
+  route.description = 'Маршрут & точка'
+  const area = polygon([
+    [37.5, 55.7],
+    [37.8, 55.7],
+    [37.8, 55.8],
+  ])
+  const gpx = featuresToGpx([route, area])
+  assert.match(gpx, /<gpx version="1.1" creator="Mappa"/)
+  assert.match(gpx, /<name>Линия<\/name>/)
+  assert.match(gpx, /<desc>Маршрут &amp; точка<\/desc>/)
+  assert.match(gpx, /<type>line<\/type>/)
+  assert.match(gpx, /<type>polygon<\/type>/)
+  assert.equal((gpx.match(/<trkpt /g) ?? []).length, 6)
+  assert.match(gpx, /lat="55\.8000000" lon="37\.8000000"/)
 })
