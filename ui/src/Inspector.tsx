@@ -23,6 +23,7 @@ import {
   FileDown,
   FolderOpen,
   Globe2,
+  GripVertical,
   HardDrive,
   ImagePlus,
   Layers3,
@@ -97,6 +98,7 @@ import type {
 } from './markers'
 import { readMarkerIcon } from './markerIcons'
 import { sk42Epsg, sk42Zone, sk42ZoneFromY } from './sk42'
+import { useLayerDrag } from './useLayerDrag'
 import {
   useDownloadsStore,
   type DownloadJob,
@@ -3076,9 +3078,13 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const togglePack = useAppStore((state) => state.togglePack)
   const setPackOpacity = useAppStore((state) => state.setPackOpacity)
   const movePack = useAppStore((state) => state.movePack)
+  const reorderPacks = useAppStore((state) => state.reorderPacks)
   const vectorLayers = useAppStore((state) => state.vectorLayers)
   const removeVectorLayer = useAppStore((state) => state.removeVectorLayer)
   const moveVectorLayer = useAppStore((state) => state.moveVectorLayer)
+  const reorderVectorLayers = useAppStore(
+    (state) => state.reorderVectorLayers,
+  )
   const toggleVectorLayer = useAppStore((state) => state.toggleVectorLayer)
   const setVectorLayerOpacity = useAppStore(
     (state) => state.setVectorLayerOpacity,
@@ -3096,6 +3102,14 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const toggleMapGrid = useAppStore((state) => state.toggleMapGrid)
   const setDownloadOpen = useAppStore((state) => state.setDownloadOpen)
   const showToast = useAppStore((state) => state.showToast)
+  const vectorDrag = useLayerDrag(
+    [...vectorLayers].reverse().map((layer) => layer.id),
+    (ids) => reorderVectorLayers([...ids].reverse()),
+  )
+  const packDrag = useLayerDrag(
+    [...packs].reverse().map((pack) => pack.id),
+    (ids) => reorderPacks([...ids].reverse()),
+  )
 
   const coverageVisible = useCoverageStore((state) => state.visible)
   const coverageTiles = useCoverageStore((state) => state.tiles)
@@ -4409,8 +4423,15 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                   )
                   return (
                   <div
-                    className={`layer-row pack-row vector-row${layer.visible ? ' is-visible' : ''}`}
+                    className={`layer-row pack-row vector-row${layer.visible ? ' is-visible' : ''}${
+                      vectorDrag.dragId === layer.id ? ' is-dragging' : ''
+                    }${
+                      vectorDrag.dropTarget?.id === layer.id
+                        ? ` drop-${vectorDrag.dropTarget.after ? 'after' : 'before'}`
+                        : ''
+                    }`}
                     key={layer.id}
+                    data-layer-id={layer.id}
                   >
                     <button
                       type="button"
@@ -4431,6 +4452,24 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                     </button>
                     <div className="layer-main">
                       <div className="layer-title">
+                        <button
+                          type="button"
+                          className="layer-grip"
+                          onPointerDown={(event) =>
+                            vectorDrag.start(event, layer.id)
+                          }
+                          onClick={(event) => event.stopPropagation()}
+                          aria-label={tx(
+                            `Перетащить слой ${layer.name}`,
+                            `Drag layer ${layer.name}`,
+                          )}
+                          title={tx(
+                            'Перетащить, чтобы изменить порядок',
+                            'Drag to change the order',
+                          )}
+                        >
+                          <GripVertical size={12} />
+                        </button>
                         <strong>{layer.name}</strong>
                         <span>
                           {layer.format.toUpperCase()} ·{' '}
@@ -4721,8 +4760,15 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                   const index = packs.findIndex((item) => item.id === pack.id)
                   return (
                   <div
-                    className={`layer-row pack-row${pack.visible ? ' is-visible' : ''}`}
+                    className={`layer-row pack-row${pack.visible ? ' is-visible' : ''}${
+                      packDrag.dragId === pack.id ? ' is-dragging' : ''
+                    }${
+                      packDrag.dropTarget?.id === pack.id
+                        ? ` drop-${packDrag.dropTarget.after ? 'after' : 'before'}`
+                        : ''
+                    }`}
                     key={pack.id}
+                    data-layer-id={pack.id}
                   >
                     <button
                       type="button"
@@ -4769,6 +4815,24 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                       }}
                     >
                       <div className="layer-title">
+                        <button
+                          type="button"
+                          className="layer-grip"
+                          onPointerDown={(event) =>
+                            packDrag.start(event, pack.id)
+                          }
+                          onClick={(event) => event.stopPropagation()}
+                          aria-label={tx(
+                            `Перетащить пак ${pack.name}`,
+                            `Drag pack ${pack.name}`,
+                          )}
+                          title={tx(
+                            'Перетащить, чтобы изменить порядок',
+                            'Drag to change the order',
+                          )}
+                        >
+                          <GripVertical size={12} />
+                        </button>
                         <strong>{pack.name}</strong>
                         <span>
                           {pack.kind.toUpperCase()} · {pack.format}

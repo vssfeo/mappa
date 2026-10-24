@@ -39,6 +39,36 @@ const moveLayerItem = <T extends { id: string }>(
   return next
 }
 
+/** Reorders items only when `ids` is an exact permutation of the current ids. */
+const reorderLayerItems = <T extends { id: string }>(
+  items: T[],
+  ids: string[],
+): T[] => {
+  if (ids.length !== items.length) return items
+  const byId = new Map(items.map((item) => [item.id, item]))
+  const seen = new Set<string>()
+  const next: T[] = []
+  for (const id of ids) {
+    const item = byId.get(id)
+    if (!item || seen.has(id)) return items
+    seen.add(id)
+    next.push(item)
+  }
+  return next
+}
+
+const reorderPackPaths = (
+  paths: string[],
+  packs: { path: string }[],
+): string[] => {
+  const order = new Map(packs.map((pack, index) => [pack.path, index]))
+  return [...paths].sort(
+    (left, right) =>
+      (order.get(left) ?? Number.MAX_SAFE_INTEGER) -
+      (order.get(right) ?? Number.MAX_SAFE_INTEGER),
+  )
+}
+
 export type Theme = 'dark' | 'light'
 export type Panel =
   | 'layers'
@@ -129,6 +159,7 @@ interface AppState {
   addVectorLayer: (layer: VectorLayer) => void
   removeVectorLayer: (id: string) => void
   moveVectorLayer: (id: string, delta: number) => void
+  reorderVectorLayers: (ids: string[]) => void
   toggleVectorLayer: (id: string) => void
   setVectorLayerOpacity: (id: string, opacity: number) => void
   setVectorLayerStyle: (id: string, patch: Partial<VectorStyle>) => void
@@ -157,6 +188,7 @@ interface AppState {
   addPack: (pack: PackLayer) => void
   removePack: (id: string) => void
   movePack: (id: string, delta: number) => void
+  reorderPacks: (ids: string[]) => void
   forgetPackPath: (path: string) => void
   togglePack: (id: string) => void
   setPackOpacity: (id: string, opacity: number) => void
@@ -548,6 +580,11 @@ export const useAppStore = create<AppState>()(
         const vectorLayers = moveLayerItem(state.vectorLayers, id, delta)
         return vectorLayers === state.vectorLayers ? {} : { vectorLayers }
       }),
+    reorderVectorLayers: (ids) =>
+      set((state) => {
+        const vectorLayers = reorderLayerItems(state.vectorLayers, ids)
+        return vectorLayers === state.vectorLayers ? {} : { vectorLayers }
+      }),
     toggleVectorLayer: (id) =>
       set((state) => ({
         vectorLayers: state.vectorLayers.map((layer) =>
@@ -666,13 +703,13 @@ export const useAppStore = create<AppState>()(
       set((state) => {
         const packs = moveLayerItem(state.packs, id, delta)
         if (packs === state.packs) return {}
-        const order = new Map(packs.map((pack, index) => [pack.path, index]))
-        const packPaths = [...state.packPaths].sort(
-          (left, right) =>
-            (order.get(left) ?? Number.MAX_SAFE_INTEGER) -
-            (order.get(right) ?? Number.MAX_SAFE_INTEGER),
-        )
-        return { packs, packPaths }
+        return { packs, packPaths: reorderPackPaths(state.packPaths, packs) }
+      }),
+    reorderPacks: (ids) =>
+      set((state) => {
+        const packs = reorderLayerItems(state.packs, ids)
+        if (packs === state.packs) return {}
+        return { packs, packPaths: reorderPackPaths(state.packPaths, packs) }
       }),
     forgetPackPath: (path) =>
       set((state) => ({

@@ -85,6 +85,16 @@ test('layer order follows the map stack and pack paths stay in sync', () => {
     useAppStore.getState().vectorLayers.map((layer) => layer.id),
     ['b', 'c', 'a'],
   )
+  store.reorderVectorLayers(['c', 'a', 'b'])
+  assert.deepEqual(
+    useAppStore.getState().vectorLayers.map((layer) => layer.id),
+    ['c', 'a', 'b'],
+  )
+  store.reorderVectorLayers(['a'])
+  assert.deepEqual(
+    useAppStore.getState().vectorLayers.map((layer) => layer.id),
+    ['c', 'a', 'b'],
+  )
 
   useAppStore.setState({ packs: [], packPaths: [] })
   store.addPack(pack('one'))
@@ -97,6 +107,15 @@ test('layer order follows the map stack and pack paths stay in sync', () => {
   assert.deepEqual(useAppStore.getState().packPaths, [
     '/maps/two.mbtiles',
     '/maps/one.mbtiles',
+  ])
+  store.reorderPacks(['one', 'two'])
+  assert.deepEqual(
+    useAppStore.getState().packs.map((item) => item.id),
+    ['one', 'two'],
+  )
+  assert.deepEqual(useAppStore.getState().packPaths, [
+    '/maps/one.mbtiles',
+    '/maps/two.mbtiles',
   ])
 })
 
