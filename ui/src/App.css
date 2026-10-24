@@ -2538,7 +2538,21 @@
 
 .marker-coordinate-actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+
+.marker-coordinate-actions select {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 11px;
+  font-family: inherit;
 }
 
 .coord-field {

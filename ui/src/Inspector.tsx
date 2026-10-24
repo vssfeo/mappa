@@ -59,13 +59,16 @@ import {
   formatArea,
   formatCoordinatePair,
   formatDistance,
+  formatDms,
+  lonLatToUtm,
   parseAngle,
   pathLength,
   polygonArea,
+  utmToLonLat,
 } from './geo'
 import { magneticField } from './geomag'
 import { meridianConvergence, pointScaleFactor } from './geodesy'
-import { lonLatToMgrs } from './mgrs'
+import { lonLatToMgrs, mgrsToLonLat } from './mgrs'
 import { useViewStore } from './viewStore'
 import {
   FEATURE_COLORS,
@@ -91,6 +94,7 @@ import type {
   MarkerFileFormat,
 } from './markers'
 import { readMarkerIcon } from './markerIcons'
+import { sk42Epsg, sk42Zone, sk42ZoneFromY } from './sk42'
 import {
   useDownloadsStore,
   type DownloadJob,
@@ -315,159 +319,424 @@ function JobCard({
   )
 }
 
+type MarkerEditFormat = CoordinateFormat | 'sk42'
+
+const heightText = (elevation?: number) =>
+  elevation === undefined ? '' : String(elevation)
+
+const localNumber = (text: string) =>
+  Number(text.replace(/\s/g, '').replace(',', '.'))
+
+const syncMarkerValues = (
+  lon: number,
+  lat: number,
+  elevation: number | undefined,
+  format: Exclude<MarkerEditFormat, 'sk42'>,
+): string[] => {
+  if (format === 'dms') {
+    return [
+      formatDms(lat, 'lat'),
+      formatDms(lon, 'lon'),
+      heightText(elevation),
+    ]
+  }
+  if (format === 'utm') {
+    const utm = lonLatToUtm(lon, lat)
+    return [
+      utm.easting.toFixed(2),
+      utm.northing.toFixed(2),
+      heightText(elevation),
+    ]
+  }
+  if (format === 'mgrs') {
+    return [lonLatToMgrs(lon, lat) ?? '', heightText(elevation)]
+  }
+  return [lat.toFixed(6), lon.toFixed(6), heightText(elevation)]
+}
+
+async function markerCoordinateValues(
+  lon: number,
+  lat: number,
+  elevation: number | undefined,
+  format: MarkerEditFormat,
+): Promise<string[]> {
+  if (format !== 'sk42') {
+    return syncMarkerValues(lon, lat, elevation, format)
+  }
+  if (!isNative) throw new Error('the native app is required')
+  const zone = sk42Zone(lon)
+  if (zone === null) {
+    throw new Error('the longitude is outside SK-42 Gauss-Krüger zones')
+  }
+  const [point] = await transformPoints(
+    { epsg: 4326 },
+    { epsg: sk42Epsg(zone) },
+    [[lon, lat]],
+  )
+  if (!point) throw new Error('empty transform result')
+  // Conventional SK-42 order: X is northing, Y is easting with zone prefix.
+  return [point[1].toFixed(2), point[0].toFixed(2), heightText(elevation)]
+}
+
 function MarkerCoordinateEditor({
   marker,
+  defaultFormat,
   onApply,
 }: {
   marker: MapMarker
+  defaultFormat: CoordinateFormat
   onApply: (lon: number, lat: number, elevation?: number) => void
 }) {
   const tx = useText()
-  const [latValue, setLatValue] = useState(() => marker.lat.toFixed(6))
-  const [lonValue, setLonValue] = useState(() => marker.lon.toFixed(6))
-  const [heightValue, setHeightValue] = useState(() =>
-    marker.elevation === undefined ? '' : String(marker.elevation),
+  const [format, setFormat] = useState<MarkerEditFormat>(defaultFormat)
+  const [values, setValues] = useState<string[]>(() =>
+    syncMarkerValues(marker.lon, marker.lat, marker.elevation, defaultFormat),
   )
-  const [invalid, setInvalid] = useState<'lat' | 'lon' | 'height' | null>(null)
+  const [invalid, setInvalid] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const utm = lonLatToUtm(marker.lon, marker.lat)
 
-  const apply = () => {
-    const lat = parseAngle(latValue)
-    const lon = parseAngle(lonValue)
-    const trimmedHeight = heightValue.trim()
-    const height = trimmedHeight
-      ? Number(trimmedHeight.replace(',', '.'))
-      : undefined
-    if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
-      setInvalid('lat')
-      return
-    }
-    if (!Number.isFinite(lon) || lon < -180 || lon > 180) {
-      setInvalid('lon')
-      return
-    }
-    if (height !== undefined && !Number.isFinite(height)) {
-      setInvalid('height')
-      return
-    }
+  const showError = (cause: unknown) => {
+    setError(
+      `${tx('Не удалось пересчитать координаты', 'Could not convert coordinates')}: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+    )
+  }
+
+  const load = async (next: MarkerEditFormat) => {
     setInvalid(null)
-    onApply(lon, lat, height)
-    setLatValue(lat.toFixed(6))
-    setLonValue(lon.toFixed(6))
-    setHeightValue(height === undefined ? '' : String(height))
+    setError(null)
+    if (next === 'sk42') setBusy(true)
+    try {
+      setValues(
+        await markerCoordinateValues(
+          marker.lon,
+          marker.lat,
+          marker.elevation,
+          next,
+        ),
+      )
+    } catch (cause) {
+      setValues(['', '', ''])
+      showError(cause)
+    } finally {
+      if (next === 'sk42') setBusy(false)
+    }
+  }
+
+  const changeFormat = (next: MarkerEditFormat) => {
+    setFormat(next)
+    void load(next)
+  }
+
+  const apply = async () => {
+    setInvalid(null)
+    setError(null)
+    const value = (index: number) => values[index]?.trim() ?? ''
+    const heightIndex = format === 'mgrs' ? 1 : 2
+    let elevation: number | undefined
+    if (value(heightIndex)) {
+      const parsed = localNumber(value(heightIndex))
+      if (!Number.isFinite(parsed) || parsed < -12_000 || parsed > 12_000) {
+        setInvalid(heightIndex)
+        setError(tx('Проверьте высоту', 'Check elevation'))
+        return
+      }
+      elevation = parsed
+    }
+
+    let lon: number
+    let lat: number
+    if (format === 'dd' || format === 'dms') {
+      lat = parseAngle(value(0))
+      lon = parseAngle(value(1))
+      if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+        setInvalid(0)
+        setError(tx('Проверьте широту B', 'Check latitude B'))
+        return
+      }
+      if (!Number.isFinite(lon) || lon < -180 || lon > 180) {
+        setInvalid(1)
+        setError(tx('Проверьте долготу L', 'Check longitude L'))
+        return
+      }
+    } else if (format === 'utm') {
+      const easting = localNumber(value(0))
+      const northing = localNumber(value(1))
+      if (!Number.isFinite(easting) || easting < 100_000 || easting > 900_000) {
+        setInvalid(0)
+        setError(tx('Проверьте восточное положение E', 'Check easting E'))
+        return
+      }
+      if (
+        !Number.isFinite(northing) ||
+        northing < 0 ||
+        northing > 10_000_000
+      ) {
+        setInvalid(1)
+        setError(tx('Проверьте северное положение N', 'Check northing N'))
+        return
+      }
+      ;[lon, lat] = utmToLonLat({
+        zone: utm.zone,
+        hemisphere: utm.hemisphere,
+        easting,
+        northing,
+      })
+    } else if (format === 'mgrs') {
+      const point = mgrsToLonLat(value(0))
+      if (!point) {
+        setInvalid(0)
+        setError(tx('Проверьте строку MGRS', 'Check the MGRS string'))
+        return
+      }
+      ;[lon, lat] = point
+    } else {
+      const x = localNumber(value(0))
+      let y = localNumber(value(1))
+      if (!Number.isFinite(x) || x < 0 || x > 10_000_000) {
+        setInvalid(0)
+        setError(tx('Проверьте X (нординг)', 'Check X (northing)'))
+        return
+      }
+      if (!Number.isFinite(y) || y < 0 || y > 60_000_000) {
+        setInvalid(1)
+        setError(tx('Проверьте Y (истинг)', 'Check Y (easting)'))
+        return
+      }
+      const zone = sk42ZoneFromY(y) ?? sk42Zone(marker.lon)
+      if (zone === null) {
+        setInvalid(1)
+        setError(
+          tx(
+            'Не удалось определить зону СК-42; укажите Y с номером зоны',
+            'Could not determine the SK-42 zone; include the zone in Y',
+          ),
+        )
+        return
+      }
+      if (y < 1_000_000) y += zone * 1_000_000
+      if (!isNative) {
+        setError(
+          tx(
+            'СК-42 доступна в нативном приложении',
+            'SK-42 is available in the native app',
+          ),
+        )
+        return
+      }
+      setBusy(true)
+      try {
+        const [point] = await transformPoints(
+          { epsg: sk42Epsg(zone) },
+          { epsg: 4326 },
+          [[y, x]],
+        )
+        if (!point) throw new Error('empty transform result')
+        ;[lon, lat] = point
+      } catch (cause) {
+        showError(cause)
+        return
+      } finally {
+        setBusy(false)
+      }
+    }
+
+    if (
+      !Number.isFinite(lon) ||
+      !Number.isFinite(lat) ||
+      lon < -180 ||
+      lon > 180 ||
+      lat < -90 ||
+      lat > 90
+    ) {
+      setError(tx('Координаты вне допустимого диапазона', 'Coordinates out of range'))
+      return
+    }
+    onApply(lon, lat, elevation)
+    try {
+      setValues(await markerCoordinateValues(lon, lat, elevation, format))
+    } catch (cause) {
+      showError(cause)
+    }
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     event.stopPropagation()
     if (event.key === 'Enter') {
       event.preventDefault()
-      apply()
+      void apply()
     }
     if (event.key === 'Escape') {
-      setLatValue(marker.lat.toFixed(6))
-      setLonValue(marker.lon.toFixed(6))
-      setHeightValue(
-        marker.elevation === undefined ? '' : String(marker.elevation),
-      )
-      setInvalid(null)
+      void load(format)
       event.currentTarget.blur()
     }
   }
 
+  const fields: { label: string; hint: string; numeric: boolean }[] =
+    format === 'sk42'
+      ? [
+          {
+            label: 'X',
+            hint: tx(
+              'X — северное положение (нординг), м',
+              'X — northing, m',
+            ),
+            numeric: true,
+          },
+          {
+            label: 'Y',
+            hint: tx(
+              'Y — восточное положение с номером зоны, м',
+              'Y — easting with the zone prefix, m',
+            ),
+            numeric: true,
+          },
+          {
+            label: 'Z',
+            hint: tx('Z — высота, м', 'Z — elevation, m'),
+            numeric: true,
+          },
+        ]
+      : format === 'utm'
+        ? [
+            {
+              label: 'E',
+              hint: tx(
+                `E — восточное положение, зона ${utm.zone}${utm.hemisphere}`,
+                `E — easting, zone ${utm.zone}${utm.hemisphere}`,
+              ),
+              numeric: true,
+            },
+            {
+              label: 'N',
+              hint: tx('N — северное положение', 'N — northing'),
+              numeric: true,
+            },
+            {
+              label: 'h',
+              hint: tx('h — высота, м', 'h — elevation, m'),
+              numeric: true,
+            },
+          ]
+        : format === 'mgrs'
+          ? [
+              {
+                label: 'M',
+                hint: tx('M — строка MGRS', 'M — MGRS string'),
+                numeric: false,
+              },
+              {
+                label: 'h',
+                hint: tx('h — высота, м', 'h — elevation, m'),
+                numeric: true,
+              },
+            ]
+          : [
+              {
+                label: 'B',
+                hint: tx('Широта (B), WGS84', 'Latitude (B), WGS84'),
+                numeric: format === 'dd',
+              },
+              {
+                label: 'L',
+                hint: tx('Долгота (L), WGS84', 'Longitude (L), WGS84'),
+                numeric: format === 'dd',
+              },
+              {
+                label: 'h',
+                hint: tx('h — высота, м', 'h — elevation, m'),
+                numeric: true,
+              },
+            ]
+
   return (
     <div className="marker-coordinate-edit">
       <div className="marker-coordinate-row">
-        <label
-          className={`coord-field${invalid === 'lat' ? ' is-invalid' : ''}`}
-          title={tx('Широта (B), WGS84', 'Latitude (B), WGS84')}
-        >
-          <span aria-hidden="true">B</span>
-          <input
-            value={latValue}
-            onFocus={() => {
-              setLatValue(marker.lat.toFixed(6))
-              setInvalid(null)
-            }}
-            onChange={(event) => {
-              setLatValue(event.target.value)
-              setInvalid(null)
-            }}
-            onKeyDown={onKeyDown}
-            aria-label={tx('Широта B', 'Latitude B')}
-            aria-invalid={invalid === 'lat'}
-            inputMode="decimal"
-            spellCheck={false}
-          />
-        </label>
-        <label
-          className={`coord-field${invalid === 'lon' ? ' is-invalid' : ''}`}
-          title={tx('Долгота (L), WGS84', 'Longitude (L), WGS84')}
-        >
-          <span aria-hidden="true">L</span>
-          <input
-            value={lonValue}
-            onFocus={() => {
-              setLonValue(marker.lon.toFixed(6))
-              setInvalid(null)
-            }}
-            onChange={(event) => {
-              setLonValue(event.target.value)
-              setInvalid(null)
-            }}
-            onKeyDown={onKeyDown}
-            aria-label={tx('Долгота L', 'Longitude L')}
-            aria-invalid={invalid === 'lon'}
-            inputMode="decimal"
-            spellCheck={false}
-          />
-        </label>
-        <label
-          className={`coord-field${invalid === 'height' ? ' is-invalid' : ''}`}
-          title={tx(
-            'Высота (h), метры — задел для рельефа',
-            'Elevation (h), metres — reserved for terrain',
-          )}
-        >
-          <span aria-hidden="true">h</span>
-          <input
-            value={heightValue}
-            onFocus={() => {
-              setHeightValue(
-                marker.elevation === undefined ? '' : String(marker.elevation),
-              )
-              setInvalid(null)
-            }}
-            onChange={(event) => {
-              setHeightValue(event.target.value)
-              setInvalid(null)
-            }}
-            onKeyDown={onKeyDown}
-            aria-label={tx('Высота h, метры', 'Elevation h, metres')}
-            aria-invalid={invalid === 'height'}
-            inputMode="decimal"
-            placeholder="—"
-            spellCheck={false}
-          />
-        </label>
+        {fields.map((field, index) => (
+          <label
+            key={`${field.label}-${index}`}
+            className={`coord-field${invalid === index ? ' is-invalid' : ''}`}
+            title={field.hint}
+          >
+            <span aria-hidden="true">{field.label}</span>
+            <input
+              value={values[index] ?? ''}
+              onChange={(event) => {
+                const next = [...values]
+                next[index] = event.target.value
+                setValues(next)
+                setInvalid(null)
+                setError(null)
+              }}
+              onKeyDown={onKeyDown}
+              aria-label={field.hint}
+              aria-invalid={invalid === index}
+              inputMode={field.numeric ? 'decimal' : 'text'}
+              placeholder={
+                field.label === 'h' || field.label === 'Z' ? '—' : undefined
+              }
+              spellCheck={false}
+            />
+          </label>
+        ))}
       </div>
       <div className="marker-coordinate-actions">
+        <select
+          value={format}
+          onChange={(event) =>
+            changeFormat(event.target.value as MarkerEditFormat)
+          }
+          onKeyDown={(event) => event.stopPropagation()}
+          disabled={busy}
+          aria-label={tx(
+            'Система координат точки',
+            'Point coordinate system',
+          )}
+          title={tx(
+            'Система координат точки',
+            'Point coordinate system',
+          )}
+        >
+          <option value="dd">{tx('WGS84 · градусы', 'WGS84 · degrees')}</option>
+          <option value="dms">{tx('WGS84 · ГМС', 'WGS84 · DMS')}</option>
+          <option value="utm">WGS84 · UTM</option>
+          <option value="mgrs">WGS84 · MGRS</option>
+          <option value="sk42">{tx('СК-42 · X,Y,Z', 'SK-42 · X,Y,Z')}</option>
+        </select>
         <button
           type="button"
           className="ghost-button marker-coordinate-apply"
-          onClick={apply}
+          onClick={() => void load(format)}
+          disabled={busy}
+          aria-label={tx(
+            'Обновить из точки',
+            'Reload from the point',
+          )}
+          title={tx('Обновить из точки', 'Reload from the point')}
+        >
+          <RefreshCw size={13} />
+        </button>
+        <button
+          type="button"
+          className="ghost-button marker-coordinate-apply"
+          onClick={() => void apply()}
+          disabled={busy}
           aria-label={tx('Применить координаты', 'Apply coordinates')}
           title={tx('Применить координаты', 'Apply coordinates')}
         >
-          <CheckCircle2 size={14} />
+          {busy ? (
+            <Loader2 size={14} className="spin" />
+          ) : (
+            <CheckCircle2 size={14} />
+          )}
         </button>
       </div>
-      {invalid && (
+      {error && (
         <span className="marker-coordinate-error" role="alert">
-          {invalid === 'height'
-            ? tx('Высота должна быть числом', 'Elevation must be a number')
-            : tx(
-                'Проверьте B (−90…90) и L (−180…180)',
-                'Check B (−90…90) and L (−180…180)',
-              )}
+          {error}
         </span>
       )}
     </div>
@@ -929,6 +1198,7 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
                         >
                           <MarkerCoordinateEditor
                             marker={marker}
+                            defaultFormat={coordinateFormat}
                             onApply={(lon, lat, elevation) => {
                               updateMarker(marker.id, {
                                 lon,

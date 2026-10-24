@@ -265,6 +265,18 @@ mod tests {
     }
 
     #[test]
+    fn sk42_gauss_kruger_zone_7() {
+        // Pulkovo 1942 / GK zone 7: Y includes the zone prefix.
+        let crs = Crs::new(&CrsSpec::from_epsg(28407)).unwrap();
+        let (y, x) = crs.from_wgs84(37.6173, 55.7558).unwrap();
+        assert!((y - 7_413_187.97).abs() < 0.5, "y={y}");
+        assert!((x - 6_182_348.17).abs() < 0.5, "x={x}");
+        let (lon, lat) = crs.to_wgs84(y, x).unwrap();
+        assert!((lon - 37.6173).abs() < 1e-8);
+        assert!((lat - 55.7558).abs() < 1e-8);
+    }
+
+    #[test]
     fn presets_are_resolvable() {
         let presets = presets();
         assert!(presets.len() >= 12);

@@ -399,9 +399,10 @@ try {
       fail('point icon did not change')
     }
 
-    const latField = page.locator('input[aria-label="Широта B"]')
-    const lonField = page.locator('input[aria-label="Долгота L"]')
-    const heightField = page.locator('input[aria-label="Высота h, метры"]')
+    const coordInputs = page.locator('.coord-field input')
+    const latField = coordInputs.nth(0)
+    const lonField = coordInputs.nth(1)
+    const heightField = coordInputs.nth(2)
     if (
       (await latField.count()) === 0 ||
       (await lonField.count()) === 0 ||
@@ -428,6 +429,9 @@ try {
           `B/L/h fields are not equal-width stacked rows (${JSON.stringify({ latBox, lonBox, heightBox })})`,
         )
       }
+      const coordFormat = page.locator('.marker-coordinate-actions select')
+      await coordFormat.selectOption('dd')
+      await page.waitForTimeout(250)
       await latField.fill('55.75580')
       await lonField.fill('37.61730')
       await heightField.fill('145')
@@ -445,6 +449,23 @@ try {
         : null
       if (!edited || edited.elevation !== 145) {
         fail(`point elevation was not stored (${JSON.stringify(edited)})`)
+      }
+
+      if ((await coordFormat.locator('option[value="sk42"]').count()) === 0) {
+        fail('SK-42 coordinate system option is missing')
+      }
+      await coordFormat.selectOption('dms')
+      await page.waitForTimeout(250)
+      const dmsLat = await latField.inputValue()
+      const dmsLon = await lonField.inputValue()
+      if (!/°.*[NS]$/.test(dmsLat) || !/°.*[EW]$/.test(dmsLon)) {
+        fail(`DMS fields were not formatted (${dmsLat} | ${dmsLon})`)
+      }
+      await coordFormat.selectOption('dd')
+      await page.waitForTimeout(250)
+      const decimalLat = await latField.inputValue()
+      if (!/^\d+\.\d{6}$/.test(decimalLat)) {
+        fail(`decimal degrees were not restored (${decimalLat})`)
       }
     }
 
