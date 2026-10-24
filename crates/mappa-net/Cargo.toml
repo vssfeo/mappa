@@ -1,0 +1,27 @@
+[package]
+name = "mappa-net"
+description = "Polite HTTP tile fetching for Mappa"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+base64 = "0.22"
+httpdate = "1"
+log = "0.4"
+mappa-core = { path = "../mappa-core" }
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls-native-roots",
+    "gzip",
+    "brotli",
+    "deflate",
+] }
+thiserror = "2"
+tokio = { version = "1", features = ["sync", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "net", "io-util", "rt-multi-thread", "sync", "time"] }
+
+[lints]
+workspace = true

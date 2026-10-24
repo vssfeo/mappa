@@ -1,0 +1,13 @@
+/target
+/ui/node_modules
+/ui/dist
+/ui/.vite
+/ui/playwright-report
+/ui/test-results
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+/ui/coverage
+/.claude

@@ -1,0 +1,22 @@
+[package]
+name = "mappa-cli"
+description = "Command-line companion for Mappa"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "mappa-cli"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+mappa-core = { path = "../mappa-core" }
+mappa-net = { path = "../mappa-net" }
+mappa-storage = { path = "../mappa-storage" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+
+[lints]
+workspace = true

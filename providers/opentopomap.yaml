@@ -1,0 +1,16 @@
+id: topo
+name: OpenTopoMap
+type: xyz
+url: https://a.tile.opentopomap.org/{z}/{x}/{y}.png
+scheme: xyz
+min_zoom: 0
+max_zoom: 17
+tile_size: 256
+format: png
+attribution: "© OpenTopoMap, © OpenStreetMap contributors"
+terms: https://opentopomap.org/about
+rate_limit:
+  rps: 8
+  burst: 16
+headers:
+  User-Agent: "Mappa/0.1 (https://example.invalid/mappa; contact@example.invalid)"

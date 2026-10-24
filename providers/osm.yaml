@@ -1,0 +1,16 @@
+id: osm
+name: OpenStreetMap
+type: xyz
+url: https://tile.openstreetmap.org/{z}/{x}/{y}.png
+scheme: xyz
+min_zoom: 0
+max_zoom: 19
+tile_size: 256
+format: png
+attribution: "© OpenStreetMap contributors"
+terms: https://www.openstreetmap.org/copyright
+rate_limit:
+  rps: 8
+  burst: 24
+headers:
+  User-Agent: "Mappa/0.1 (interactive offline map workstation)"

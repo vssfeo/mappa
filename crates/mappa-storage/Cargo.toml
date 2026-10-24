@@ -1,0 +1,29 @@
+[package]
+name = "mappa-storage"
+description = "SQLite tile cache and MBTiles support for Mappa"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+blake3 = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+mappa-core = { path = "../mappa-core" }
+pmtiles = { version = "0.25", default-features = false, features = [
+    "mmap-async-tokio",
+    "write",
+] }
+ring = "0.17"
+rusqlite = { version = "0.40", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

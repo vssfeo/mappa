@@ -1,0 +1,27 @@
+[workspace]
+members = [
+  "crates/mappa-cli",
+  "crates/mappa-core",
+  "crates/mappa-net",
+  "crates/mappa-storage",
+  "src-tauri",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://example.invalid/mappa"
+rust-version = "1.90"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = "symbols"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"

@@ -1,0 +1,15 @@
+[package]
+name = "mappa-core"
+description = "Tile math, bounds and provider primitives for Mappa"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+proj4rs = { version = "0.1.5", features = ["crs-definitions"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml_ng = "0.10"
+
+[lints]
+workspace = true

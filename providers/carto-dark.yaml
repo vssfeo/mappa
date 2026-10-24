@@ -1,0 +1,16 @@
+id: carto
+name: CARTO Dark
+type: xyz
+url: https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png
+scheme: xyz
+min_zoom: 0
+max_zoom: 20
+tile_size: 256
+format: png
+attribution: "© OpenStreetMap contributors, © CARTO"
+terms: https://carto.com/attributions
+rate_limit:
+  rps: 12
+  burst: 24
+headers:
+  User-Agent: "Mappa/0.1 (https://example.invalid/mappa; contact@example.invalid)"
