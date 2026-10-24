@@ -399,6 +399,98 @@
   background: var(--bg);
 }
 
+.compare-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.compare-map {
+  position: absolute;
+  inset: 0;
+}
+
+.compare-map .maplibregl-canvas {
+  outline: none;
+}
+
+.compare-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 2px;
+  background: var(--accent);
+  cursor: col-resize;
+  pointer-events: auto;
+  transform: translateX(-1px);
+  touch-action: none;
+}
+
+.compare-grip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-glass);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+  transform: translate(-50%, -50%);
+}
+
+.compare-divider:focus-visible .compare-grip {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.compare-bar {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: calc(100% - 32px);
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-glass);
+  box-shadow: var(--shadow-soft);
+  font-size: 11px;
+  pointer-events: auto;
+  transform: translateX(-50%);
+}
+
+.compare-side,
+.compare-vs {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.compare-bar select {
+  max-width: 170px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 11px;
+  font-family: inherit;
+}
+
+.compare-bar .icon-button {
+  width: 24px;
+  height: 24px;
+}
+
 .map-root {
   position: absolute;
   inset: 0;

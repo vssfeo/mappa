@@ -25,6 +25,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { CommandPalette } from './CommandPalette'
+import { CompareMap } from './CompareMap'
 import { useCoverageStore } from './coverage'
 import { useT, useText } from './i18n'
 import { DownloadSheet } from './DownloadSheet'
@@ -142,6 +143,7 @@ function App() {
   const showToast = useAppStore((state) => state.showToast)
 
   const [map, setMap] = useState<MapLibreMap | null>(null)
+  const [compareOpen, setCompareOpen] = useState(false)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -409,7 +411,7 @@ function App() {
           break
         case 'c':
           event.preventDefault()
-          showToast(tx('Сравнение подложек — Phase 4', 'Basemap comparison — Phase 4'))
+          setCompareOpen((open) => !open)
           break
         case 'v':
           event.preventDefault()
@@ -1047,8 +1049,7 @@ function App() {
         group: tx('Инструменты', 'Tools'),
         hint: 'C',
         icon: Columns2,
-        action: () =>
-          showToast(tx('Сравнение подложек — Phase 4', 'Basemap comparison — Phase 4')),
+        action: () => setCompareOpen((open) => !open),
       },
       {
         id: 'markers',
@@ -1169,6 +1170,13 @@ function App() {
             onSelectMarker={onSelectMarker}
             onReady={onReady}
           />
+          {compareOpen && (
+            <CompareMap
+              map={map}
+              activeProviderId={providerId}
+              onClose={() => setCompareOpen(false)}
+            />
+          )}
           <MapHud map={map} />
           {mapHint && (
             <div className="draw-hint">

@@ -67,6 +67,29 @@ try {
     fail('a map tool is missing its hover tooltip')
   }
 
+  await page.keyboard.press('c')
+  await page.waitForTimeout(700)
+  if ((await page.locator('.compare-overlay').count()) === 0) {
+    fail('compare overlay did not open')
+  }
+  if ((await page.locator('.compare-map canvas').count()) === 0) {
+    fail('compare map canvas is missing')
+  }
+  const divider = page.locator('.compare-divider')
+  const splitBefore = await divider.getAttribute('aria-valuenow')
+  await divider.focus()
+  await page.keyboard.press('ArrowLeft')
+  await page.waitForTimeout(200)
+  const splitAfter = await divider.getAttribute('aria-valuenow')
+  if (splitBefore === splitAfter) {
+    fail('compare divider did not move with the keyboard')
+  }
+  await page.keyboard.press('c')
+  await page.waitForTimeout(300)
+  if ((await page.locator('.compare-overlay').count()) > 0) {
+    fail('compare overlay did not close')
+  }
+
   await page.keyboard.press('Control+K')
   await page.waitForTimeout(200)
   if ((await page.locator('.cmdk').count()) === 0) {
