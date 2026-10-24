@@ -44,7 +44,8 @@ SAS.Planet — это про «скачать район и посмотреть
 - `crates/mappa-net` — HTTP-клиент, retry, rate limit, auth, conditional GET.
 - `src-tauri` — нативное окно, raw-IPC, `mappa://tiles` и `mappa://pack`,
   команды кэша/загрузок, реестр паков, настройки кэша и прокси.
-- `ui/` — React + MapLibre: пять подложек, тёмная/светлая тема,
+- `ui/` — React + MapLibre: семь подложек (включая спутниковые Esri
+  World Imagery и NASA Blue Marble), тёмная/светлая тема,
   командная палитра, inspector, download sheet, рисование области и
   линий/полигонов с редактированием вершин, линейка с азимутами,
   площадь, метки с папками/иконками/поиском и CSV/GeoJSON/GPX/KML/KMZ,
@@ -58,10 +59,16 @@ SAS.Planet — это про «скачать район и посмотреть
 - `providers/` — YAML-каталог встроенных источников с `offline_allowed`.
 - `docs/` — ТЗ, UX, roadmap, статус.
 
-Офлайн-очередь намеренно заблокирована для OSM, OpenTopoMap и CARTO:
-их условия запрещают bulk pre-fetch. Для офлайн-загрузок в поставке
-есть USGS Imagery (public domain). Свой сервер можно добавить в UI
+Офлайн-очередь намеренно заблокирована для OSM, OpenTopoMap, CARTO
+и Esri World Imagery: их условия запрещают или ограничивают bulk
+pre-fetch. Для офлайн-загрузок в поставке есть USGS Imagery и NASA
+Blue Marble (public domain). Свой сервер можно добавить в UI
 («Слои» → «Свои источники») или YAML-каталог CLI.
+
+Google, Yandex и Yahoo не включены: Google и Yandex не дают публичный
+XYZ-шаблон без ключа, а их условия запрещают прямую загрузку тайлов;
+Yahoo Maps закрыт. Легальный источник с ключом добавляется через
+«Свои источники» (XYZ/WMS/WMTS + заголовки авторизации).
 
 ## Запуск
 
@@ -189,7 +196,7 @@ CI собирает `.deb` на amd64, а на `ubuntu-24.04-arm` собирае
 
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"
-make check   # fmt, clippy, 143 Rust-теста, 62 UI-теста, Unicode, сборка
+make check   # fmt, clippy, 144 Rust-теста, 74 UI-теста, Unicode, сборка
 make deb-check
 make smoke   # Playwright
 make bench   # кэш/очередь/паки на 10k тайлов
@@ -198,6 +205,6 @@ make bench-ui # FPS при панорамировании
 
 ## Ближайший шаг
 
-DEM/профиль высот и 3D, треки и GPS, геокодер и сравнение подложек,
+DEM/профиль высот и 3D, треки и GPS, геокодер,
 векторные PMTiles. Полный приоритетный бэклог — в
 [docs/COMPETITORS.md](docs/COMPETITORS.md).

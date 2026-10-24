@@ -1,6 +1,13 @@
 import { tr } from './locale.ts'
 
-export type ProviderId = 'osm' | 'osm-de' | 'topo' | 'carto' | 'usgs'
+export type ProviderId =
+  | 'osm'
+  | 'osm-de'
+  | 'topo'
+  | 'carto'
+  | 'usgs'
+  | 'esri'
+  | 'nasa'
 
 export interface Provider {
   id: ProviderId
@@ -101,6 +108,45 @@ export const PROVIDERS: Provider[] = [
     attribution: 'USGS The National Map',
     terms: 'https://www.usgs.gov/programs/national-geospatial-program/national-map',
     maxZoom: 19,
+    tileSize: 256,
+    offlineAllowed: true,
+  },
+  {
+    id: 'esri',
+    label: 'Esri World Imagery',
+    short: 'ESRI',
+    get description() {
+      return tr(
+        'Спутниковые снимки World Imagery: города, дороги и рельеф. Только интерактивный просмотр, без офлайн-загрузки.',
+        'World Imagery satellite mosaics: cities, roads and terrain. Interactive viewing only, no offline downloads.',
+      )
+    },
+    tiles: [
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    ],
+    attribution:
+      'Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+    terms: 'https://www.esri.com/en-us/legal/terms/full-master-agreement',
+    maxZoom: 19,
+    tileSize: 256,
+    offlineAllowed: false,
+  },
+  {
+    id: 'nasa',
+    label: 'NASA Blue Marble',
+    short: 'NASA',
+    get description() {
+      return tr(
+        'Глобальный снимок Земли NASA Blue Marble с рельефом и батиметрией. Общественное достояние, z0–z8.',
+        'NASA Blue Marble global imagery with relief and bathymetry. Public domain, z0–z8.',
+      )
+    },
+    tiles: [
+      'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief_Bathymetry/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg',
+    ],
+    attribution: 'NASA EOSDIS GIBS · Blue Marble',
+    terms: 'https://earthdata.nasa.gov/gibs',
+    maxZoom: 8,
     tileSize: 256,
     offlineAllowed: true,
   },

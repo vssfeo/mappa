@@ -1,0 +1,18 @@
+id: nasa
+name: NASA Blue Marble
+type: xyz
+url: https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief_Bathymetry/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg
+scheme: xyz
+min_zoom: 0
+max_zoom: 8
+tile_size: 256
+format: jpg
+attribution: "NASA EOSDIS GIBS · Blue Marble"
+terms: https://earthdata.nasa.gov/gibs
+# NASA Earth observation imagery is public domain; attribution is requested.
+offline_allowed: true
+rate_limit:
+  rps: 4
+  burst: 8
+headers:
+  User-Agent: "Mappa/0.1 (interactive offline map workstation)"

@@ -54,6 +54,14 @@ try {
   if ((await page.locator('.maplibregl-canvas').count()) === 0) {
     fail('map canvas not found')
   }
+  const providerOptions = await page
+    .locator('.provider-select option')
+    .allInnerTexts()
+  for (const label of ['Esri World Imagery', 'NASA Blue Marble']) {
+    if (!providerOptions.some((option) => option.trim() === label)) {
+      fail(`satellite provider is missing: ${label}`)
+    }
+  }
   const hud = await page.locator('.hud-button').evaluateAll((buttons) =>
     buttons.map((button) => ({
       text: button.textContent?.trim() ?? '',

@@ -1,0 +1,18 @@
+id: esri
+name: Esri World Imagery
+type: xyz
+url: https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}
+scheme: xyz
+min_zoom: 0
+max_zoom: 19
+tile_size: 256
+format: jpg
+attribution: "Esri, Maxar, Earthstar Geographics, and the GIS User Community"
+terms: https://www.esri.com/en-us/legal/terms/full-master-agreement
+# Interactive viewing only; bulk caching needs an Esri agreement.
+offline_allowed: false
+rate_limit:
+  rps: 8
+  burst: 16
+headers:
+  User-Agent: "Mappa/0.1 (interactive offline map workstation)"

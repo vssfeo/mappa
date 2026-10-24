@@ -82,7 +82,8 @@
 - [x] `mappa-core`: Web Mercator, tile math, bbox, zoom ranges.
 - [x] `mappa-net`: HTTP client, retry, timeout, User-Agent.
 - [x] `mappa-storage`: SQLite cache (WAL), атомарная запись.
-- [x] Провайдеры: YAML, 4 источника (OSM, OpenTopoMap, CARTO, USGS).
+- [x] Провайдеры: YAML, 7 источников (OSM, OSM Germany, OpenTopoMap,
+  CARTO, USGS, Esri World Imagery, NASA Blue Marble).
 - [x] Пять встроенных источников; источники по ключу — через свои
   XYZ/WMS/WMTS с заголовками.
 - [ ] JSON Schema каталога провайдеров.

@@ -14,7 +14,8 @@
 - `Bbox`: валидация, объединение, пересечения, центр.
 - Каталог провайдеров: YAML, валидация, URL-шаблоны, TMS, `{-y}`,
   rate limit, auth-описание, флаг `offline_allowed`.
-- Встроены OSM, OSM Germany, OpenTopoMap, CARTO Dark, USGS Imagery.
+- Встроены OSM, OSM Germany, OpenTopoMap, CARTO Dark, USGS Imagery,
+  Esri World Imagery и NASA Blue Marble.
 - 35 unit-тестов ядра (CRS: round-trip, Web Mercator, СК-42/Пуля,
   произвольный proj4; полигоны: point-in-ring, пересечение тайла,
   нормализация; bounds тайлов).
@@ -115,7 +116,8 @@
 ### UI
 
 - React 19 + TypeScript + Vite 8 + MapLibre GL JS.
-- Пять подложек (OSM, OSM Germany, CARTO, OpenTopoMap, USGS),
+- Семь подложек (OSM, OSM Germany, CARTO, OpenTopoMap, USGS,
+  Esri World Imagery, NASA Blue Marble),
   тёмная/светлая темы.
 - Командная палитра `Ctrl+K`, шпаргалка `?`.
 - Download sheet: bbox, выделенная область или полигон объекта, зумы,
@@ -213,7 +215,7 @@
   линии, режим вершин, постановка/переименование метки, UTM,
   панель настроек, тема, disabled queue; reload восстанавливает тему,
   вид карты и маркеры.
-- 45 unit-тестов (`npm run test`): геометрия, UTM, DMS, DD/DMS/UTM,
+- 74 unit-теста (`npm run test`): геометрия, UTM, DMS, DD/DMS/UTM,
   CSV/GeoJSON/GPX/KML round-trip (папки/иконки/цвета), GeoJSON-
   геометрии, draft и `.mappa`, импорт KML/KMZ/GPX/GeoJSON/SHP,
   сборка полигонов и отверстий, DBF, ZIP, attribute table,
@@ -268,7 +270,7 @@
 ```bash
 cd "/home/captry/Projects AI/mappa"
 export PATH="$HOME/.cargo/bin:$PATH"
-make check   # fmt, clippy, 143 Rust-теста, 62 UI-теста, unicode, lint/build
+make check   # fmt, clippy, 144 Rust-теста, 74 UI-теста, unicode, lint/build
 make smoke   # Playwright, сам поднимает preview
 make bench   # 10k тайлов: кэш, очередь, MBTiles/PMTiles
 make bench-large  # 250k тайлов (~2 ГБ) и паки того же размера
@@ -427,7 +429,7 @@ cargo run -q -p mappa-cli -- pack \
 - GeoPackage показывает список feature-слоёв, но не растровые тайлы.
 - SHP понимает WGS84, Web Mercator, UTM и распространённые
   WKT-проекции; экзотические датумы могут требовать proj4-строку.
-- Нет геокодера, сравнения подложек, 3D и маршрутизации.
+- Нет геокодера, 3D и маршрутизации.
 - Встроенный YAML-каталог в UI статический; новые источники
   добавляются через «Слои» → «Свои источники» или CLI.
 - Прокси только HTTP/HTTPS (без SOCKS).

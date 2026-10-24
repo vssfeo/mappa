@@ -42,7 +42,10 @@ export function DownloadSheet() {
   const provider = providerById(providerId)
   const fallbackOptions = [
     ...PROVIDERS.filter(
-      (item) => item.id !== providerId && item.offlineAllowed,
+      (item) =>
+        item.id !== providerId &&
+        item.offlineAllowed &&
+        item.maxZoom >= maxZoom,
     ).map((item) => ({
       id: item.id as string,
       label: item.label,
