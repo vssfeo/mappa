@@ -20,6 +20,7 @@ tile-server и интеграция с роботами/полевыми уст�
 | [docs/ROADMAP.md](docs/ROADMAP.md) | дорожная карта по фазам, milestone'ы, критерии приёмки, риски |
 | [docs/COMPETITORS.md](docs/COMPETITORS.md) | разбор функций SAS.Planet, QGIS, MapTiler, Felt, QGC, CalTopo и полевых приложений, приоритетный бэклог |
 | [docs/STATUS.md](docs/STATUS.md) | что уже сделано, чем заблокировано, как запустить |
+| [docs/API.md](docs/API.md) | `mappa serve`: tile-server, REST, QGIS/MapLibre, токен |
 
 ## Позиционирование
 
@@ -188,7 +189,20 @@ cargo run -q -p mappa-cli -- pack \
 
 # диагностика
 cargo run -q -p mappa-cli -- doctor --vacuum
+
+# локальный tile-server + REST для MapLibre/QGIS
+cargo run -q -p mappa-cli -- serve --port 8080
+
+# LAN с токеном и паками
+cargo run -q -p mappa-cli -- serve --host 0.0.0.0 --port 8080 \
+  --token mappa-lan \
+  --pack "$HOME/Downloads/mappa-crimea.mbtiles"
 ```
+
+REST и примеры подключения — в [docs/API.md](docs/API.md).
+`/api/status`, `/api/providers`, `/api/packs`, `/api/jobs`; тайлы из
+кэша — `/tiles/{provider}/{z}/{x}/{y}`, из пака —
+`/packs/{id}/{z}/{x}/{y}`.
 
 По умолчанию используется `~/.cache/dev.mappa.desktop/tiles.sqlite3`
 (или `$XDG_CACHE_HOME`); путь можно задать через `--cache` или
@@ -212,7 +226,7 @@ CI собирает `.deb` на amd64, а на `ubuntu-24.04-arm` собирае
 
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"
-make check   # fmt, clippy, 144 Rust-теста, 90 UI-тестов, Unicode, сборка
+make check   # fmt, clippy, 148 Rust-тестов, 90 UI-тестов, Unicode, сборка
 make deb-check
 make smoke   # Playwright
 make bench   # кэш/очередь/паки на 10k тайлов

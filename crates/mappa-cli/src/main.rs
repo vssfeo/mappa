@@ -1,5 +1,7 @@
 //! `mappa-cli`: download, pack and inspect the same cache as the desktop app.
 
+mod serve;
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -39,6 +41,8 @@ enum Command {
     Doctor(DoctorArgs),
     /// Показать статистику кэша.
     Stats(CacheArgs),
+    /// Запустить локальный tile-server и REST API.
+    Serve(serve::ServeArgs),
 }
 
 #[derive(Debug, Args)]
@@ -129,6 +133,7 @@ async fn main() -> Result<()> {
         Command::Pack(args) => pack(args),
         Command::Doctor(args) => doctor(args),
         Command::Stats(args) => stats(args),
+        Command::Serve(args) => serve::run(args).await,
     }
 }
 
@@ -458,7 +463,7 @@ fn stats(args: CacheArgs) -> Result<()> {
     Ok(())
 }
 
-fn load_catalog(directory: Option<&Path>) -> Result<ProviderCatalog> {
+pub(crate) fn load_catalog(directory: Option<&Path>) -> Result<ProviderCatalog> {
     if let Some(directory) = directory {
         return ProviderCatalog::load_dir(directory)
             .with_context(|| format!("cannot load {}", directory.display()));
@@ -470,7 +475,7 @@ fn load_catalog(directory: Option<&Path>) -> Result<ProviderCatalog> {
     ProviderCatalog::builtin().context("built-in provider catalog is invalid")
 }
 
-fn cache_path(argument: Option<&Path>) -> PathBuf {
+pub(crate) fn cache_path(argument: Option<&Path>) -> PathBuf {
     if let Some(path) = argument {
         return path.to_path_buf();
     }

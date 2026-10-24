@@ -16,7 +16,7 @@ clap = { version = "4", features = ["derive"] }
 mappa-core = { path = "../mappa-core" }
 mappa-net = { path = "../mappa-net" }
 mappa-storage = { path = "../mappa-storage" }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync"] }
 
 [lints]
 workspace = true

@@ -243,11 +243,12 @@
 - [x] CRS 2.0: MGRS, сетка координат на карте, сближение меридианов,
   СК-42 X/Y/Z в редакторе точек.
 - [ ] Офлайн-геокодер Nominatim/Photon + online fallback.
-- [ ] `mappa serve` — локальный tile-server и раздача паков по LAN/QR.
-- [ ] REST API: статус, очередь, паки.
+- [x] `mappa serve` — tile-server из кэша и паков, LAN-адреса, токен.
+- [ ] QR-код для подключения телефона по LAN.
+- [x] REST API: статус, очередь, паки (read-only).
 - [ ] Batch JSON jobs, JSON-вывод, идемпотентность.
-- [x] Headless-режим для download/pack/doctor.
-- [ ] Документация CLI и API (краткая в README есть).
+- [x] Headless-режим для download/pack/doctor/serve.
+- [x] Документация CLI и API ([docs/API.md](API.md)).
 - [x] Примеры для CI/роботов (USGS, public domain).
 
 ### Демо
@@ -255,16 +256,16 @@
 ```bash
 mappa-cli download --provider usgs --bbox=-122.5,37.7,-122.4,37.8 --zoom 12-14
 mappa-cli pack --provider usgs --bbox=-122.5,37.7,-122.4,37.8 --zoom 12-14 --output sf.mbtiles
-mappa serve --pack sf.mbtiles --port 8080
+mappa-cli serve --pack sf.mbtiles --port 8080
 curl http://127.0.0.1:8080/health
 ```
 
 ### Критерий
 
-- [ ] CLI работает без GUI.
-- [ ] Tile-server отдаёт тайлы MapLibre и QGIS.
-- [ ] REST API документирован.
-- [ ] Коды возврата и ошибки предсказуемы.
+- [x] CLI работает без GUI.
+- [x] Tile-server отдаёт тайлы MapLibre и QGIS (кэш и паки).
+- [x] REST API документирован.
+- [x] Коды возврата и ошибки предсказуемы.
 
 ---
 

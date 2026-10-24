@@ -55,7 +55,7 @@
 
 ### CLI (`mappa-cli`)
 
-- Headless `providers`, `download`, `pack`, `doctor`, `stats`.
+- Headless `providers`, `download`, `pack`, `doctor`, `stats`, `serve`.
 - Общий кэш с приложением (`~/.cache/dev.mappa.desktop/tiles.sqlite3`).
 - `download`: bbox/zoom, оценка, `--dry-run`, лимит 2 млн тайлов,
   прогресс, rate limit, legal-гейт `offline_allowed`; 12 параллельных
@@ -63,6 +63,10 @@
 - `pack`: MBTiles или PMTiles по расширению выходного файла, метаданные
   bbox/zooms/attribution, транскодинг смешанных PNG/JPEG.
 - `doctor`: статистика, `quick_check`, `vacuum`.
+- `serve`: тайлы из кэша и нескольких MBTiles/PMTiles, MapLibre style,
+  `/api/status`, `/api/providers`, `/api/packs`, `/api/jobs`, CORS,
+  `HEAD`, токен в query/`Authorization`, LAN-адреса, лимит 64
+  соединений. Спецификация — [docs/API.md](API.md).
 - Проверено: USGS 1 тайл z14, OSM блокируется, MBTiles и PMTiles по
   6 тайлов (~98 КБ), все тайлы JPEG (PNG сконвертированы), PMTiles v3
   с корректной сигнатурой и Hilbert-порядком.
@@ -289,7 +293,7 @@
 ```bash
 cd "/home/captry/Projects AI/mappa"
 export PATH="$HOME/.cargo/bin:$PATH"
-make check   # fmt, clippy, 144 Rust-теста, 90 UI-тестов, unicode, lint/build
+make check   # fmt, clippy, 148 Rust-тестов, 90 UI-тестов, unicode, lint/build
 make smoke   # Playwright, сам поднимает preview
 make bench   # 10k тайлов: кэш, очередь, MBTiles/PMTiles
 make bench-large  # 250k тайлов (~2 ГБ) и паки того же размера
@@ -412,11 +416,11 @@ cargo run -q -p mappa-cli -- pack \
 Приоритеты сверены с конкурентным анализом — [COMPETITORS.md](COMPETITORS.md).
 
 1. Внешний GNSS/gpsd/NMEA и офлайн routing.
-2. `mappa serve`, REST API и раздача паков по LAN/QR.
+2. QR-код для LAN и batch JSON-задания в `mappa serve`.
 3. DEM/terrain: hillshade, contours, профиль высот, min AGL, 3D.
 4. Геокодер и каталог пресетов источников.
 5. Векторные PMTiles и прогресс экспорта больших паков.
-5. Полевая проверка СК-42/МСК на выписках геодезистов.
+6. Полевая проверка СК-42/МСК на выписках геодезистов.
 
 ---
 
