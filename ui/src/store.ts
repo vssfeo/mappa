@@ -165,10 +165,14 @@ interface AppState {
   reorderProviders: (ids: ProviderId[]) => void
 
   customSources: CustomSource[]
+  /** Bottom-to-top custom raster order; the inspector renders it top-first. */
+  customSourceOrder: string[]
   customLayers: Record<string, { visible: boolean; opacity: number }>
   setCustomSources: (sources: CustomSource[]) => void
   toggleCustomLayer: (id: string) => void
   setCustomLayerOpacity: (id: string, opacity: number) => void
+  moveCustomSource: (id: string, delta: number) => void
+  reorderCustomSources: (ids: string[]) => void
 
   vectorLayers: VectorLayer[]
   addVectorLayer: (layer: VectorLayer) => void
@@ -306,6 +310,7 @@ const PERSISTED_KEYS = [
   'features',
   'featureColor',
   'customLayers',
+  'customSourceOrder',
   'coordinateFormat',
   'crs',
   'crsLabel',
@@ -333,6 +338,7 @@ const persistedSlice = (state: AppState) => ({
   features: state.features,
   featureColor: state.featureColor,
   customLayers: state.customLayers,
+  customSourceOrder: state.customSourceOrder,
   coordinateFormat: state.coordinateFormat,
   crs: state.crs,
   crsLabel: state.crsLabel,
@@ -411,6 +417,17 @@ const initialLayers = (): LayerState => layersFor('osm')
 
 const defaultProviderOrder = (): ProviderId[] =>
   PROVIDERS.map((provider) => provider.id)
+
+const mergeCustomSourceOrder = (
+  order: string[],
+  sources: CustomSource[],
+): string[] => {
+  const ids = sources.map((source) => source.id)
+  return [
+    ...order.filter((id) => ids.includes(id)),
+    ...ids.filter((id) => !order.includes(id)),
+  ]
+}
 
 /** Keeps persisted/custom order valid when the catalog gains new providers. */
 const normalizeProviderOrder = (value: unknown): ProviderId[] => {
@@ -585,6 +602,7 @@ export const useAppStore = create<AppState>()(
       }),
 
     customSources: [],
+    customSourceOrder: [],
     customLayers: {},
     setCustomSources: (customSources) =>
       set((state) => {
@@ -597,7 +615,14 @@ export const useAppStore = create<AppState>()(
             delete customLayers[id]
           }
         }
-        return { customSources, customLayers }
+        return {
+          customSources,
+          customSourceOrder: mergeCustomSourceOrder(
+            state.customSourceOrder,
+            customSources,
+          ),
+          customLayers,
+        }
       }),
     toggleCustomLayer: (id) =>
       set((state) => ({
@@ -619,6 +644,31 @@ export const useAppStore = create<AppState>()(
           },
         },
       })),
+    moveCustomSource: (id, delta) =>
+      set((state) => {
+        const customSourceOrder = moveIdItem(
+          state.customSourceOrder,
+          id,
+          delta,
+        )
+        return customSourceOrder === state.customSourceOrder
+          ? {}
+          : { customSourceOrder }
+      }),
+    reorderCustomSources: (ids) =>
+      set((state) => {
+        const current = state.customSourceOrder
+        if (
+          ids.length !== current.length ||
+          new Set(ids).size !== ids.length ||
+          !ids.every((id) => current.includes(id))
+        ) {
+          return {}
+        }
+        return ids.join('\n') === current.join('\n')
+          ? {}
+          : { customSourceOrder: ids }
+      }),
 
     vectorLayers: [],
     addVectorLayer: (layer) =>
@@ -1117,6 +1167,18 @@ const restorePersisted = () => {
         .slice(0, 8)
     }
     if (typeof patch.snapping !== 'boolean') delete patch.snapping
+    if (!Array.isArray(patch.customSourceOrder)) {
+      delete patch.customSourceOrder
+    } else {
+      patch.customSourceOrder = [
+        ...new Set(
+          patch.customSourceOrder.filter(
+            (id): id is string =>
+              typeof id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(id),
+          ),
+        ),
+      ].slice(0, 256)
+    }
     if (patch.locale !== 'ru' && patch.locale !== 'en') delete patch.locale
     else setActiveLocale(patch.locale as Locale)
     const providerId = PROVIDERS.some(

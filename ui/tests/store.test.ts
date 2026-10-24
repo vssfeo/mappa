@@ -184,3 +184,38 @@ test('basemap order accepts only a full provider permutation', () => {
   store.reorderProviders([...order])
   assert.deepEqual(useAppStore.getState().providerOrder, [...order])
 })
+
+test('custom raster order follows the source list and drag actions', () => {
+  const source = (id: string) => ({
+    id,
+    name: id,
+    kind: 'xyz' as const,
+    url: `https://example.org/${id}/{z}/{x}/{y}.png`,
+    scheme: 'xyz' as const,
+    minZoom: 0,
+    maxZoom: 18,
+    tileSize: 256,
+    format: 'png',
+    attribution: '',
+    terms: null,
+    headers: {},
+    rps: 4,
+    burst: 8,
+    offlineAllowed: false,
+  })
+  useAppStore.getState().setCustomSources([
+    source('a'),
+    source('b'),
+    source('c'),
+  ])
+  assert.deepEqual(useAppStore.getState().customSourceOrder, ['a', 'b', 'c'])
+  const store = useAppStore.getState()
+  store.moveCustomSource('a', 1)
+  assert.deepEqual(useAppStore.getState().customSourceOrder, ['b', 'a', 'c'])
+  store.reorderCustomSources(['c', 'a', 'b'])
+  assert.deepEqual(useAppStore.getState().customSourceOrder, ['c', 'a', 'b'])
+  store.reorderCustomSources(['c'])
+  assert.deepEqual(useAppStore.getState().customSourceOrder, ['c', 'a', 'b'])
+  store.setCustomSources([source('b'), source('c')])
+  assert.deepEqual(useAppStore.getState().customSourceOrder, ['c', 'b'])
+})

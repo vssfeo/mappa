@@ -75,6 +75,7 @@ function App() {
   const layers = useAppStore((state) => state.layers)
   const providerId = useAppStore((state) => state.providerId)
   const providerOrder = useAppStore((state) => state.providerOrder)
+  const customSourceOrder = useAppStore((state) => state.customSourceOrder)
   const packs = useAppStore((state) => state.packs)
   const customSources = useAppStore((state) => state.customSources)
   const customLayers = useAppStore((state) => state.customLayers)
@@ -1133,6 +1134,7 @@ function App() {
             providerOrder={providerOrder}
             packs={packs}
             customSources={customSources}
+            customSourceOrder={customSourceOrder}
             customLayers={customLayers}
             theme={theme}
             selection={selection}

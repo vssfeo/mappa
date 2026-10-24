@@ -3085,11 +3085,16 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const moveProvider = useAppStore((state) => state.moveProvider)
   const reorderProviders = useAppStore((state) => state.reorderProviders)
   const customSources = useAppStore((state) => state.customSources)
+  const customSourceOrder = useAppStore((state) => state.customSourceOrder)
   const customLayers = useAppStore((state) => state.customLayers)
   const setCustomSources = useAppStore((state) => state.setCustomSources)
   const toggleCustomLayer = useAppStore((state) => state.toggleCustomLayer)
   const setCustomLayerOpacity = useAppStore(
     (state) => state.setCustomLayerOpacity,
+  )
+  const moveCustomSource = useAppStore((state) => state.moveCustomSource)
+  const reorderCustomSources = useAppStore(
+    (state) => state.reorderCustomSources,
   )
   const togglePack = useAppStore((state) => state.togglePack)
   const setPackOpacity = useAppStore((state) => state.setPackOpacity)
@@ -3118,6 +3123,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const toggleMapGrid = useAppStore((state) => state.toggleMapGrid)
   const setDownloadOpen = useAppStore((state) => state.setDownloadOpen)
   const showToast = useAppStore((state) => state.showToast)
+  const customDrag = useLayerDrag(
+    [...customSourceOrder].reverse(),
+    (ids) => reorderCustomSources([...ids].reverse()),
+  )
   const providerDrag = useLayerDrag(
     [...providerOrder].reverse(),
     (ids) => reorderProviders([...ids].reverse() as ProviderId[]),
@@ -4336,6 +4345,14 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
               </div>
             )}
 
+            {customSources.length > 0 && (
+              <p className="layer-hint">
+                {tx(
+                  'Перетащите источник за ручку ⋮⋮. Верхний слой рисуется выше остальных.',
+                  'Drag a source by its ⋮⋮ handle. The top layer draws above the rest.',
+                )}
+              </p>
+            )}
             {customSources.length === 0 && !sourceForm ? (
               <p className="pack-empty">
                 {tx(
@@ -4345,15 +4362,24 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
               </p>
             ) : (
               <div className="layer-list">
-                {customSources.map((source) => {
+                {[...customSourceOrder].reverse().map((id) => {
+                  const source = customSources.find((item) => item.id === id)
+                  if (!source) return null
                   const layer = customLayers[source.id] ?? {
                     visible: true,
                     opacity: 1,
                   }
                   return (
                     <div
-                      className={`layer-row pack-row${layer.visible ? ' is-visible' : ''}`}
+                      className={`layer-row pack-row${layer.visible ? ' is-visible' : ''}${
+                        customDrag.dragId === source.id ? ' is-dragging' : ''
+                      }${
+                        customDrag.dropTarget?.id === source.id
+                          ? ` drop-${customDrag.dropTarget.after ? 'after' : 'before'}`
+                          : ''
+                      }`}
                       key={source.id}
+                      data-layer-id={source.id}
                     >
                       <button
                         type="button"
@@ -4377,6 +4403,33 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                       </button>
                       <div className="layer-main">
                         <div className="layer-title">
+                          <button
+                            type="button"
+                            className="layer-grip"
+                            onPointerDown={(event) =>
+                              customDrag.start(event, source.id)
+                            }
+                            onClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => {
+                              if (event.key === 'ArrowUp') {
+                                event.preventDefault()
+                                moveCustomSource(source.id, 1)
+                              } else if (event.key === 'ArrowDown') {
+                                event.preventDefault()
+                                moveCustomSource(source.id, -1)
+                              }
+                            }}
+                            aria-label={tx(
+                              `Перетащить слой ${source.name}`,
+                              `Drag layer ${source.name}`,
+                            )}
+                            title={tx(
+                              'Перетащите или используйте ↑/↓',
+                              'Drag or use ↑/↓',
+                            )}
+                          >
+                            <GripVertical size={14} />
+                          </button>
                           <strong>{source.name}</strong>
                           <span>
                             {source.kind === 'wms'

@@ -55,6 +55,7 @@ interface MapCanvasProps {
   providerOrder: ProviderId[]
   packs: PackLayer[]
   customSources: CustomSource[]
+  customSourceOrder: string[]
   customLayers: Record<string, { visible: boolean; opacity: number }>
   theme: Theme
   selection: Bounds | null
@@ -583,6 +584,7 @@ export function MapCanvas({
   providerOrder,
   packs,
   customSources,
+  customSourceOrder,
   customLayers,
   theme,
   selection,
@@ -2329,8 +2331,20 @@ export function MapCanvas({
       customConfigsRef.current.delete(id)
     }
     if (structuresChanged) raiseFeatureLayers(map)
+    // Custom rasters stay above packs/vectors and below drawing overlays.
+    const anchor = map.getLayer('feature-fill')
+      ? 'feature-fill'
+      : map.getLayer('selection-fill')
+        ? 'selection-fill'
+        : null
+    for (const id of customSourceOrder) {
+      const layerId = `custom-layer-${id}`
+      if (!map.getLayer(layerId)) continue
+      if (anchor) map.moveLayer(layerId, anchor)
+      else map.moveLayer(layerId)
+    }
     customIdsRef.current = current
-  }, [customSources, customLayers, ready])
+  }, [customSources, customSourceOrder, customLayers, ready])
 
   useEffect(() => {
     const map = mapRef.current
