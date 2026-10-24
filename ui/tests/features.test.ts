@@ -10,6 +10,7 @@ import {
   featuresToGpx,
   normalizeDraft,
   parseFeatureGeoJSON,
+  pointAlongLine,
   type MapFeature,
 } from '../src/features.ts'
 
@@ -216,6 +217,25 @@ test('one broken entry does not discard valid features', () => {
   )
   assert.equal(parsed.length, 1)
   assert.equal(parsed[0].name, 'ok')
+})
+
+test('track playback interpolates along the line', () => {
+  const route: [number, number][] = [
+    [0, 0],
+    [0.01, 0],
+    [0.01, 0.01],
+  ]
+  const start = pointAlongLine(route, 0)
+  assert.deepEqual(start, [0, 0])
+  const middle = pointAlongLine(route, 0.5)
+  assert.ok(middle)
+  assert.ok(Math.abs(middle[0] - 0.01) < 1e-4)
+  assert.ok(Math.abs(middle[1]) < 1e-4)
+  const end = pointAlongLine(route, 1)
+  assert.deepEqual(end, [0.01, 0.01])
+  assert.deepEqual(pointAlongLine(route, -1), [0, 0])
+  assert.deepEqual(pointAlongLine([[5, 6]], 0.5), [5, 6])
+  assert.equal(pointAlongLine([], 0.5), null)
 })
 
 test('GPX export writes tracks and closes polygon rings', () => {

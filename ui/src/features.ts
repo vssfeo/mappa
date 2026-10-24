@@ -1,4 +1,5 @@
 import {
+  distance,
   pathLength,
   polygonArea,
   polygonPerimeter,
@@ -264,6 +265,35 @@ export function featureLength(feature: MapFeature): number {
 
 export function featureArea(feature: MapFeature): number {
   return feature.kind === 'polygon' ? polygonArea(feature.coordinates) : 0
+}
+
+/** Interpolates a point at the given fraction of a line's length. */
+export function pointAlongLine(
+  coordinates: LonLat[],
+  fraction: number,
+): LonLat | null {
+  if (coordinates.length === 0) return null
+  if (coordinates.length === 1) return coordinates[0]
+  const target = Math.min(1, Math.max(0, fraction))
+  const lengths = coordinates
+    .slice(1)
+    .map((point, index) => distance(coordinates[index], point))
+  const total = lengths.reduce((sum, value) => sum + value, 0)
+  if (total === 0) return coordinates[0]
+  let travelled = target * total
+  for (let index = 0; index < lengths.length; index += 1) {
+    if (travelled <= lengths[index]) {
+      const ratio = lengths[index] === 0 ? 0 : travelled / lengths[index]
+      const start = coordinates[index]
+      const end = coordinates[index + 1]
+      return [
+        start[0] + (end[0] - start[0]) * ratio,
+        start[1] + (end[1] - start[1]) * ratio,
+      ]
+    }
+    travelled -= lengths[index]
+  }
+  return coordinates[coordinates.length - 1]
 }
 
 /** Removes consecutive duplicates produced by double-click finishing. */

@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { Map as MapLibreMap } from 'maplibre-gl'
+import { Marker, type Map as MapLibreMap } from 'maplibre-gl'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -63,6 +63,7 @@ import {
   FEATURE_COLORS,
   featureArea,
   featureLength,
+  pointAlongLine,
   type MapFeature,
 } from './features'
 import { exportFeatureFile, importFeatureFile } from './featureTransfer'
@@ -430,6 +431,13 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
   const clearMarkers = useAppStore((state) => state.clearMarkers)
   const showToast = useAppStore((state) => state.showToast)
   const [fileFormat, setFileFormat] = useState<MarkerFileFormat>('csv')
+  const [csvDelimiter, setCsvDelimiter] = useState(';')
+  const [csvColumns, setCsvColumns] = useState({
+    description: true,
+    folder: true,
+    icon: true,
+    color: true,
+  })
   const [busy, setBusy] = useState<'import' | 'export' | null>(null)
   const [visibleCount, setVisibleCount] = useState(200)
   const [query, setQuery] = useState('')
@@ -511,7 +519,13 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
   const runExport = async () => {
     setBusy('export')
     try {
-      const path = await exportMarkerFile(fileFormat, coordinateFormat)
+      const path = await exportMarkerFile(fileFormat, coordinateFormat, {
+        delimiter: csvDelimiter,
+        includeDescription: csvColumns.description,
+        includeFolder: csvColumns.folder,
+        includeIcon: csvColumns.icon,
+        includeColor: csvColumns.color,
+      })
       if (path) {
         showToast(
           tx(
@@ -693,10 +707,57 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
             </select>
           </label>
         </div>
+        {fileFormat === 'csv' && (
+          <>
+            <div className="marker-transfer-grid">
+              <label className="marker-transfer-field">
+                <span>{tx('Разделитель CSV', 'CSV separator')}</span>
+                <select
+                  value={csvDelimiter}
+                  onChange={(event) => setCsvDelimiter(event.target.value)}
+                >
+                  <option value=";">
+                    {tx('точка с запятой', 'semicolon')}
+                  </option>
+                  <option value=",">{tx('запятая', 'comma')}</option>
+                  <option value={'\t'}>{tx('табуляция', 'tab')}</option>
+                </select>
+              </label>
+            </div>
+            <div
+              className="csv-columns"
+              role="group"
+              aria-label={tx('Колонки CSV', 'CSV columns')}
+            >
+              {(
+                [
+                  ['description', tx('Описание', 'Description')],
+                  ['folder', tx('Папка', 'Folder')],
+                  ['icon', tx('Иконка', 'Icon')],
+                  ['color', tx('Цвет', 'Colour')],
+                ] as const
+              ).map(([key, label]) => (
+                <label key={key} className="csv-column">
+                  <input
+                    type="checkbox"
+                    checked={csvColumns[key]}
+                    onChange={(event) =>
+                      setCsvColumns((columns) => ({
+                        ...columns,
+                        [key]: event.target.checked,
+                      }))
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </>
+        )}
         <p className="settings-hint">
           {tx(
-            'GeoJSON, GPX и KML всегда WGS84. CSV использует выбранную систему: для UTM нужны колонки zone, hemisphere, easting, northing. Зона UTM подбирается автоматически.',
-            'GeoJSON, GPX and KML are always WGS84. CSV uses the selected system: UTM needs zone, hemisphere, easting and northing columns. The UTM zone is chosen automatically.',
+            'GeoJSON, GPX и KML всегда WGS84. CSV использует выбранную систему: имя и координаты выгружаются всегда, остальные колонки включаются выше. Для UTM нужны zone, hemisphere, easting и northing; зона подбирается автоматически.',
+            'GeoJSON, GPX and KML are always WGS84. CSV uses the selected system: name and coordinates are always written, other columns are toggled above. UTM needs zone, hemisphere, easting and northing; the zone is chosen automatically.',
           )}
         </p>
       </section>
@@ -904,6 +965,124 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
           </button>
         </>
       )}
+    </div>
+  )
+}
+
+function TrackPlayer({
+  map,
+  feature,
+}: {
+  map: MapLibreMap | null
+  feature: MapFeature
+}) {
+  const tx = useText()
+  const [playing, setPlaying] = useState(false)
+  const [speed, setSpeed] = useState(5)
+  const [progress, setProgress] = useState(0)
+  const progressRef = useRef(0)
+  const markerRef = useRef<Marker | null>(null)
+  const total = featureLength(feature)
+
+  useEffect(() => {
+    if (!map) return
+    const element = document.createElement('div')
+    element.className = 'track-player-marker'
+    const marker = new Marker({ element, anchor: 'center' })
+      .setLngLat(feature.coordinates[0] ?? [0, 0])
+      .addTo(map)
+    markerRef.current = marker
+    return () => {
+      marker.remove()
+      markerRef.current = null
+    }
+    // The marker lives for the lifetime of the player.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map])
+
+  useEffect(() => {
+    if (!markerRef.current) return
+    const point = pointAlongLine(feature.coordinates, progress)
+    if (point) markerRef.current.setLngLat(point)
+  }, [feature, progress])
+
+  useEffect(() => {
+    if (!playing) return
+    let frame = 0
+    let last = performance.now()
+    const duration = 30_000 / speed
+    const tick = (now: number) => {
+      const elapsed = Math.min(250, now - last)
+      last = now
+      const next = Math.min(1, progressRef.current + elapsed / duration)
+      progressRef.current = next
+      setProgress(next)
+      if (next >= 1) {
+        setPlaying(false)
+        return
+      }
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [playing, speed])
+
+  const toggle = () => {
+    if (!playing && progressRef.current >= 1) {
+      progressRef.current = 0
+      setProgress(0)
+    }
+    setPlaying((value) => !value)
+  }
+
+  return (
+    <div className="track-player">
+      <div className="section-heading">
+        <span>{tx('Трек', 'Track')}</span>
+        <span className="mono">
+          {formatDistance(total * progress)} / {formatDistance(total)}
+        </span>
+      </div>
+      <div className="track-player-controls">
+        <button
+          type="button"
+          className="ghost-button track-player-toggle"
+          onClick={toggle}
+          aria-label={
+            playing
+              ? tx('Пауза воспроизведения', 'Pause playback')
+              : tx('Воспроизвести трек', 'Play track')
+          }
+          aria-pressed={playing}
+        >
+          {playing ? <Pause size={14} /> : <Play size={14} />}
+        </button>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.001"
+          value={progress}
+          onChange={(event) => {
+            const next = Number(event.target.value)
+            progressRef.current = next
+            setProgress(next)
+            setPlaying(false)
+          }}
+          aria-label={tx('Позиция на треке', 'Track position')}
+        />
+        <select
+          value={speed}
+          onChange={(event) => setSpeed(Number(event.target.value))}
+          aria-label={tx('Скорость воспроизведения', 'Playback speed')}
+        >
+          {[1, 2, 5, 10].map((value) => (
+            <option key={value} value={value}>
+              ×{value}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
   )
 }
@@ -1294,6 +1473,13 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
               ` · ${formatCount(selected.coordinates.length)} vertices`,
             )}
           </div>
+          {selected.kind === 'line' && (
+            <TrackPlayer
+              key={selected.id}
+              map={map}
+              feature={selected}
+            />
+          )}
           <div className="section-heading">
             <span>
               {selected.kind === 'polygon'

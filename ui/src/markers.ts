@@ -548,13 +548,29 @@ function csvLine(cells: string[], delimiter: string): string {
   return cells.map((cell) => csvCell(cell, delimiter)).join(delimiter)
 }
 
+export interface CsvExportOptions {
+  /** Field separator; comma, semicolon or tab. */
+  delimiter?: string
+  includeDescription?: boolean
+  includeFolder?: boolean
+  includeIcon?: boolean
+  includeColor?: boolean
+}
+
 /** Serializes markers as GeoJSON/GPX/KML (WGS84) or CSV. */
 export function exportMarkers(
   markers: MapMarker[],
   format: MarkerFileFormat,
   coordinateFormat: CoordinateFormat,
-  delimiter = ';',
+  options: CsvExportOptions = {},
 ): string {
+  const {
+    delimiter = ';',
+    includeDescription = true,
+    includeFolder = true,
+    includeIcon = true,
+    includeColor = true,
+  } = options
   if (format === 'gpx') {
     const points = markers.map((marker) => {
       const description = marker.description
@@ -635,87 +651,60 @@ ${placemarks.join('\n')}
     )}\n`
   }
 
+  let coordinateHeaders: string[]
+  let coordinateValues: (marker: MapMarker) => string[]
   if (coordinateFormat === 'mgrs') {
-    const lines = [
-      csvLine(
-        [
-          'name',
-          'mgrs',
-          'description',
-          'folder',
-          'icon',
-          'color',
-        ],
-        delimiter,
-      ),
+    coordinateHeaders = ['mgrs']
+    coordinateValues = (marker) => [
+      lonLatToMgrs(marker.lon, marker.lat) ?? '',
     ]
-    for (const marker of markers) {
-      lines.push(
-        csvLine(
-          [
-            marker.name,
-            lonLatToMgrs(marker.lon, marker.lat) ?? '',
-            marker.description ?? '',
-            marker.folder ?? '',
-            marker.icon ?? '',
-            marker.color ?? '',
-          ],
-          delimiter,
-        ),
-      )
-    }
-    return `\uFEFF${lines.join('\n')}\n`
-  }
-
-  if (coordinateFormat === 'utm') {
-    const lines = [csvLine(
-      [
-        'name',
-        'zone',
-        'hemisphere',
-        'easting',
-        'northing',
-        'description',
-        'folder',
-        'icon',
-        'color',
-      ],
-      delimiter,
-    )]
-    for (const marker of markers) {
+  } else if (coordinateFormat === 'utm') {
+    coordinateHeaders = ['zone', 'hemisphere', 'easting', 'northing']
+    coordinateValues = (marker) => {
       const utm = lonLatToUtm(marker.lon, marker.lat)
-      lines.push(
-        csvLine(
-          [
-            marker.name,
-            String(utm.zone),
-            utm.hemisphere,
-            utm.easting.toFixed(2),
-            utm.northing.toFixed(2),
-            marker.description ?? '',
-            marker.folder ?? '',
-            marker.icon ?? '',
-            marker.color ?? '',
-          ],
-          delimiter,
-        ),
-      )
+      return [
+        String(utm.zone),
+        utm.hemisphere,
+        utm.easting.toFixed(2),
+        utm.northing.toFixed(2),
+      ]
     }
-    return `\uFEFF${lines.join('\n')}\n`
+  } else {
+    const useDms = coordinateFormat === 'dms'
+    coordinateHeaders = [
+      useDms ? 'latitude' : 'lat',
+      useDms ? 'longitude' : 'lon',
+    ]
+    coordinateValues = (marker) => [
+      useDms ? formatDms(marker.lat, 'lat') : marker.lat.toFixed(6),
+      useDms ? formatDms(marker.lon, 'lon') : marker.lon.toFixed(6),
+    ]
   }
 
-  const useDms = coordinateFormat === 'dms'
+  const optionalColumns = [
+    includeDescription && {
+      header: 'description',
+      value: (marker: MapMarker) => marker.description ?? '',
+    },
+    includeFolder && {
+      header: 'folder',
+      value: (marker: MapMarker) => marker.folder ?? '',
+    },
+    includeIcon && {
+      header: 'icon',
+      value: (marker: MapMarker) => marker.icon ?? '',
+    },
+    includeColor && {
+      header: 'color',
+      value: (marker: MapMarker) => marker.color ?? '',
+    },
+  ].filter((column): column is { header: string; value: (marker: MapMarker) => string } =>
+    Boolean(column),
+  )
+
   const lines = [
     csvLine(
-      [
-        'name',
-        useDms ? 'latitude' : 'lat',
-        useDms ? 'longitude' : 'lon',
-        'description',
-        'folder',
-        'icon',
-        'color',
-      ],
+      ['name', ...coordinateHeaders, ...optionalColumns.map((column) => column.header)],
       delimiter,
     ),
   ]
@@ -724,16 +713,8 @@ ${placemarks.join('\n')}
       csvLine(
         [
           marker.name,
-          useDms
-            ? formatDms(marker.lat, 'lat')
-            : marker.lat.toFixed(6),
-          useDms
-            ? formatDms(marker.lon, 'lon')
-            : marker.lon.toFixed(6),
-          marker.description ?? '',
-          marker.folder ?? '',
-          marker.icon ?? '',
-          marker.color ?? '',
+          ...coordinateValues(marker),
+          ...optionalColumns.map((column) => column.value(marker)),
         ],
         delimiter,
       ),

@@ -54,6 +54,18 @@ try {
   if ((await page.locator('.maplibregl-canvas').count()) === 0) {
     fail('map canvas not found')
   }
+  const hud = await page.locator('.hud-button').evaluateAll((buttons) =>
+    buttons.map((button) => ({
+      text: button.textContent?.trim() ?? '',
+      tooltip: button.getAttribute('data-tooltip') ?? '',
+    })),
+  )
+  if (hud.some((button) => button.text !== '')) {
+    fail('map tools still have text labels')
+  }
+  if (hud.some((button) => button.tooltip === '')) {
+    fail('a map tool is missing its hover tooltip')
+  }
 
   await page.keyboard.press('Control+K')
   await page.waitForTimeout(200)
@@ -247,6 +259,16 @@ try {
   const featureRow = await page.locator('.marker-row').first().innerText()
   if (!featureRow.includes('Тестовая линия')) {
     fail(`feature rename was not applied (${featureRow})`)
+  }
+  if ((await page.locator('.track-player').count()) === 0) {
+    fail('track player is missing for a line')
+  } else {
+    await page.locator('.track-player-toggle').click()
+    await page.waitForTimeout(300)
+    if ((await page.locator('.track-player-marker').count()) !== 1) {
+      fail('track playback marker is missing')
+    }
+    await page.locator('.track-player-toggle').click()
   }
 
   await page.evaluate(() => (document.activeElement)?.blur())

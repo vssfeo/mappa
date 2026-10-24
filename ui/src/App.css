@@ -255,6 +255,48 @@
   border-radius: 50%;
 }
 
+.track-player {
+  margin: 8px 0 4px;
+}
+
+.track-player-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 4px;
+}
+
+.track-player-controls input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.track-player-controls select {
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 11px;
+}
+
+.track-player-toggle {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.track-player-marker {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
 .hint-text {
   margin: 8px 4px;
   color: var(--muted);
@@ -452,14 +494,26 @@
 .hud-group {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 9px;
   background: var(--surface-glass);
   box-shadow: var(--shadow-soft);
 }
 
+.hud-group > .hud-button:first-child {
+  border-radius: 8px 8px 0 0;
+}
+
+.hud-group > .hud-button:last-child {
+  border-radius: 0 0 8px 8px;
+}
+
+.hud-group > .hud-button:only-child {
+  border-radius: 8px;
+}
+
 .hud-button {
+  position: relative;
   display: grid;
   place-items: center;
   width: 36px;
@@ -482,17 +536,39 @@
   border-top: 1px solid var(--border);
 }
 
-.hud-button-wide {
-  display: flex;
-  gap: 6px;
-  width: auto;
-  padding: 0 10px;
+.hud-button::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 9px);
+  z-index: 30;
+  padding: 5px 8px;
   border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--surface-glass);
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--text);
   box-shadow: var(--shadow-soft);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(4px, -50%);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.hud-button:hover::after,
+.hud-button:focus-visible::after {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+.hud-button:disabled {
+  opacity: 0.45;
+}
+
+.hud-button:disabled::after {
+  display: none;
 }
 
 /* ---------- inspector ---------- */
@@ -1042,6 +1118,29 @@
 
 .marker-transfer-field select:focus {
   border-color: var(--accent);
+}
+
+.csv-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 8px 4px 0;
+}
+
+.csv-column {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.csv-column input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .marker-list {

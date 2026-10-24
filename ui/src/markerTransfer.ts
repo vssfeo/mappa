@@ -6,6 +6,7 @@ import {
   importMarkers,
   MAX_MARKERS,
   type CoordinateFormat,
+  type CsvExportOptions,
   type MarkerFileFormat,
   type MarkerImport,
 } from './markers'
@@ -62,6 +63,7 @@ export async function importMarkerFile(
 export async function exportMarkerFile(
   fileFormat: MarkerFileFormat,
   coordinateFormat: CoordinateFormat,
+  csvOptions: CsvExportOptions = {},
 ): Promise<string | null> {
   requireNative()
   const markers = useAppStore.getState().markers
@@ -83,13 +85,18 @@ export async function exportMarkerFile(
   })
   if (typeof path !== 'string' || path.length === 0) return null
   if (fileFormat === 'kmz') {
-    const kml = exportMarkers(markers, 'kml', coordinateFormat)
+    const kml = exportMarkers(markers, 'kml', coordinateFormat, csvOptions)
     const archive = createStoredZip([
       { name: 'doc.kml', data: new TextEncoder().encode(kml) },
     ])
     await writeBinaryFile(path, archive)
   } else {
-    const text = exportMarkers(markers, fileFormat, coordinateFormat)
+    const text = exportMarkers(
+      markers,
+      fileFormat,
+      coordinateFormat,
+      csvOptions,
+    )
     await writeTextFile(path, text)
   }
   return path

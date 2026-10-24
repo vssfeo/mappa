@@ -107,7 +107,7 @@ export function MapHud({ map }: MapHudProps) {
           className="hud-button"
           onClick={() => map?.zoomIn({ duration: 180 })}
           aria-label={t('hud.zoomIn')}
-          title={t('hud.zoomIn')}
+          data-tooltip={t('hud.zoomIn')}
         >
           <Plus size={17} />
         </button>
@@ -116,7 +116,7 @@ export function MapHud({ map }: MapHudProps) {
           className="hud-button"
           onClick={() => map?.zoomOut({ duration: 180 })}
           aria-label={t('hud.zoomOut')}
-          title={t('hud.zoomOut')}
+          data-tooltip={t('hud.zoomOut')}
         >
           <Minus size={17} />
         </button>
@@ -129,7 +129,7 @@ export function MapHud({ map }: MapHudProps) {
           onClick={undo}
           disabled={history.length === 0}
           aria-label={t('hud.undo')}
-          title={`${t('hud.undo')} (Ctrl+Z)`}
+          data-tooltip={`${t('hud.undo')} (Ctrl+Z)`}
         >
           <Undo2 size={16} />
         </button>
@@ -139,7 +139,7 @@ export function MapHud({ map }: MapHudProps) {
           onClick={redo}
           disabled={future.length === 0}
           aria-label={t('hud.redo')}
-          title={`${t('hud.redo')} (Ctrl+Shift+Z)`}
+          data-tooltip={`${t('hud.redo')} (Ctrl+Shift+Z)`}
         >
           <Redo2 size={16} />
         </button>
@@ -153,7 +153,7 @@ export function MapHud({ map }: MapHudProps) {
             map?.easeTo({ bearing: 0, pitch: 0, duration: 250 })
           }
           aria-label={t('hud.north')}
-          title={t('hud.north')}
+          data-tooltip={t('hud.north')}
         >
           <Compass size={17} />
         </button>
@@ -162,7 +162,7 @@ export function MapHud({ map }: MapHudProps) {
           className="hud-button"
           onClick={() => showToast(t('hud.positionSoon'))}
           aria-label={t('hud.position')}
-          title={t('hud.positionSoon')}
+          data-tooltip={t('hud.positionSoon')}
         >
           <LocateFixed size={17} />
         </button>
@@ -175,7 +175,7 @@ export function MapHud({ map }: MapHudProps) {
           onClick={() => toggleMeasure('line')}
           aria-label={t('hud.ruler')}
           aria-pressed={measureMode === 'line'}
-          title={`${t('hud.ruler')} (M)`}
+          data-tooltip={`${t('hud.ruler')} (M)`}
         >
           <Ruler size={16} />
         </button>
@@ -185,7 +185,7 @@ export function MapHud({ map }: MapHudProps) {
           onClick={() => toggleMeasure('area')}
           aria-label={t('hud.area')}
           aria-pressed={measureMode === 'area'}
-          title={`${t('hud.area')} (Shift+M)`}
+          data-tooltip={`${t('hud.area')} (Shift+M)`}
         >
           <Pentagon size={16} />
         </button>
@@ -195,7 +195,7 @@ export function MapHud({ map }: MapHudProps) {
           onClick={toggleMarker}
           aria-label={t('hud.marker')}
           aria-pressed={placingMarker}
-          title={`${t('hud.marker')} (P)`}
+          data-tooltip={`${t('hud.marker')} (P)`}
         >
           <MapPin size={16} />
         </button>
@@ -205,7 +205,7 @@ export function MapHud({ map }: MapHudProps) {
           onClick={() => toggleFeature('draw-line')}
           aria-label={t('hud.line')}
           aria-pressed={featureMode === 'draw-line'}
-          title={`${t('hud.line')} (L)`}
+          data-tooltip={`${t('hud.line')} (L)`}
         >
           <Spline size={16} />
         </button>
@@ -215,7 +215,7 @@ export function MapHud({ map }: MapHudProps) {
           onClick={() => toggleFeature('draw-polygon')}
           aria-label={t('hud.polygon')}
           aria-pressed={featureMode === 'draw-polygon'}
-          title={`${t('hud.polygon')} (Shift+L)`}
+          data-tooltip={`${t('hud.polygon')} (Shift+L)`}
         >
           <Pentagon size={16} />
         </button>
@@ -225,7 +225,7 @@ export function MapHud({ map }: MapHudProps) {
           onClick={() => toggleFeature('draw-circle')}
           aria-label={t('hud.circle')}
           aria-pressed={featureMode === 'draw-circle'}
-          title={`${t('hud.circle')} (O)`}
+          data-tooltip={`${t('hud.circle')} (O)`}
         >
           <Circle size={16} />
         </button>
@@ -235,34 +235,40 @@ export function MapHud({ map }: MapHudProps) {
           onClick={toggleEdit}
           aria-label={t('hud.edit')}
           aria-pressed={featureMode === 'edit'}
-          title={`${t('hud.edit')} (E)`}
+          data-tooltip={`${t('hud.edit')} (E)`}
         >
           <PenLine size={16} />
         </button>
       </div>
 
-      <button
-        type="button"
-        className={`hud-button hud-button-wide${drawing ? ' is-active' : ''}`}
-        onClick={toggleDrawing}
-        aria-label={drawing ? t('hud.cancelSelection') : t('hud.select')}
-        aria-pressed={drawing}
-        title={`${t('hud.select')} (R)`}
-      >
-        <Crop size={15} />
-        {drawing ? t('hud.cancel') : t('hud.district')}
-      </button>
+      <div className="hud-group">
+        <button
+          type="button"
+          className={`hud-button${drawing ? ' is-active' : ''}`}
+          onClick={toggleDrawing}
+          aria-label={drawing ? t('hud.cancelSelection') : t('hud.select')}
+          aria-pressed={drawing}
+          data-tooltip={
+            drawing
+              ? t('hud.cancelSelection')
+              : `${t('hud.select')} (R)`
+          }
+        >
+          <Crop size={15} />
+        </button>
+      </div>
 
-      <button
-        type="button"
-        className="hud-button hud-button-wide"
-        onClick={() => showToast('3D — after 1.0')}
-        aria-label={t('hud.3d')}
-        title={t('hud.3d')}
-      >
-        <Box size={16} />
-        3D
-      </button>
+      <div className="hud-group">
+        <button
+          type="button"
+          className="hud-button"
+          onClick={() => showToast('3D — after 1.0')}
+          aria-label={t('hud.3d')}
+          data-tooltip={t('hud.3d')}
+        >
+          <Box size={16} />
+        </button>
+      </div>
     </div>
   )
 }

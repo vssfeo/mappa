@@ -163,6 +163,32 @@ test('CSV UTM export and import round-trip', () => {
   close(parsed.markers[1].lat, -33.8688, 1e-6)
 })
 
+test('CSV export honours delimiter and column selection', () => {
+  const markers: MapMarker[] = [
+    {
+      id: 'a',
+      name: 'Camp',
+      lon: 37.6173,
+      lat: 55.7558,
+      description: 'note',
+      folder: 'field',
+      icon: '⛺',
+      color: '#ff7a45',
+    },
+  ]
+  const csv = exportMarkers(markers, 'csv', 'dd', {
+    delimiter: ',',
+    includeDescription: true,
+    includeFolder: false,
+    includeIcon: false,
+    includeColor: false,
+  })
+  const [header, row] = csv.replace('\uFEFF', '').trim().split('\n')
+  assert.equal(header, 'name,lat,lon,description')
+  assert.equal(row, 'Camp,55.755800,37.617300,note')
+  assert.equal(importMarkers(csv, 'dd').markers[0].folder, undefined)
+})
+
 test('GeoJSON export and import round-trip', () => {
   const markers: MapMarker[] = [
     { id: 'a', name: 'Один', lon: 30.3159, lat: 59.9391 },
