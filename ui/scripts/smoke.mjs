@@ -75,6 +75,35 @@ try {
     fail('a map tool is missing its hover tooltip')
   }
 
+  const providerRows = page.locator('.layer-row:not(.pack-row)')
+  if ((await providerRows.count()) < 2) {
+    fail('basemap layer rows are missing')
+  } else if ((await providerRows.locator('.layer-grip').count()) !== (await providerRows.count())) {
+    fail('a basemap row is missing its drag handle')
+  } else {
+    const first = providerRows.first()
+    const second = providerRows.nth(1)
+    const firstId = await first.getAttribute('data-layer-id')
+    const secondId = await second.getAttribute('data-layer-id')
+    const grip = first.locator('.layer-grip')
+    await grip.scrollIntoViewIfNeeded()
+    const gripBox = await grip.boundingBox()
+    const secondBox = await second.boundingBox()
+    await page.mouse.move(gripBox.x + 8, gripBox.y + 8)
+    await page.mouse.down()
+    await page.mouse.move(gripBox.x + 10, gripBox.y + 18, { steps: 4 })
+    await page.mouse.move(
+      secondBox.x + 90,
+      secondBox.y + secondBox.height - 3,
+      { steps: 8 },
+    )
+    await page.mouse.up()
+    await page.waitForTimeout(200)
+    if ((await providerRows.first().getAttribute('data-layer-id')) !== secondId) {
+      fail(`basemap drag did not reorder ${firstId} and ${secondId}`)
+    }
+  }
+
   await page.keyboard.press('c')
   await page.waitForTimeout(700)
   if ((await page.locator('.compare-overlay').count()) === 0) {

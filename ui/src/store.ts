@@ -39,6 +39,17 @@ const moveLayerItem = <T extends { id: string }>(
   return next
 }
 
+/** Moves an id by `delta`; a positive delta raises it in the stack. */
+const moveIdItem = (ids: string[], id: string, delta: number): string[] => {
+  const index = ids.indexOf(id)
+  const target = index + delta
+  if (index < 0 || target < 0 || target >= ids.length) return ids
+  const next = [...ids]
+  next.splice(index, 1)
+  next.splice(target, 0, id)
+  return next
+}
+
 /** Reorders items only when `ids` is an exact permutation of the current ids. */
 const reorderLayerItems = <T extends { id: string }>(
   items: T[],
@@ -146,8 +157,12 @@ interface AppState {
   togglePanel: (panel: Exclude<Panel, null>) => void
 
   layers: LayerState
+  /** Bottom-to-top basemap order; the inspector renders it top-first. */
+  providerOrder: ProviderId[]
   toggleLayer: (id: ProviderId) => void
   setLayerOpacity: (id: ProviderId, opacity: number) => void
+  moveProvider: (id: ProviderId, delta: number) => void
+  reorderProviders: (ids: ProviderId[]) => void
 
   customSources: CustomSource[]
   customLayers: Record<string, { visible: boolean; opacity: number }>
@@ -285,6 +300,7 @@ const PERSISTED_KEYS = [
   'theme',
   'locale',
   'providerId',
+  'providerOrder',
   'packPaths',
   'markers',
   'features',
@@ -311,6 +327,7 @@ const persistedSlice = (state: AppState) => ({
   theme: state.theme,
   locale: state.locale,
   providerId: state.providerId,
+  providerOrder: state.providerOrder,
   packPaths: state.packPaths,
   markers: state.markers,
   features: state.features,
@@ -391,6 +408,29 @@ const layersFor = (
   ) as LayerState
 
 const initialLayers = (): LayerState => layersFor('osm')
+
+const defaultProviderOrder = (): ProviderId[] =>
+  PROVIDERS.map((provider) => provider.id)
+
+/** Keeps persisted/custom order valid when the catalog gains new providers. */
+const normalizeProviderOrder = (value: unknown): ProviderId[] => {
+  const known = new Set(defaultProviderOrder())
+  const seen = new Set<ProviderId>()
+  const order: ProviderId[] = []
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item !== 'string' || !known.has(item as ProviderId)) continue
+      const id = item as ProviderId
+      if (seen.has(id)) continue
+      seen.add(id)
+      order.push(id)
+    }
+  }
+  for (const id of defaultProviderOrder()) {
+    if (!seen.has(id)) order.push(id)
+  }
+  return order
+}
 
 /** Immutably replaces one imported feature's geometry. */
 const replaceVectorGeometry = (
@@ -505,6 +545,7 @@ export const useAppStore = create<AppState>()(
       set((state) => ({ panel: state.panel === panel ? null : panel })),
 
     layers: initialLayers(),
+    providerOrder: defaultProviderOrder(),
     toggleLayer: (id) =>
       set((state) => ({
         layers: {
@@ -522,6 +563,26 @@ export const useAppStore = create<AppState>()(
           [id]: { ...state.layers[id], opacity },
         },
       })),
+    moveProvider: (id, delta) =>
+      set((state) => {
+        const providerOrder = moveIdItem(
+          state.providerOrder,
+          id,
+          delta,
+        ) as ProviderId[]
+        return providerOrder === state.providerOrder ? {} : { providerOrder }
+      }),
+    reorderProviders: (ids) =>
+      set((state) => {
+        const normalized = normalizeProviderOrder(ids)
+        if (
+          normalized.join('\n') === state.providerOrder.join('\n') ||
+          ids.length !== normalized.length
+        ) {
+          return {}
+        }
+        return { providerOrder: normalized }
+      }),
 
     customSources: [],
     customLayers: {},
@@ -1067,6 +1128,7 @@ const restorePersisted = () => {
     useAppStore.setState({
       ...(patch as Partial<AppState>),
       providerId,
+      providerOrder: normalizeProviderOrder(patch.providerOrder),
       layers: layersFor(providerId),
     })
   } catch (error) {

@@ -86,6 +86,8 @@ test('project round-trips through the .mappa format', () => {
   assert.equal(parsed.version, 1)
   assert.equal(parsed.name, 'Крым')
   assert.equal(parsed.providerId, 'topo')
+  assert.equal(parsed.providerOrder[0], 'osm')
+  assert.equal(parsed.providerOrder.length, 7)
   assert.deepEqual(parsed.view, { center: [34.1, 44.9], zoom: 9 })
   assert.equal(parsed.packPaths.length, 1)
   assert.equal(parsed.markers.length, 2)
@@ -140,6 +142,7 @@ test('sanitizes untrusted fields and clamps collections', () => {
   const file = buildProject(snapshot())
   const raw = JSON.parse(serializeProject(file))
   raw.providerId = 'nonexistent'
+  raw.providerOrder = ['nasa', 'nasa', 'bogus']
   raw.view = { center: [500, 100], zoom: 99 }
   raw.packPaths = ['/valid.mbtiles', '', 42, '/valid.mbtiles']
   raw.markers = [
@@ -151,6 +154,8 @@ test('sanitizes untrusted fields and clamps collections', () => {
   raw.coordinateFormat = 'mgrs2'
   const parsed = parseProject(JSON.stringify(raw)).file
   assert.equal(parsed.providerId, 'osm')
+  assert.equal(parsed.providerOrder[0], 'nasa')
+  assert.equal(parsed.providerOrder.length, 7)
   assert.deepEqual(parsed.view.center, [37.6173, 55.7558])
   assert.equal(parsed.view.zoom, 24)
   assert.deepEqual(parsed.packPaths, ['/valid.mbtiles'])

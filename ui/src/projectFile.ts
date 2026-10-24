@@ -48,6 +48,7 @@ export interface MappaProject {
   name: string
   savedAt: string
   providerId: ProviderId
+  providerOrder: ProviderId[]
   view: ProjectView
   layers: Record<ProviderId, ProjectLayerState>
   customLayers: Record<string, ProjectLayerState>
@@ -70,6 +71,7 @@ export interface ParsedProject {
 export interface ProjectSnapshot {
   name: string
   providerId: ProviderId
+  providerOrder?: ProviderId[]
   view: ProjectView
   layers: Record<string, ProjectLayerState>
   customLayers: Record<string, ProjectLayerState>
@@ -295,6 +297,25 @@ const projectPacks = (value: unknown): string[] => {
   return paths
 }
 
+const projectProviderOrder = (value: unknown): ProviderId[] => {
+  const known = new Set(PROVIDERS.map((provider) => provider.id))
+  const seen = new Set<ProviderId>()
+  const order: ProviderId[] = []
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item !== 'string' || !known.has(item as ProviderId)) continue
+      const id = item as ProviderId
+      if (seen.has(id)) continue
+      seen.add(id)
+      order.push(id)
+    }
+  }
+  for (const provider of PROVIDERS) {
+    if (!seen.has(provider.id)) order.push(provider.id)
+  }
+  return order
+}
+
 export function buildProject(
   snapshot: ProjectSnapshot,
   savedAt = new Date().toISOString(),
@@ -306,6 +327,7 @@ export function buildProject(
     name: safeText(snapshot.name, tr('Мой проект', 'My project'), 120),
     savedAt,
     providerId: active,
+    providerOrder: projectProviderOrder(snapshot.providerOrder),
     view: projectView(snapshot.view),
     layers: projectLayers(snapshot.layers, active),
     customLayers: layerMap(snapshot.customLayers, true),
@@ -357,6 +379,7 @@ export function parseProject(text: string): ParsedProject {
         ? record.savedAt.slice(0, 40)
         : new Date().toISOString(),
     providerId,
+    providerOrder: projectProviderOrder(record.providerOrder),
     view: projectView(record.view),
     layers: projectLayers(record.layers, providerId),
     customLayers: layerMap(record.customLayers, true),
@@ -384,6 +407,7 @@ export function defaultProject(name = tr('Мой проект', 'My project')): 
     name: safeText(name, tr('Мой проект', 'My project'), 120),
     savedAt: new Date().toISOString(),
     providerId,
+    providerOrder: PROVIDERS.map((provider) => provider.id),
     view: { center: [37.6173, 55.7558], zoom: 10 },
     layers: projectLayers(undefined, providerId),
     customLayers: {},

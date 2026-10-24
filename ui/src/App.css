@@ -959,20 +959,31 @@
 .layer-grip {
   display: grid;
   flex: none;
+  align-self: center;
   place-items: center;
-  width: 14px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   margin-left: -2px;
-  border-radius: 3px;
-  color: var(--faint);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--muted);
   cursor: grab;
   touch-action: none;
 }
 
 .layer-grip:hover,
 .layer-grip:focus-visible {
+  border-color: var(--accent);
   background: var(--surface-3);
   color: var(--text);
+}
+
+.layer-hint {
+  margin: -2px 4px 8px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
 }
 
 .layer-grip:active {

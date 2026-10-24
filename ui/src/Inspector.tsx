@@ -144,7 +144,7 @@ import {
   vectorBounds,
   type VectorLayer,
 } from './vectorLayers'
-import { PROVIDERS, providerById } from './providers'
+import { PROVIDERS, providerById, type ProviderId } from './providers'
 import { useT, useText, type Locale, type MessageKey } from './i18n'
 import { useDialogFocus } from './useDialogFocus'
 import { useAppStore, type Panel } from './store'
@@ -3078,9 +3078,12 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const setPanel = useAppStore((state) => state.setPanel)
   const providerId = useAppStore((state) => state.providerId)
   const layers = useAppStore((state) => state.layers)
+  const providerOrder = useAppStore((state) => state.providerOrder)
   const packs = useAppStore((state) => state.packs)
   const toggleLayer = useAppStore((state) => state.toggleLayer)
   const setLayerOpacity = useAppStore((state) => state.setLayerOpacity)
+  const moveProvider = useAppStore((state) => state.moveProvider)
+  const reorderProviders = useAppStore((state) => state.reorderProviders)
   const customSources = useAppStore((state) => state.customSources)
   const customLayers = useAppStore((state) => state.customLayers)
   const setCustomSources = useAppStore((state) => state.setCustomSources)
@@ -3115,6 +3118,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const toggleMapGrid = useAppStore((state) => state.toggleMapGrid)
   const setDownloadOpen = useAppStore((state) => state.setDownloadOpen)
   const showToast = useAppStore((state) => state.showToast)
+  const providerDrag = useLayerDrag(
+    [...providerOrder].reverse(),
+    (ids) => reorderProviders([...ids].reverse() as ProviderId[]),
+  )
   const vectorDrag = useLayerDrag(
     [...vectorLayers].reverse().map((layer) => layer.id),
     (ids) => reorderVectorLayers([...ids].reverse()),
@@ -3777,13 +3784,27 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
               <span>{tx('Слои', 'Layers')}</span>
             </div>
 
+            <p className="layer-hint">
+              {tx(
+                'Перетащите слой за ручку ⋮⋮, чтобы изменить порядок. Верхний слой рисуется выше.',
+                'Drag a layer by its ⋮⋮ handle to change the order. The top layer draws above.',
+              )}
+            </p>
             <div className="layer-list">
-              {PROVIDERS.map((item) => {
+              {[...providerOrder].reverse().map((id) => {
+                const item = providerById(id)
                 const state = layers[item.id]
                 return (
                   <div
-                    className={`layer-row${state.visible ? ' is-visible' : ''}`}
+                    className={`layer-row${state.visible ? ' is-visible' : ''}${
+                      providerDrag.dragId === item.id ? ' is-dragging' : ''
+                    }${
+                      providerDrag.dropTarget?.id === item.id
+                        ? ` drop-${providerDrag.dropTarget.after ? 'after' : 'before'}`
+                        : ''
+                    }`}
                     key={item.id}
+                    data-layer-id={item.id}
                   >
                     <button
                       type="button"
@@ -3800,6 +3821,33 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                     </button>
                     <div className="layer-main">
                       <div className="layer-title">
+                        <button
+                          type="button"
+                          className="layer-grip"
+                          onPointerDown={(event) =>
+                            providerDrag.start(event, item.id)
+                          }
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => {
+                            if (event.key === 'ArrowUp') {
+                              event.preventDefault()
+                              moveProvider(item.id, 1)
+                            } else if (event.key === 'ArrowDown') {
+                              event.preventDefault()
+                              moveProvider(item.id, -1)
+                            }
+                          }}
+                          aria-label={tx(
+                            `Перетащить слой ${item.label}`,
+                            `Drag layer ${item.label}`,
+                          )}
+                          title={tx(
+                            'Перетащите или используйте ↑/↓',
+                            'Drag or use ↑/↓',
+                          )}
+                        >
+                          <GripVertical size={14} />
+                        </button>
                         <strong>{item.label}</strong>
                         <span>{item.short}</span>
                       </div>
@@ -4421,6 +4469,14 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
               </button>
             </div>
 
+            {vectorLayers.length > 0 && (
+              <p className="layer-hint">
+                {tx(
+                  'Перетащите слой за ручку ⋮⋮. Верхний слой рисуется выше остальных.',
+                  'Drag a layer by its ⋮⋮ handle. The top layer draws above the rest.',
+                )}
+              </p>
+            )}
             {vectorLayers.length === 0 ? (
               <p className="pack-empty">
                 {tx(
@@ -4760,6 +4816,14 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
               </button>
             </div>
 
+            {packs.length > 0 && (
+              <p className="layer-hint">
+                {tx(
+                  'Перетащите пак за ручку ⋮⋮. Верхний слой рисуется выше остальных.',
+                  'Drag a pack by its ⋮⋮ handle. The top layer draws above the rest.',
+                )}
+              </p>
+            )}
             {packs.length === 0 ? (
               <p className="pack-empty">
                 {tx(

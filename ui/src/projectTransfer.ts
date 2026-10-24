@@ -47,6 +47,7 @@ const snapshot = (name: string) => {
   return buildProject({
     name,
     providerId: state.providerId,
+    providerOrder: state.providerOrder,
     view: {
       center: mapView.center,
       zoom: mapView.zoom,
@@ -254,6 +255,7 @@ export async function applyProject(
     }
     useAppStore.setState({
       providerId: project.providerId,
+      providerOrder: project.providerOrder,
       layers: project.layers,
       markers: project.markers,
       features,

@@ -52,6 +52,7 @@ import { useT } from './i18n.ts'
 interface MapCanvasProps {
   layers: LayerState
   providerId: ProviderId
+  providerOrder: ProviderId[]
   packs: PackLayer[]
   customSources: CustomSource[]
   customLayers: Record<string, { visible: boolean; opacity: number }>
@@ -579,6 +580,7 @@ const buildStyle = (active: ProviderId): StyleSpecification => {
 export function MapCanvas({
   layers,
   providerId,
+  providerOrder,
   packs,
   customSources,
   customLayers,
@@ -1157,6 +1159,25 @@ export function MapCanvas({
       map.setPaintProperty(provider.id, 'raster-opacity', layer.opacity)
     }
   }, [layers, ready])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!ready || !map) return
+    // Basemaps always sit under overlays; only their order among themselves
+    // follows the inspector. Inserting before the first overlay keeps packs,
+    // vectors and custom rasters above every basemap.
+    const providerIds = new Set<string>(PROVIDERS.map((item) => item.id))
+    const anchor = map
+      .getStyle()
+      .layers.find(
+        (layer) => layer.id !== 'background' && !providerIds.has(layer.id),
+      )?.id
+    for (const id of providerOrder) {
+      if (!map.getLayer(id)) continue
+      if (anchor && map.getLayer(anchor)) map.moveLayer(id, anchor)
+      else map.moveLayer(id)
+    }
+  }, [providerOrder, ready])
 
   useEffect(() => {
     selectionRef.current = selection
