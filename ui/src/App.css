@@ -297,6 +297,113 @@
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
+.track-profile {
+  margin: 6px 4px 2px;
+}
+
+.track-profile-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 3px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.track-profile-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.track-profile-key::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.track-profile-key.is-speed::before {
+  background: #f4a261;
+}
+
+.track-profile-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 320 / 104;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  cursor: crosshair;
+  outline: none;
+  touch-action: none;
+  user-select: none;
+}
+
+.track-profile-chart:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.track-profile-baseline {
+  stroke: var(--border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.track-profile-area {
+  fill: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.track-profile-elevation {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.track-profile-speed {
+  fill: none;
+  stroke: #f4a261;
+  stroke-width: 1.2;
+  stroke-dasharray: 4 3;
+  stroke-linejoin: round;
+  opacity: 0.9;
+  vector-effect: non-scaling-stroke;
+}
+
+.track-profile-progress {
+  stroke: var(--text);
+  stroke-width: 1;
+  opacity: 0.55;
+  vector-effect: non-scaling-stroke;
+}
+
+.track-profile-dot {
+  stroke: var(--surface);
+  stroke-width: 1;
+}
+
+.track-profile-dot.is-elevation {
+  fill: var(--accent);
+}
+
+.track-profile-dot.is-speed {
+  fill: #f4a261;
+}
+
+.track-profile-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .hint-text {
   margin: 8px 4px;
   color: var(--muted);

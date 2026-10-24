@@ -35,6 +35,10 @@ const snapshot = (): ProjectSnapshot => ({
         [34.5, 45.0],
       ],
       color: '#4cc9f0',
+      profile: {
+        elevations: [12, 850],
+        times: ['2026-01-01T10:00:00Z', '2026-01-01T12:00:00Z'],
+      },
     },
   ],
   vectorLayers: [
@@ -52,6 +56,10 @@ const snapshot = (): ProjectSnapshot => ({
               [34.0, 44.8],
               [34.2, 45.0],
             ],
+          },
+          profile: {
+            elevations: [5, 15],
+            times: [null, null],
           },
         },
       ],
@@ -87,10 +95,20 @@ test('project round-trips through the .mappa format', () => {
   assert.equal(parsed.markers[1].elevation, 42.5)
   assert.equal(parsed.markers[1].iconImage, CUSTOM_ICON)
   assert.equal(parsed.features.features.length, 1)
+  assert.deepEqual(
+    (parsed.features.features[0].properties as { profile?: unknown }).profile,
+    {
+      elevations: [12, 850],
+      times: ['2026-01-01T10:00:00Z', '2026-01-01T12:00:00Z'],
+    },
+  )
   assert.equal(parsed.vectorLayers.length, 1)
   assert.equal(parsed.vectorLayers[0].name, 'Дороги')
   assert.equal(parsed.vectorLayers[0].style.color, '#4cc9f0')
   assert.equal(parsed.vectorLayers[0].features[0].properties?.lanes, 4)
+  assert.deepEqual(parsed.vectorLayers[0].features[0].profile?.elevations, [
+    5, 15,
+  ])
   assert.equal(parsed.coordinateFormat, 'dms')
   assert.deepEqual(parsed.crs, { epsg: 32637 })
   // The active basemap must stay visible even if the file hid it.
@@ -105,6 +123,7 @@ test('parseProject returns runtime features', () => {
   assert.equal(parsed.features.length, 1)
   assert.equal(parsed.features[0].kind, 'line')
   assert.equal(parsed.features[0].coordinates.length, 2)
+  assert.deepEqual(parsed.features[0].profile?.elevations, [12, 850])
 })
 
 test('rejects unknown formats and broken JSON', () => {

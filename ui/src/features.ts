@@ -9,6 +9,12 @@ import { tr } from './locale.ts'
 
 export type FeatureKind = 'line' | 'polygon'
 
+/** Per-vertex elevation and time, aligned with the feature coordinates. */
+export interface TrackProfile {
+  elevations: (number | null)[]
+  times: (string | null)[]
+}
+
 /** A user-drawn line or polygon stored independently from measurements. */
 export interface MapFeature {
   id: string
@@ -18,6 +24,8 @@ export interface MapFeature {
   coordinates: LonLat[]
   color: string
   description?: string
+  /** Present for imported GPX tracks; drawing tools leave it undefined. */
+  profile?: TrackProfile
 }
 
 export type FeatureMode =
@@ -29,6 +37,7 @@ export type FeatureMode =
 
 export const MAX_FEATURES = 2_000
 export const MAX_VERTICES = 10_000
+export const MAX_PROFILE_VERTICES = 200_000
 export const MAX_FEATURE_NAME = 200
 
 export const FEATURE_COLORS = [
@@ -45,6 +54,63 @@ export function featureId(): string {
     return crypto.randomUUID()
   }
   return `f-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+const MAX_ELEVATION = 12_000
+const MAX_TIME_LENGTH = 40
+
+const validElevation = (value: unknown): number | null => {
+  if (typeof value !== 'number' && typeof value !== 'string') return null
+  if (typeof value === 'string' && !value.trim()) return null
+  const elevation = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(elevation) && Math.abs(elevation) <= MAX_ELEVATION
+    ? elevation
+    : null
+}
+
+const validTime = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null
+  const time = value.trim().slice(0, MAX_TIME_LENGTH)
+  return time && Number.isFinite(Date.parse(time)) ? time : null
+}
+
+/**
+ * Validates profile arrays from GPX or a project file. Arrays are truncated to
+ * the geometry length and padded with nulls so every vertex stays addressable.
+ */
+export function sanitizeTrackProfile(
+  value: unknown,
+  length: number,
+): TrackProfile | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || length < 2) {
+    return null
+  }
+  const record = value as {
+    elevations?: unknown
+    times?: unknown
+  }
+  const elevations = Array.isArray(record.elevations) ? record.elevations : []
+  const times = Array.isArray(record.times) ? record.times : []
+  const size = Math.min(
+    MAX_PROFILE_VERTICES,
+    length,
+    Math.max(elevations.length, times.length),
+  )
+  if (size < 2) return null
+  const parsedElevations: (number | null)[] = []
+  const parsedTimes: (string | null)[] = []
+  let hasElevation = false
+  let hasTime = false
+  for (let index = 0; index < size; index += 1) {
+    const elevation = validElevation(elevations[index])
+    const time = validTime(times[index])
+    parsedElevations.push(elevation)
+    parsedTimes.push(time)
+    if (elevation !== null) hasElevation = true
+    if (time !== null) hasTime = true
+  }
+  if (!hasElevation && !hasTime) return null
+  return { elevations: parsedElevations, times: parsedTimes }
 }
 
 const validPoint = (value: unknown): LonLat | null => {
@@ -129,7 +195,11 @@ export function parseFeatureGeoJSON(text: string): MapFeature[] {
       ? properties.name
       : tr('Объект', 'Feature')
 
-    const push = (kind: FeatureKind, coordinates: LonLat[]) => {
+    const push = (
+      kind: FeatureKind,
+      coordinates: LonLat[],
+      profile?: TrackProfile | null,
+    ) => {
       if (result.length >= MAX_FEATURES) return
       if (vertices + coordinates.length > MAX_VERTICES) return
       if (kind === 'line' && coordinates.length < 2) return
@@ -142,6 +212,7 @@ export function parseFeatureGeoJSON(text: string): MapFeature[] {
         coordinates,
         color,
         description,
+        ...(profile ? { profile } : {}),
       })
     }
 
@@ -152,7 +223,11 @@ export function parseFeatureGeoJSON(text: string): MapFeature[] {
       const points = coordinates
         .map(validPoint)
         .filter((point): point is LonLat => point !== null)
-      push('line', points)
+      const profile =
+        points.length === coordinates.length
+          ? sanitizeTrackProfile(properties.profile, points.length)
+          : null
+      push('line', points, profile)
     } else if (geometry.type === 'MultiLineString') {
       const lines = Array.isArray(geometry.coordinates)
         ? geometry.coordinates
@@ -162,7 +237,11 @@ export function parseFeatureGeoJSON(text: string): MapFeature[] {
         const points = line
           .map(validPoint)
           .filter((point): point is LonLat => point !== null)
-        push('line', points)
+        const profile =
+          points.length === line.length
+            ? sanitizeTrackProfile(properties.profile, points.length)
+            : null
+        push('line', points, profile)
       }
     } else if (geometry.type === 'Polygon') {
       const rings = Array.isArray(geometry.coordinates)
@@ -195,6 +274,7 @@ export function featuresToGeoJSON(features: MapFeature[]): string {
         kind: feature.kind,
         color: feature.color,
         ...(feature.description ? { description: feature.description } : {}),
+        ...(feature.profile ? { profile: feature.profile } : {}),
         ...(feature.kind === 'line'
           ? { length_m: Math.round(featureLength(feature)) }
           : { area_m2: Math.round(featureArea(feature)) }),
@@ -229,11 +309,27 @@ export function featuresToGpx(features: MapFeature[]): string {
     const description = feature.description
       ? `\n    <desc>${xmlEscape(feature.description)}</desc>`
       : ''
+    const elevations = feature.profile?.elevations ?? []
+    const times = feature.profile?.times ?? []
+    const closed = feature.kind === 'polygon'
     const vertices = points
-      .map(
-        ([lon, lat]) =>
-          `      <trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}" />`,
-      )
+      .map(([lon, lat], index) => {
+        const source = closed && index >= feature.coordinates.length ? 0 : index
+        const elevation = elevations[source]
+        const time = times[source]
+        const ele =
+          typeof elevation === 'number' && Number.isFinite(elevation)
+            ? `\n        <ele>${elevation.toFixed(1)}</ele>`
+            : ''
+        const stamp =
+          typeof time === 'string' && time
+            ? `\n        <time>${xmlEscape(time)}</time>`
+            : ''
+        if (!ele && !stamp) {
+          return `      <trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}" />`
+        }
+        return `      <trkpt lat="${lat.toFixed(7)}" lon="${lon.toFixed(7)}">${ele}${stamp}\n      </trkpt>`
+      })
       .join('\n')
     return `  <trk>
     <name>${xmlEscape(feature.name)}</name>${description}

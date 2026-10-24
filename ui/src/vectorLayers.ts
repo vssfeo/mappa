@@ -22,6 +22,10 @@ import {
   type XmlNode,
 } from './xml.ts'
 import { tr } from './locale.ts'
+import {
+  sanitizeTrackProfile,
+  type TrackProfile,
+} from './features.ts'
 
 export type VectorFormat = 'geojson' | 'kml' | 'kmz' | 'gpx' | 'shp' | 'gpkg'
 
@@ -35,7 +39,10 @@ export interface VectorStyle {
 export type VectorFeature = Feature<
   Geometry,
   Record<string, unknown>
->
+> & {
+  /** Per-vertex data from GPX tracks; not part of the GeoJSON spec. */
+  profile?: TrackProfile
+}
 
 export interface VectorLayer {
   id: string
@@ -237,12 +244,31 @@ function sanitizeProperties(value: unknown): Record<string, unknown> {
 function feature(
   geometry: Geometry,
   properties: Record<string, unknown>,
+  profile?: TrackProfile | null,
 ): VectorFeature {
   return {
     type: 'Feature',
     geometry,
     properties: sanitizeProperties(properties),
+    ...(profile ? { profile } : {}),
   }
+}
+
+/** Profile arrays only make sense for a single ordered line. */
+function lineLength(geometry: Geometry): number {
+  return geometry.type === 'LineString' ? geometry.coordinates.length : 0
+}
+
+function profileFromProperties(
+  geometry: Geometry,
+  value: unknown,
+  properties?: unknown,
+): TrackProfile | null {
+  const nested =
+    properties && typeof properties === 'object' && !Array.isArray(properties)
+      ? (properties as Record<string, unknown>).profile
+      : undefined
+  return sanitizeTrackProfile(value ?? nested, lineLength(geometry))
 }
 
 function parseGeoJson(text: string): VectorImport {
@@ -281,6 +307,7 @@ function parseGeoJson(text: string): VectorImport {
       type?: unknown
       geometry?: unknown
       properties?: unknown
+      profile?: unknown
     }
     const geometry =
       record.type === 'Feature' || record.geometry !== undefined
@@ -290,7 +317,13 @@ function parseGeoJson(text: string): VectorImport {
       skipped += 1
       continue
     }
-    features.push(feature(geometry, sanitizeProperties(record.properties)))
+    features.push(
+      feature(
+        geometry,
+        sanitizeProperties(record.properties),
+        profileFromProperties(geometry, record.profile, record.properties),
+      ),
+    )
   }
   return { features, skipped, detected: 'geojson' }
 }
@@ -562,8 +595,40 @@ function parseKml(text: string): VectorImport {
   return { features, skipped, detected: 'kml' }
 }
 
-function gpxPoint(node: XmlNode, budget: Budget): Position | null {
-  return point([node.attrs.lon, node.attrs.lat], budget)
+interface GpxVertex {
+  coordinate: Position
+  elevation: number | null
+  time: string | null
+}
+
+function gpxVertex(node: XmlNode, budget: Budget): GpxVertex | null {
+  const coordinate = point([node.attrs.lon, node.attrs.lat], budget)
+  if (!coordinate) return null
+  const rawElevation = childText(node, 'ele').trim()
+  const elevation = rawElevation ? Number(rawElevation) : Number.NaN
+  const rawTime = childText(node, 'time').trim()
+  return {
+    coordinate,
+    elevation:
+      Number.isFinite(elevation) && Math.abs(elevation) <= 12_000
+        ? elevation
+        : null,
+    time:
+      rawTime &&
+      rawTime.length <= 40 &&
+      Number.isFinite(Date.parse(rawTime))
+        ? rawTime
+        : null,
+  }
+}
+
+function gpxProfile(vertices: GpxVertex[]): TrackProfile | undefined {
+  const elevations = vertices.map((vertex) => vertex.elevation)
+  const times = vertices.map((vertex) => vertex.time)
+  return elevations.some((value) => value !== null) ||
+    times.some((value) => value !== null)
+    ? { elevations, times }
+    : undefined
 }
 
 function gpxProperties(node: XmlNode): Record<string, unknown> {
@@ -572,7 +637,8 @@ function gpxProperties(node: XmlNode): Record<string, unknown> {
     const value = childText(node, key)
     if (value) properties[key] = cleanText(value, 2000)
   }
-  const ele = Number(childText(node, 'ele'))
+  const rawElevation = childText(node, 'ele').trim()
+  const ele = rawElevation ? Number(rawElevation) : Number.NaN
   if (Number.isFinite(ele)) properties.ele = ele
   return properties
 }
@@ -582,53 +648,65 @@ function parseGpx(text: string): VectorImport {
   const budget: Budget = { points: 0 }
   const features: VectorFeature[] = []
   let skipped = 0
-  const push = (geometry: Geometry | null, properties: Record<string, unknown>) => {
+  const push = (
+    geometry: Geometry | null,
+    properties: Record<string, unknown>,
+    profile?: TrackProfile,
+  ) => {
     if (!geometry || features.length >= MAX_VECTOR_FEATURES) {
       skipped += 1
       return
     }
-    features.push(feature(geometry, properties))
+    features.push(feature(geometry, properties, profile))
   }
 
   for (const node of findDescendants(root, 'wpt')) {
-    const coordinates = gpxPoint(node, budget)
+    const vertex = gpxVertex(node, budget)
     push(
-      coordinates ? { type: 'Point', coordinates } : null,
+      vertex ? { type: 'Point', coordinates: vertex.coordinate } : null,
       gpxProperties(node),
     )
   }
   for (const route of findDescendants(root, 'rte')) {
-    const coordinates = route.children
+    const vertices = route.children
       .filter((item) => item.name === 'rtept')
-      .map((item) => gpxPoint(item, budget))
-      .filter((item): item is Position => item !== null)
+      .map((item) => gpxVertex(item, budget))
+      .filter((item): item is GpxVertex => item !== null)
     push(
-      coordinates.length >= 2
-        ? { type: 'LineString', coordinates }
+      vertices.length >= 2
+        ? {
+            type: 'LineString',
+            coordinates: vertices.map((vertex) => vertex.coordinate),
+          }
         : null,
       gpxProperties(route),
+      gpxProfile(vertices),
     )
   }
   for (const track of findDescendants(root, 'trk')) {
     const base = gpxProperties(track)
     const segments = track.children.filter((item) => item.name === 'trkseg')
     segments.forEach((segment, index) => {
-      const coordinates = segment.children
+      const vertices = segment.children
         .filter((item) => item.name === 'trkpt')
-        .map((item) => gpxPoint(item, budget))
-        .filter((item): item is Position => item !== null)
+        .map((item) => gpxVertex(item, budget))
+        .filter((item): item is GpxVertex => item !== null)
       const suffix =
         segments.length > 1
           ? tr(` · сегмент ${index + 1}`, ` · segment ${index + 1}`)
           : ''
       push(
-        coordinates.length >= 2
-          ? { type: 'LineString', coordinates }
+        vertices.length >= 2
+          ? {
+              type: 'LineString',
+              coordinates: vertices.map((vertex) => vertex.coordinate),
+            }
           : null,
         {
           ...base,
           ...(base.name ? { name: `${String(base.name)}${suffix}` } : {}),
         },
+        gpxProfile(vertices),
       )
     })
   }
@@ -682,13 +760,20 @@ export function sanitizeVectorLayer(
       type?: unknown
       geometry?: unknown
       properties?: unknown
+      profile?: unknown
     }
     const geometry =
       raw.type === 'Feature' || raw.geometry !== undefined
         ? sanitizeGeometry(raw.geometry, budget)
         : sanitizeGeometry(raw, budget)
     if (!geometry) continue
-    features.push(feature(geometry, sanitizeProperties(raw.properties)))
+    features.push(
+      feature(
+        geometry,
+        sanitizeProperties(raw.properties),
+        profileFromProperties(geometry, raw.profile, raw.properties),
+      ),
+    )
   }
   if (features.length === 0) return null
   const style =

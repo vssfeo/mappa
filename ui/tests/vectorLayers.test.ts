@@ -5,6 +5,7 @@ import { readKmz } from '../src/kmz.ts'
 import {
   attributeTable,
   parseVectorText,
+  sanitizeVectorLayer,
   vectorBounds,
 } from '../src/vectorLayers.ts'
 import { childText, parseXml } from '../src/xml.ts'
@@ -114,7 +115,10 @@ test('imports GPX waypoints, routes and track segments', () => {
     <rtept lat="55.7" lon="37.6"/><rtept lat="55.8" lon="37.7"/>
   </rte>
   <trk><name>Трек</name>
-    <trkseg><trkpt lat="55.1" lon="37.1"/><trkpt lat="55.2" lon="37.2"/></trkseg>
+    <trkseg>
+      <trkpt lat="55.1" lon="37.1"><ele>100</ele><time>2026-01-01T10:00:00Z</time></trkpt>
+      <trkpt lat="55.2" lon="37.2"><ele>140</ele><time>2026-01-01T10:05:00Z</time></trkpt>
+    </trkseg>
     <trkseg><trkpt lat="55.3" lon="37.3"/><trkpt lat="55.4" lon="37.4"/></trkseg>
   </trk>
 </gpx>`
@@ -126,6 +130,12 @@ test('imports GPX waypoints, routes and track segments', () => {
   assert.equal(parsed.features[1].geometry.type, 'LineString')
   assert.equal(parsed.features[2].properties?.name, 'Трек · сегмент 1')
   assert.equal(parsed.features[3].properties?.name, 'Трек · сегмент 2')
+  assert.deepEqual(parsed.features[2].profile?.elevations, [100, 140])
+  assert.deepEqual(parsed.features[2].profile?.times, [
+    '2026-01-01T10:00:00Z',
+    '2026-01-01T10:05:00Z',
+  ])
+  assert.equal(parsed.features[3].profile, undefined)
 })
 
 test('imports KML styles, multigeometry and ExtendedData', () => {
@@ -218,4 +228,38 @@ test('builds an attribute table with stable columns', () => {
   assert.equal(table.rows[0].values.name, 'A')
   assert.equal(table.rows[0].values.height, '10')
   assert.equal(table.rows[1].values.owner, 'B')
+})
+
+test('sanitizes and keeps a GPX track profile', () => {
+  const layer = sanitizeVectorLayer({
+    id: 'vector-gpx',
+    name: 'Трек',
+    format: 'gpx',
+    features: [
+      {
+        type: 'Feature',
+        properties: { name: 'Подъём' },
+        profile: {
+          elevations: [100, 450, 999999],
+          times: ['2026-01-01T10:00:00Z', 'not-a-time'],
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [37.1, 55.1],
+            [37.2, 55.2],
+            [37.3, 55.3],
+          ],
+        },
+      },
+    ],
+  })
+  assert.ok(layer)
+  assert.deepEqual(layer.features[0].profile?.elevations, [100, 450, null])
+  assert.deepEqual(layer.features[0].profile?.times, [
+    '2026-01-01T10:00:00Z',
+    null,
+    null,
+  ])
+  assert.equal(layer.features[0].properties?.profile, undefined)
 })

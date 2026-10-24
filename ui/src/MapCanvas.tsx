@@ -1294,8 +1294,10 @@ export function MapCanvas({
       const data = {
         type: 'FeatureCollection' as const,
         features: layer.features.map((feature, index) => ({
-          ...feature,
+          type: 'Feature' as const,
+          geometry: feature.geometry,
           // Selection needs the array index; MapLibre does not expose it.
+          // The GPX profile stays in the layer, out of the renderer payload.
           properties: { ...(feature.properties ?? {}), __mappaIndex: index },
         })),
       }

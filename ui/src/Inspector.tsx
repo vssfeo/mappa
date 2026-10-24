@@ -2,6 +2,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -81,6 +82,8 @@ import {
   type MapFeature,
 } from './features'
 import { exportFeatureFile, importFeatureFile } from './featureTransfer'
+import { TrackChart } from './TrackChart'
+import { buildTrackProfile } from './trackProfile'
 import { importMarkerFile, exportMarkerFile } from './markerTransfer'
 import {
   newProject,
@@ -1406,7 +1409,16 @@ function TrackPlayer({
   const [progress, setProgress] = useState(0)
   const progressRef = useRef(0)
   const markerRef = useRef<Marker | null>(null)
-  const total = featureLength(feature)
+  const track = useMemo(
+    () => buildTrackProfile(feature.coordinates, feature.profile),
+    [feature],
+  )
+  const total = track.stats.distance || featureLength(feature)
+  const seek = (next: number) => {
+    progressRef.current = next
+    setProgress(next)
+    setPlaying(false)
+  }
 
   useEffect(() => {
     if (!map) return
@@ -1487,12 +1499,7 @@ function TrackPlayer({
           max="1"
           step="0.001"
           value={progress}
-          onChange={(event) => {
-            const next = Number(event.target.value)
-            progressRef.current = next
-            setProgress(next)
-            setPlaying(false)
-          }}
+          onChange={(event) => seek(Number(event.target.value))}
           aria-label={tx('Позиция на треке', 'Track position')}
         />
         <select
@@ -1507,6 +1514,9 @@ function TrackPlayer({
           ))}
         </select>
       </div>
+      {(track.stats.hasElevation || track.stats.hasTime) && (
+        <TrackChart model={track} progress={progress} onSeek={seek} />
+      )}
     </div>
   )
 }
@@ -1808,7 +1818,10 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
             disabled={!isNative || busy !== null}
             title={
               isNative
-                ? tx('Импорт GeoJSON', 'Import GeoJSON')
+                ? tx(
+                    'Импорт GeoJSON или GPX-трека с высотами',
+                    'Import GeoJSON or a GPX track with elevation',
+                  )
                 : tx(
                     'Доступно в нативном приложении',
                     'Available in the native app',

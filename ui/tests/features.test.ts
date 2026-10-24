@@ -258,3 +258,58 @@ test('GPX export writes tracks and closes polygon rings', () => {
   assert.equal((gpx.match(/<trkpt /g) ?? []).length, 6)
   assert.match(gpx, /lat="55\.8000000" lon="37\.8000000"/)
 })
+
+test('GeoJSON round-trips a GPX elevation profile', () => {
+  const source: MapFeature = {
+    ...line([
+      [37.6, 55.75],
+      [37.7, 55.76],
+      [37.8, 55.77],
+    ]),
+    profile: {
+      elevations: [120, 180, null],
+      times: [
+        '2026-01-01T10:00:00Z',
+        '2026-01-01T10:10:00Z',
+        null,
+      ],
+    },
+  }
+  const parsed = parseFeatureGeoJSON(featuresToGeoJSON([source]))
+  assert.equal(parsed.length, 1)
+  assert.deepEqual(parsed[0].profile, source.profile)
+
+  const gpx = featuresToGpx([source])
+  assert.match(gpx, /<ele>120\.0<\/ele>/)
+  assert.match(gpx, /<time>2026-01-01T10:10:00Z<\/time>/)
+  assert.equal((gpx.match(/<ele>/g) ?? []).length, 2)
+})
+
+test('rejects malformed profile values without dropping the line', () => {
+  const text = JSON.stringify({
+    type: 'Feature',
+    properties: {
+      name: 'Битый профиль',
+      profile: {
+        elevations: [100, 'high', 500000],
+        times: ['2026-01-01T10:00:00Z', 'nope'],
+      },
+    },
+    geometry: {
+      type: 'LineString',
+      coordinates: [
+        [37.6, 55.75],
+        [37.7, 55.76],
+        [37.8, 55.77],
+      ],
+    },
+  })
+  const parsed = parseFeatureGeoJSON(text)
+  assert.equal(parsed.length, 1)
+  assert.deepEqual(parsed[0].profile?.elevations, [100, null, null])
+  assert.deepEqual(parsed[0].profile?.times, [
+    '2026-01-01T10:00:00Z',
+    null,
+    null,
+  ])
+})
