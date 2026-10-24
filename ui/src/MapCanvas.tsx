@@ -505,8 +505,16 @@ const applyMarkerStyle = (
   if (!pin) return
   if (marker.color) pin.style.setProperty('--marker-color', marker.color)
   else pin.style.removeProperty('--marker-color')
-  if (marker.icon) pin.dataset.icon = marker.icon
-  else delete pin.dataset.icon
+  if (marker.iconImage) {
+    pin.dataset.image = 'true'
+    pin.style.backgroundImage = `url("${marker.iconImage}")`
+    delete pin.dataset.icon
+  } else {
+    delete pin.dataset.image
+    pin.style.removeProperty('background-image')
+    if (marker.icon) pin.dataset.icon = marker.icon
+    else delete pin.dataset.icon
+  }
 }
 
 const markerElement = (

@@ -8,6 +8,9 @@ import {
   type ProjectSnapshot,
 } from '../src/projectFile.ts'
 
+const CUSTOM_ICON =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lZ9G9QAAAABJRU5ErkJggg=='
+
 const snapshot = (): ProjectSnapshot => ({
   name: 'Крым',
   providerId: 'topo',
@@ -20,7 +23,7 @@ const snapshot = (): ProjectSnapshot => ({
   packPaths: ['/home/user/maps/crimea.mbtiles', '/home/user/maps/crimea.mbtiles'],
   markers: [
     { id: 'a', name: 'Балаклава', lon: 33.6, lat: 44.5 },
-    { id: 'b', name: 'Феодосия', lon: 35.38, lat: 45.03, elevation: 42.5, description: 'порт', folder: 'Порты', icon: '⚓', color: '#4cc9f0' },
+    { id: 'b', name: 'Феодосия', lon: 35.38, lat: 45.03, elevation: 42.5, description: 'порт', folder: 'Порты', icon: '⚓', iconImage: CUSTOM_ICON, color: '#4cc9f0' },
   ],
   features: [
     {
@@ -82,6 +85,7 @@ test('project round-trips through the .mappa format', () => {
   assert.equal(parsed.markers[1].icon, '⚓')
   assert.equal(parsed.markers[1].color, '#4cc9f0')
   assert.equal(parsed.markers[1].elevation, 42.5)
+  assert.equal(parsed.markers[1].iconImage, CUSTOM_ICON)
   assert.equal(parsed.features.features.length, 1)
   assert.equal(parsed.vectorLayers.length, 1)
   assert.equal(parsed.vectorLayers[0].name, 'Дороги')

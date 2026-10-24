@@ -22,6 +22,7 @@ import {
   FolderOpen,
   Globe2,
   HardDrive,
+  ImagePlus,
   Layers3,
   Loader2,
   MapPin,
@@ -89,6 +90,7 @@ import type {
   MapMarker,
   MarkerFileFormat,
 } from './markers'
+import { readMarkerIcon } from './markerIcons'
 import {
   useDownloadsStore,
   type DownloadJob,
@@ -418,8 +420,6 @@ function MarkerCoordinateEditor({
             spellCheck={false}
           />
         </label>
-      </div>
-      <div className="marker-coordinate-row is-secondary">
         <label
           className={`coord-field${invalid === 'height' ? ' is-invalid' : ''}`}
           title={tx(
@@ -448,6 +448,8 @@ function MarkerCoordinateEditor({
             spellCheck={false}
           />
         </label>
+      </div>
+      <div className="marker-coordinate-actions">
         <button
           type="button"
           className="ghost-button marker-coordinate-apply"
@@ -486,6 +488,7 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
   const removeMarker = useAppStore((state) => state.removeMarker)
   const clearMarkers = useAppStore((state) => state.clearMarkers)
   const showToast = useAppStore((state) => state.showToast)
+  const iconInputRef = useRef<HTMLInputElement>(null)
   const [fileFormat, setFileFormat] = useState<MarkerFileFormat>('csv')
   const [csvDelimiter, setCsvDelimiter] = useState(';')
   const [csvColumns, setCsvColumns] = useState({
@@ -611,6 +614,22 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
         zoom: Math.max(map.getZoom(), 12),
         duration: 700,
       })
+    }
+  }
+
+  const uploadIcon = async (file: File | undefined, markerId: string) => {
+    if (!file) return
+    try {
+      const iconImage = await readMarkerIcon(file)
+      updateMarker(markerId, { iconImage, icon: undefined })
+      showToast(tx('Иконка загружена', 'Icon uploaded'))
+    } catch (error) {
+      showToast(
+        tx(
+          `Не удалось загрузить иконку: ${String(error)}`,
+          `Could not load the icon: ${String(error)}`,
+        ),
+      )
     }
   }
 
@@ -856,14 +875,24 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
                     tabIndex={0}
                   >
                     <span
-                      className={`marker-dot${marker.icon ? ' has-icon' : ''}`}
+                      className={`marker-dot${
+                        marker.iconImage
+                          ? ' has-image'
+                          : marker.icon
+                            ? ' has-icon'
+                            : ''
+                      }`}
                       style={
                         marker.color
                           ? { background: marker.color }
                           : undefined
                       }
                     >
-                      {marker.icon}
+                      {marker.iconImage ? (
+                        <img src={marker.iconImage} alt="" />
+                      ) : (
+                        marker.icon
+                      )}
                     </span>
                     <div className="marker-main">
                       <input
@@ -924,15 +953,25 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
                             title={tx('Папка', 'Folder')}
                           />
                           <select
-                            value={marker.icon ?? ''}
-                            onChange={(event) =>
-                              updateMarker(marker.id, {
-                                icon: event.target.value || undefined,
-                              })
+                            value={
+                              marker.iconImage ? '__custom' : marker.icon ?? ''
                             }
+                            onChange={(event) => {
+                              const icon = event.target.value
+                              if (icon === '__custom') return
+                              updateMarker(marker.id, {
+                                icon: icon || undefined,
+                                iconImage: undefined,
+                              })
+                            }}
                             aria-label={tx('Иконка метки', 'Marker icon')}
                             title={tx('Иконка', 'Icon')}
                           >
+                            {marker.iconImage && (
+                              <option value="__custom">
+                                {tx('Своя иконка', 'Custom icon')}
+                              </option>
+                            )}
                             <option value="">
                               ● {tx('метка', 'marker')}
                             </option>
@@ -962,6 +1001,61 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
                             aria-label={tx('Цвет метки', 'Marker colour')}
                             title={tx('Цвет', 'Colour')}
                           />
+                          <div className="marker-icon-actions">
+                            <input
+                              ref={iconInputRef}
+                              type="file"
+                              className="marker-icon-file"
+                              accept="image/png,image/jpeg,image/webp,image/gif"
+                              hidden
+                              aria-label={tx('Файл иконки', 'Icon file')}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0]
+                                event.target.value = ''
+                                void uploadIcon(file, marker.id)
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className={`ghost-button marker-icon-upload${marker.iconImage ? ' has-image' : ''}`}
+                              onClick={() => iconInputRef.current?.click()}
+                              aria-label={tx(
+                                `Загрузить свою иконку для ${marker.name}`,
+                                `Upload a custom icon for ${marker.name}`,
+                              )}
+                              title={tx(
+                                'Загрузить свою иконку (PNG, JPEG, WebP, GIF)',
+                                'Upload a custom icon (PNG, JPEG, WebP, GIF)',
+                              )}
+                            >
+                              {marker.iconImage ? (
+                                <img src={marker.iconImage} alt="" />
+                              ) : (
+                                <ImagePlus size={14} />
+                              )}
+                            </button>
+                            {marker.iconImage && (
+                              <button
+                                type="button"
+                                className="ghost-button marker-icon-clear"
+                                onClick={() =>
+                                  updateMarker(marker.id, {
+                                    iconImage: undefined,
+                                  })
+                                }
+                                aria-label={tx(
+                                  'Убрать свою иконку',
+                                  'Remove custom icon',
+                                )}
+                                title={tx(
+                                  'Убрать свою иконку',
+                                  'Remove custom icon',
+                                )}
+                              >
+                                <X size={13} />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>

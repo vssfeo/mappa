@@ -212,6 +212,15 @@ const projectMarkers = (value: unknown): MapMarker[] => {
       marker.icon = Array.from(record.icon.trim()).slice(0, 2).join('')
     }
     if (
+      typeof record.iconImage === 'string' &&
+      record.iconImage.length <= 64 * 1024 &&
+      /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/.test(
+        record.iconImage,
+      )
+    ) {
+      marker.iconImage = record.iconImage
+    }
+    if (
       typeof record.color === 'string' &&
       /^#[0-9a-f]{6}$/i.test(record.color.trim())
     ) {

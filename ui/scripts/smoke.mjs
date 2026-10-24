@@ -409,9 +409,24 @@ try {
     ) {
       fail('point coordinate editor is missing B/L/h fields')
     } else {
-      const latBox = await latField.boundingBox()
-      if (!latBox || latBox.width < 60) {
+      const fields = page.locator('.coord-field')
+      const latBox = await fields.nth(0).boundingBox()
+      const lonBox = await fields.nth(1).boundingBox()
+      const heightBox = await fields.nth(2).boundingBox()
+      if (!latBox || latBox.width < 120) {
         fail(`latitude field is too narrow (${latBox?.width})`)
+      }
+      if (
+        !latBox ||
+        !lonBox ||
+        !heightBox ||
+        Math.abs(latBox.width - lonBox.width) > 1 ||
+        Math.abs(latBox.width - heightBox.width) > 1 ||
+        !(latBox.y < lonBox.y && lonBox.y < heightBox.y)
+      ) {
+        fail(
+          `B/L/h fields are not equal-width stacked rows (${JSON.stringify({ latBox, lonBox, heightBox })})`,
+        )
       }
       await latField.fill('55.75580')
       await lonField.fill('37.61730')
@@ -430,6 +445,37 @@ try {
         : null
       if (!edited || edited.elevation !== 145) {
         fail(`point elevation was not stored (${JSON.stringify(edited)})`)
+      }
+    }
+
+    const iconFile = page.locator('input[aria-label="Файл иконки"]')
+    if ((await iconFile.count()) === 0) {
+      fail('custom icon file input is missing')
+    } else {
+      const png = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lZ9G9QAAAABJRU5ErkJggg==',
+        'base64',
+      )
+      await iconFile.setInputFiles({
+        name: 'point-icon.png',
+        mimeType: 'image/png',
+        buffer: png,
+      })
+      await page.waitForTimeout(600)
+      if ((await page.locator('.map-marker-pin[data-image]').count()) === 0) {
+        fail('custom icon was not applied to the map pin')
+      }
+      if ((await page.locator('.marker-dot.has-image img').count()) === 0) {
+        fail('custom icon was not shown in the marker list')
+      }
+      const iconMarkers = await page.evaluate(() =>
+        JSON.parse(localStorage.getItem('mappa-ui') ?? '{}')?.state?.markers,
+      )
+      const iconMarker = Array.isArray(iconMarkers)
+        ? iconMarkers.find((marker) => marker.name === 'Тестовая метка')
+        : null
+      if (!iconMarker?.iconImage?.startsWith('data:image/png;base64,')) {
+        fail('custom icon was not stored on the marker')
       }
     }
   }
@@ -534,6 +580,9 @@ try {
   }
   if ((await page.locator('.map-marker').count()) === 0) {
     fail('markers were not restored after reload')
+  }
+  if ((await page.locator('.map-marker-pin[data-image]').count()) === 0) {
+    fail('custom marker icon was not restored after reload')
   }
 } finally {
   await browser.close()

@@ -25,6 +25,8 @@ export interface MapMarker {
   folder?: string
   /** Emoji or short glyph shown inside the map pin. */
   icon?: string
+  /** User-uploaded raster icon as a small PNG data URL. */
+  iconImage?: string
   /** Pin colour as `#rrggbb`. */
   color?: string
 }

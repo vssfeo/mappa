@@ -1074,6 +1074,22 @@
   transform: scale(1.15);
 }
 
+.map-marker-pin[data-image] {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: var(--surface-2);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  transform: none;
+}
+
+.map-marker:hover .map-marker-pin[data-image],
+.map-marker.is-selected .map-marker-pin[data-image] {
+  transform: scale(1.15);
+}
+
 .map-marker.is-selected .map-marker-label {
   border-color: var(--accent);
   color: var(--accent);
@@ -2446,6 +2462,53 @@
   transform: none;
 }
 
+.marker-dot.has-image {
+  overflow: hidden;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  transform: none;
+}
+
+.marker-dot.has-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.marker-icon-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 6px;
+  align-items: center;
+}
+
+.marker-icon-upload {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+}
+
+.marker-icon-upload.has-image {
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.marker-icon-upload img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.marker-icon-clear {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+}
+
 .marker-extras {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 100px 34px;
@@ -2468,13 +2531,14 @@
 }
 
 .marker-coordinate-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 6px;
 }
 
-.marker-coordinate-row.is-secondary {
-  grid-template-columns: minmax(0, 1fr) auto;
+.marker-coordinate-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .coord-field {
