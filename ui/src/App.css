@@ -388,11 +388,46 @@
   border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
   border-radius: 9px;
   background: var(--surface-glass);
-  color: var(--fg);
+  color: var(--text);
   font-size: 12px;
   box-shadow: var(--shadow-soft);
   transform: translateX(-50%);
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: min(860px, calc(100% - 120px));
   pointer-events: none;
+}
+
+.hint-pan {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.hint-action {
+  pointer-events: auto;
+  padding: 4px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.hint-action:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.hint-action.is-primary {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.hint-action:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .draw-hint kbd {

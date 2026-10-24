@@ -126,6 +126,44 @@ try {
   if ((await page.locator('.measure-label.is-total').count()) !== 1) {
     fail('total line label is missing')
   }
+
+  const panPoint = { x: measureBox.x + 700, y: measureBox.y + 350 }
+  await page.mouse.move(panPoint.x, panPoint.y)
+  await page.waitForTimeout(200)
+  const beforePan = await page.locator('.status-coords').innerText()
+  await page.mouse.down({ button: 'right' })
+  await page.mouse.move(panPoint.x + 120, panPoint.y + 80, { steps: 10 })
+  await page.mouse.up({ button: 'right' })
+  await page.mouse.move(panPoint.x, panPoint.y)
+  await page.waitForTimeout(400)
+  const afterPan = await page.locator('.status-coords').innerText()
+  if (beforePan === afterPan) {
+    fail('right-drag did not pan the map during measurement')
+  }
+
+  const saveRoute = page.locator('.draw-hint .hint-action.is-primary')
+  if ((await saveRoute.count()) === 0) {
+    fail('save-route action is missing from the measurement hint')
+  } else {
+    await saveRoute.click()
+    await page.waitForTimeout(350)
+    if ((await page.locator('.feature-dot').count()) !== 1) {
+      fail('measured route was not saved as a feature')
+    }
+    const routeName = await page
+      .locator('.inspector .marker-name-input')
+      .first()
+      .inputValue()
+    if (!routeName.startsWith('Маршрут')) {
+      fail(`saved route has an unexpected name (${routeName})`)
+    }
+    await page
+      .locator('.inspector button', { hasText: 'Удалить объект' })
+      .first()
+      .click()
+    await page.waitForTimeout(250)
+  }
+
   await page.keyboard.press('Escape')
   await page.waitForTimeout(250)
   if ((await page.locator('.measure-label').count()) > 0) {

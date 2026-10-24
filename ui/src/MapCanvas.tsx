@@ -1037,6 +1037,81 @@ export function MapCanvas({
   useEffect(() => {
     const map = mapRef.current
     if (!ready || !map) return
+    const container = map.getCanvasContainer()
+    const canvas = map.getCanvas()
+    let drag: {
+      pointerId: number
+      x: number
+      y: number
+      moved: boolean
+    } | null = null
+    let suppressContextUntil = 0
+    let cursorBefore = ''
+
+    const finish = (event?: PointerEvent) => {
+      if (!drag) return
+      if (event && event.pointerId !== drag.pointerId) return
+      if (drag.moved) suppressContextUntil = performance.now() + 600
+      try {
+        container.releasePointerCapture(drag.pointerId)
+      } catch {
+        // The pointer may already be gone after a cancelled gesture.
+      }
+      drag = null
+      canvas.style.cursor = cursorBefore
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      // Right or middle button pans without placing a measurement vertex.
+      if (event.button !== 2 && event.button !== 1) return
+      cursorBefore = canvas.style.cursor
+      drag = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        moved: false,
+      }
+      container.setPointerCapture(event.pointerId)
+      canvas.style.cursor = 'grab'
+      event.preventDefault()
+    }
+    const onPointerMove = (event: PointerEvent) => {
+      if (!drag || event.pointerId !== drag.pointerId) return
+      const dx = event.clientX - drag.x
+      const dy = event.clientY - drag.y
+      if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 3) return
+      drag.moved = true
+      map.panBy([-dx, -dy], { duration: 0 })
+      drag.x = event.clientX
+      drag.y = event.clientY
+      canvas.style.cursor = 'grabbing'
+      event.preventDefault()
+    }
+    const onContextMenu = (event: MouseEvent) => {
+      // Never show the WebView menu over the map; a right-drag must not
+      // also delete a vertex through MapLibre's contextmenu handler.
+      event.preventDefault()
+      if (performance.now() < suppressContextUntil) {
+        event.stopPropagation()
+      }
+    }
+
+    container.addEventListener('pointerdown', onPointerDown)
+    container.addEventListener('pointermove', onPointerMove)
+    container.addEventListener('contextmenu', onContextMenu, true)
+    window.addEventListener('pointerup', finish)
+    window.addEventListener('pointercancel', finish)
+    return () => {
+      container.removeEventListener('pointerdown', onPointerDown)
+      container.removeEventListener('pointermove', onPointerMove)
+      container.removeEventListener('contextmenu', onContextMenu, true)
+      window.removeEventListener('pointerup', finish)
+      window.removeEventListener('pointercancel', finish)
+    }
+  }, [ready])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!ready || !map) return
 
     for (const provider of PROVIDERS) {
       if (!map.getLayer(provider.id)) continue

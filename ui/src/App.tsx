@@ -51,6 +51,7 @@ import {
   parseCoordinateText,
   type LonLat,
 } from './geo'
+import { featureId, type MapFeature } from './features'
 import { markerId } from './markers'
 import { PROVIDERS } from './providers'
 import { useAppStore } from './store'
@@ -607,6 +608,43 @@ function App() {
     [coordinateFormat, crs, crsLabel, map, showToast, tx],
   )
 
+  const saveMeasurement = () => {
+    const state = useAppStore.getState()
+    const mode = state.measureMode
+    const points = state.measurePoints
+    const minimum = mode === 'area' ? 3 : 2
+    if (!mode || points.length < minimum) return
+    const kind: 'line' | 'polygon' = mode === 'area' ? 'polygon' : 'line'
+    const ordinal =
+      state.features.filter((item) => item.kind === kind).length + 1
+    const feature: MapFeature = {
+      id: featureId(),
+      name:
+        kind === 'line'
+          ? tx(`Маршрут ${ordinal}`, `Route ${ordinal}`)
+          : tx(`Полигон ${ordinal}`, `Polygon ${ordinal}`),
+      kind,
+      coordinates: [...points],
+      color: state.featureColor,
+    }
+    state.addFeatures([feature])
+    state.selectFeature(feature.id)
+    state.clearMeasure()
+    state.setMeasureMode(null)
+    state.setPanel('features')
+    state.showToast(
+      kind === 'line'
+        ? tx(
+            'Маршрут сохранён в объекты — доступен экспорт GeoJSON',
+            'Route saved to features — GeoJSON export is available',
+          )
+        : tx(
+            'Полигон сохранён в объекты — доступен экспорт GeoJSON',
+            'Polygon saved to features — GeoJSON export is available',
+          ),
+    )
+  }
+
   const mapHint = drawing
     ? t('hud.selectHint')
     : placingMarker
@@ -1093,7 +1131,34 @@ function App() {
           <MapHud map={map} />
           {mapHint && (
             <div className="draw-hint">
-              {mapHint} <kbd>Esc</kbd>
+              <span>{mapHint}</span>
+              {measureMode !== null && (
+                <span className="hint-pan">{t('hud.panHint')}</span>
+              )}
+              {measureMode !== null && measurePoints.length > 0 && (
+                <button
+                  type="button"
+                  className="hint-action"
+                  onClick={undoMeasurePoint}
+                >
+                  {t('hud.undoPoint')}
+                </button>
+              )}
+              {measureMode !== null && (
+                <button
+                  type="button"
+                  className="hint-action is-primary"
+                  onClick={saveMeasurement}
+                  disabled={
+                    measurePoints.length < (measureMode === 'area' ? 3 : 2)
+                  }
+                >
+                  {measureMode === 'area'
+                    ? t('hud.savePolygon')
+                    : t('hud.saveRoute')}
+                </button>
+              )}
+              <kbd>Esc</kbd>
             </div>
           )}
         </main>
