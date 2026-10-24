@@ -2368,6 +2368,46 @@
   cursor: pointer;
 }
 
+.marker-coordinate-edit {
+  display: flex;
+  flex-direction: column;
+  grid-column: 1 / -1;
+  gap: 5px;
+}
+
+.marker-coordinate-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.marker-coordinate-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.marker-coordinate-row select {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 132px;
+}
+
+.marker-coordinate-apply {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 4px 7px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.marker-coordinate-error {
+  color: var(--danger);
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
 .recent-list {
   display: flex;
   flex-direction: column;

@@ -373,6 +373,32 @@ try {
     if (!pointIcon.includes('🚩')) {
       fail('point icon did not change')
     }
+
+    const pointFormat = page.locator('.marker-coordinate-row select')
+    const pointCoords = page.locator('.marker-coordinate-row input')
+    if ((await pointCoords.count()) === 0) {
+      fail('point coordinate editor is missing')
+    } else {
+      await pointFormat.selectOption('dd')
+      await page.waitForTimeout(150)
+      const decimalValue = await pointCoords.inputValue()
+      if (!/^-?\d+\.\d{5}, -?\d+\.\d{5}$/.test(decimalValue)) {
+        fail(`point coordinates are not decimal (${decimalValue})`)
+      }
+      await pointCoords.fill('55.75580, 37.61730')
+      await pointCoords.press('Enter')
+      await page.waitForTimeout(400)
+      const movedCoords = await page.locator('.marker-coords').first().innerText()
+      if (!/^37N 413\d{3}E 6179\d{3}N$/.test(movedCoords)) {
+        fail(`edited coordinates were not applied (${movedCoords})`)
+      }
+      await pointFormat.selectOption('mgrs')
+      await page.waitForTimeout(150)
+      const mgrsValue = await pointCoords.inputValue()
+      if (!/^37U\b/.test(mgrsValue)) {
+        fail(`MGRS coordinate system did not apply to the point (${mgrsValue})`)
+      }
+    }
   }
   await page.keyboard.press('Escape')
   await page.waitForTimeout(200)

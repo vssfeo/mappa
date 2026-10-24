@@ -51,6 +51,7 @@ import {
   formatArea,
   formatCoordinatePair,
   formatDistance,
+  parseCoordinateText,
   pathLength,
   polygonArea,
 } from './geo'
@@ -75,7 +76,11 @@ import {
   saveProjectFile,
   type AutosaveSnapshot,
 } from './projectTransfer'
-import type { CoordinateFormat, MarkerFileFormat } from './markers'
+import type {
+  CoordinateFormat,
+  MapMarker,
+  MarkerFileFormat,
+} from './markers'
 import {
   useDownloadsStore,
   type DownloadJob,
@@ -297,6 +302,116 @@ function JobCard({
         )}
       </div>
     </article>
+  )
+}
+
+function MarkerCoordinateEditor({
+  marker,
+  defaultFormat,
+  onApply,
+}: {
+  marker: MapMarker
+  defaultFormat: CoordinateFormat
+  onApply: (lon: number, lat: number) => void
+}) {
+  const tx = useText()
+  const [format, setFormat] = useState<CoordinateFormat>(defaultFormat)
+  const [value, setValue] = useState(() =>
+    formatCoordinatePair(marker.lon, marker.lat, defaultFormat),
+  )
+  const [error, setError] = useState(false)
+
+  const apply = () => {
+    const parsed = parseCoordinateText(value)
+    if (!parsed) {
+      setError(true)
+      return false
+    }
+    setError(false)
+    const [lon, lat] = parsed.point
+    onApply(lon, lat)
+    setValue(formatCoordinatePair(lon, lat, format))
+    return true
+  }
+
+  const changeFormat = (next: CoordinateFormat) => {
+    setFormat(next)
+    setValue(formatCoordinatePair(marker.lon, marker.lat, next))
+    setError(false)
+  }
+
+  return (
+    <div className="marker-coordinate-edit">
+      <span className="marker-style-caption">
+        {tx('Координаты точки', 'Point coordinates')}
+      </span>
+      <div className="marker-coordinate-row">
+        <input
+          value={value}
+          onFocus={() => {
+            setValue(formatCoordinatePair(marker.lon, marker.lat, format))
+            setError(false)
+          }}
+          onBlur={() => {
+            const current = formatCoordinatePair(marker.lon, marker.lat, format)
+            if (value.trim() !== current.trim()) apply()
+          }}
+          onChange={(event) => {
+            setValue(event.target.value)
+            setError(false)
+          }}
+          onKeyDown={(event) => {
+            event.stopPropagation()
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              apply()
+            }
+            if (event.key === 'Escape') {
+              setValue(formatCoordinatePair(marker.lon, marker.lat, format))
+              setError(false)
+              event.currentTarget.blur()
+            }
+          }}
+          aria-label={tx(
+            `Координаты точки ${marker.name}`,
+            `Point coordinates ${marker.name}`,
+          )}
+          aria-invalid={error}
+          spellCheck={false}
+        />
+        <select
+          value={format}
+          onChange={(event) =>
+            changeFormat(event.target.value as CoordinateFormat)
+          }
+          onKeyDown={(event) => event.stopPropagation()}
+          aria-label={tx('Система координат точки', 'Point coordinate system')}
+          title={tx('Система координат', 'Coordinate system')}
+        >
+          <option value="dd">WGS84 · {tx('градусы', 'degrees')}</option>
+          <option value="dms">WGS84 · {tx('ГМС', 'DMS')}</option>
+          <option value="utm">WGS84 · UTM</option>
+          <option value="mgrs">WGS84 · MGRS</option>
+        </select>
+        <button
+          type="button"
+          className="ghost-button marker-coordinate-apply"
+          onClick={apply}
+          title={tx('Применить координаты', 'Apply coordinates')}
+        >
+          <CheckCircle2 size={13} />
+          {tx('ОК', 'Apply')}
+        </button>
+      </div>
+      {error && (
+        <span className="marker-coordinate-error" role="alert">
+          {tx(
+            'Не удалось разобрать координаты. Поддерживаются градусы, ГМС, UTM и MGRS.',
+            'Could not parse the coordinates. Degrees, DMS, UTM and MGRS are supported.',
+          )}
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -666,6 +781,17 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
                           onClick={(event) => event.stopPropagation()}
                           onKeyDown={(event) => event.stopPropagation()}
                         >
+                          <MarkerCoordinateEditor
+                            marker={marker}
+                            defaultFormat={coordinateFormat}
+                            onApply={(lon, lat) => {
+                              updateMarker(marker.id, { lon, lat })
+                              map?.easeTo({
+                                center: [lon, lat],
+                                duration: 400,
+                              })
+                            }}
+                          />
                           <span className="marker-style-caption">
                             {tx(
                               'Стиль точки: иконка и цвет',
