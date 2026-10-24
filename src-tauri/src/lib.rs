@@ -24,6 +24,12 @@ use crate::state::AppState;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .on_permission_request(|_, kind| match kind {
+            tauri::webview::PermissionKind::Geolocation => {
+                tauri::webview::PermissionResponse::Allow
+            }
+            _ => tauri::webview::PermissionResponse::Default,
+        })
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // `MAPPA_LOG=debug` makes release builds diagnosable without a rebuild.

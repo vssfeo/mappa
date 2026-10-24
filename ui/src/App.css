@@ -404,6 +404,122 @@
   font-variant-numeric: tabular-nums;
 }
 
+.gps-card .status-dot {
+  background: var(--faint);
+  box-shadow: none;
+}
+
+.gps-card .status-dot.is-live {
+  background: var(--success);
+  box-shadow: 0 0 0 3px rgba(88, 214, 141, 0.14);
+}
+
+.gps-error {
+  margin: 10px 0 0 !important;
+  padding: 8px 9px;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  color: var(--danger) !important;
+}
+
+.gps-coordinates {
+  margin-top: 10px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 11.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.gps-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.gps-metrics > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.gps-metrics span {
+  color: var(--faint);
+  font-size: 9.5px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.gps-metrics strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gps-metrics.is-recording > div {
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--border));
+}
+
+.gps-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.gps-actions .primary-button,
+.gps-actions .ghost-button {
+  height: 28px;
+  padding: 0 9px;
+}
+
+.gps-marker {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  pointer-events: none;
+}
+
+.gps-marker-dot {
+  position: absolute;
+  inset: 5px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: #4cc9f0;
+  box-shadow:
+    0 0 0 2px rgba(76, 201, 240, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.gps-marker-heading {
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-right: 4px solid transparent;
+  border-bottom: 8px solid #4cc9f0;
+  border-left: 4px solid transparent;
+  opacity: 0;
+  transform-origin: 50% 14px;
+  translate: -50% 0;
+  transition: opacity 120ms ease;
+}
+
 .hint-text {
   margin: 8px 4px;
   color: var(--muted);

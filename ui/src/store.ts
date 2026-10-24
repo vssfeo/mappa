@@ -86,6 +86,7 @@ export type Panel =
   | 'downloads'
   | 'markers'
   | 'features'
+  | 'gps'
   | 'projects'
   | 'settings'
   | null

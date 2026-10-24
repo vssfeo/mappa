@@ -84,6 +84,7 @@ import {
 import { exportFeatureFile, importFeatureFile } from './featureTransfer'
 import { TrackChart } from './TrackChart'
 import { buildTrackProfile } from './trackProfile'
+import { GpsPanel } from './GpsPanel'
 import { importMarkerFile, exportMarkerFile } from './markerTransfer'
 import {
   newProject,
@@ -154,6 +155,7 @@ const titles: Record<Exclude<Panel, null>, MessageKey> = {
   downloads: 'panel.downloads',
   markers: 'panel.markers',
   features: 'panel.features',
+  gps: 'panel.gps',
   projects: 'panel.projects',
   settings: 'panel.settings',
 }
@@ -5208,6 +5210,8 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
       {panel === 'markers' && <MarkersPanel map={map} />}
 
       {panel === 'features' && <FeaturesPanel map={map} />}
+
+      {panel === 'gps' && <GpsPanel map={map} />}
 
       {panel === 'projects' && <ProjectsPanel map={map} />}
       </aside>

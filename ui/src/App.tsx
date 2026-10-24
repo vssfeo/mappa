@@ -18,6 +18,7 @@ import {
   Pentagon,
   Plus,
   Ruler,
+  Satellite,
   Save,
   Spline,
   Sun,
@@ -26,6 +27,7 @@ import {
 } from 'lucide-react'
 import { CommandPalette } from './CommandPalette'
 import { CompareMap } from './CompareMap'
+import { GpsLayer } from './GpsLayer'
 import { useCoverageStore } from './coverage'
 import { useT, useText } from './i18n'
 import { DownloadSheet } from './DownloadSheet'
@@ -414,6 +416,10 @@ function App() {
         case 'c':
           event.preventDefault()
           setCompareOpen((open) => !open)
+          break
+        case 'g':
+          event.preventDefault()
+          setPanel('gps')
           break
         case 'v':
           event.preventDefault()
@@ -1054,6 +1060,15 @@ function App() {
         action: () => setCompareOpen((open) => !open),
       },
       {
+        id: 'gps',
+        label: tx('GPS и запись трека', 'GPS and track recording'),
+        group: tx('Инструменты', 'Tools'),
+        hint: 'G',
+        keywords: ['gps', 'gnss', 'трек', 'запись', 'координаты'],
+        icon: Satellite,
+        action: () => setPanel('gps'),
+      },
+      {
         id: 'markers',
         label: tx('Метки', 'Markers'),
         group: tx('Проект', 'Project'),
@@ -1174,6 +1189,7 @@ function App() {
             onSelectMarker={onSelectMarker}
             onReady={onReady}
           />
+          <GpsLayer map={map} />
           {compareOpen && (
             <CompareMap
               map={map}

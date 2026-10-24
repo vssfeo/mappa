@@ -32,7 +32,12 @@ if (!(await reachable())) {
 }
 
 const browser = await chromium.launch({ headless: true })
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+const context = await browser.newContext({
+  viewport: { width: 1440, height: 900 },
+  permissions: ['geolocation'],
+  geolocation: { latitude: 55.75, longitude: 37.61, accuracy: 5 },
+})
+const page = await context.newPage()
 const errors = []
 
 page.on('console', (message) => {
@@ -605,6 +610,53 @@ try {
     await page.waitForTimeout(250)
     if ((await page.locator('.inspector h2').innerText()) !== 'Настройки') {
       fail('Russian interface did not come back')
+    }
+  }
+  await page.keyboard.press('Escape')
+
+  await page.locator('.rail button[title="GPS"]').click()
+  await page.waitForTimeout(300)
+  if ((await page.locator('.inspector h2').innerText()) !== 'GPS / GNSS') {
+    fail('GPS panel did not open')
+  }
+  await page.getByRole('button', { name: 'Начать запись' }).click()
+  await page.waitForTimeout(1200)
+  if ((await page.locator('.gps-marker').count()) === 0) {
+    fail('live GPS marker is missing')
+  }
+  await context.setGeolocation({
+    latitude: 55.7502,
+    longitude: 37.6102,
+    accuracy: 4,
+  })
+  await page.waitForTimeout(1300)
+  await context.setGeolocation({
+    latitude: 55.7504,
+    longitude: 37.6104,
+    accuracy: 4,
+  })
+  await page.waitForTimeout(1300)
+  const recorded = Number.parseInt(
+    (
+      await page
+        .locator('.gps-metrics.is-recording > div:first-child strong')
+        .innerText()
+    ).replace(/\D/g, ''),
+    10,
+  )
+  if (!(recorded >= 2)) {
+    fail(`GPS recording collected ${recorded} points`)
+  } else {
+    await page.getByRole('button', { name: 'Сохранить трек' }).click()
+    await page.waitForTimeout(500)
+    if ((await page.locator('.inspector h2').innerText()) !== 'Объекты') {
+      fail('saved GPS track did not open in Objects')
+    }
+    if ((await page.locator('.track-player').count()) === 0) {
+      fail('GPS track player is missing after save')
+    }
+    if ((await page.locator('.track-profile-chart').count()) === 0) {
+      fail('GPS track elevation/speed chart is missing')
     }
   }
   await page.keyboard.press('Escape')

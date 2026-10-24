@@ -5,6 +5,7 @@ import {
   Layers3,
   Map,
   MapPin,
+  Satellite,
   Settings2,
   Spline,
   type LucideIcon,
@@ -22,6 +23,7 @@ const items: {
   { id: 'downloads', label: 'nav.downloads', icon: Download },
   { id: 'markers', label: 'nav.markers', icon: MapPin },
   { id: 'features', label: 'nav.features', icon: Spline },
+  { id: 'gps', label: 'nav.gps', icon: Satellite },
   { id: 'projects', label: 'nav.projects', icon: FolderOpen },
 ]
 

@@ -18,6 +18,7 @@ const shortcuts: { keys: string[]; label: MessageKey }[] = [
   { keys: ['Delete'], label: 'shortcuts.delete' },
   { keys: ['Backspace'], label: 'shortcuts.backspace' },
   { keys: ['C'], label: 'shortcuts.compare' },
+  { keys: ['G'], label: 'shortcuts.gps' },
   { keys: ['F'], label: 'shortcuts.field' },
   { keys: ['Ctrl', 'J'], label: 'shortcuts.jobs' },
   { keys: ['Ctrl', 'S'], label: 'shortcuts.save' },
