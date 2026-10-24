@@ -2402,14 +2402,6 @@
   font-size: 11px;
 }
 
-.marker-style-caption {
-  grid-column: 1 / -1;
-  color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-}
-
 .marker-filter-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 150px;
@@ -2471,34 +2463,62 @@
   display: flex;
   flex-direction: column;
   grid-column: 1 / -1;
-  gap: 5px;
+  gap: 6px;
+  margin: 2px 0;
 }
 
 .marker-coordinate-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+}
+
+.marker-coordinate-row.is-secondary {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.coord-field {
   display: flex;
   align-items: center;
-  gap: 5px;
-}
-
-.marker-coordinate-row input {
-  flex: 1;
+  gap: 6px;
   min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
 }
 
-.marker-coordinate-row select {
-  flex: 0 0 auto;
-  width: auto;
-  max-width: 132px;
+.coord-field:focus-within {
+  border-color: var(--accent);
+}
+
+.coord-field.is-invalid {
+  border-color: var(--danger);
+}
+
+.coord-field > span {
+  flex: none;
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.marker-extras .coord-field input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  font-size: 11.5px;
 }
 
 .marker-coordinate-apply {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  gap: 4px;
-  padding: 4px 7px;
-  font-size: 11px;
-  white-space: nowrap;
+  width: 29px;
+  height: 29px;
+  padding: 0;
 }
 
 .marker-coordinate-error {

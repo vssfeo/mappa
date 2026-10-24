@@ -1,4 +1,11 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Marker, type Map as MapLibreMap } from 'maplibre-gl'
 import {
@@ -51,7 +58,7 @@ import {
   formatArea,
   formatCoordinatePair,
   formatDistance,
-  parseCoordinateText,
+  parseAngle,
   pathLength,
   polygonArea,
 } from './geo'
@@ -308,108 +315,157 @@ function JobCard({
 
 function MarkerCoordinateEditor({
   marker,
-  defaultFormat,
   onApply,
 }: {
   marker: MapMarker
-  defaultFormat: CoordinateFormat
-  onApply: (lon: number, lat: number) => void
+  onApply: (lon: number, lat: number, elevation?: number) => void
 }) {
   const tx = useText()
-  const [format, setFormat] = useState<CoordinateFormat>(defaultFormat)
-  const [value, setValue] = useState(() =>
-    formatCoordinatePair(marker.lon, marker.lat, defaultFormat),
+  const [latValue, setLatValue] = useState(() => marker.lat.toFixed(6))
+  const [lonValue, setLonValue] = useState(() => marker.lon.toFixed(6))
+  const [heightValue, setHeightValue] = useState(() =>
+    marker.elevation === undefined ? '' : String(marker.elevation),
   )
-  const [error, setError] = useState(false)
+  const [invalid, setInvalid] = useState<'lat' | 'lon' | 'height' | null>(null)
 
   const apply = () => {
-    const parsed = parseCoordinateText(value)
-    if (!parsed) {
-      setError(true)
-      return false
+    const lat = parseAngle(latValue)
+    const lon = parseAngle(lonValue)
+    const trimmedHeight = heightValue.trim()
+    const height = trimmedHeight
+      ? Number(trimmedHeight.replace(',', '.'))
+      : undefined
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+      setInvalid('lat')
+      return
     }
-    setError(false)
-    const [lon, lat] = parsed.point
-    onApply(lon, lat)
-    setValue(formatCoordinatePair(lon, lat, format))
-    return true
+    if (!Number.isFinite(lon) || lon < -180 || lon > 180) {
+      setInvalid('lon')
+      return
+    }
+    if (height !== undefined && !Number.isFinite(height)) {
+      setInvalid('height')
+      return
+    }
+    setInvalid(null)
+    onApply(lon, lat, height)
+    setLatValue(lat.toFixed(6))
+    setLonValue(lon.toFixed(6))
+    setHeightValue(height === undefined ? '' : String(height))
   }
 
-  const changeFormat = (next: CoordinateFormat) => {
-    setFormat(next)
-    setValue(formatCoordinatePair(marker.lon, marker.lat, next))
-    setError(false)
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    event.stopPropagation()
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      apply()
+    }
+    if (event.key === 'Escape') {
+      setLatValue(marker.lat.toFixed(6))
+      setLonValue(marker.lon.toFixed(6))
+      setHeightValue(
+        marker.elevation === undefined ? '' : String(marker.elevation),
+      )
+      setInvalid(null)
+      event.currentTarget.blur()
+    }
   }
 
   return (
     <div className="marker-coordinate-edit">
-      <span className="marker-style-caption">
-        {tx('Координаты точки', 'Point coordinates')}
-      </span>
       <div className="marker-coordinate-row">
-        <input
-          value={value}
-          onFocus={() => {
-            setValue(formatCoordinatePair(marker.lon, marker.lat, format))
-            setError(false)
-          }}
-          onBlur={() => {
-            const current = formatCoordinatePair(marker.lon, marker.lat, format)
-            if (value.trim() !== current.trim()) apply()
-          }}
-          onChange={(event) => {
-            setValue(event.target.value)
-            setError(false)
-          }}
-          onKeyDown={(event) => {
-            event.stopPropagation()
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              apply()
-            }
-            if (event.key === 'Escape') {
-              setValue(formatCoordinatePair(marker.lon, marker.lat, format))
-              setError(false)
-              event.currentTarget.blur()
-            }
-          }}
-          aria-label={tx(
-            `Координаты точки ${marker.name}`,
-            `Point coordinates ${marker.name}`,
-          )}
-          aria-invalid={error}
-          spellCheck={false}
-        />
-        <select
-          value={format}
-          onChange={(event) =>
-            changeFormat(event.target.value as CoordinateFormat)
-          }
-          onKeyDown={(event) => event.stopPropagation()}
-          aria-label={tx('Система координат точки', 'Point coordinate system')}
-          title={tx('Система координат', 'Coordinate system')}
+        <label
+          className={`coord-field${invalid === 'lat' ? ' is-invalid' : ''}`}
+          title={tx('Широта (B), WGS84', 'Latitude (B), WGS84')}
         >
-          <option value="dd">WGS84 · {tx('градусы', 'degrees')}</option>
-          <option value="dms">WGS84 · {tx('ГМС', 'DMS')}</option>
-          <option value="utm">WGS84 · UTM</option>
-          <option value="mgrs">WGS84 · MGRS</option>
-        </select>
+          <span aria-hidden="true">B</span>
+          <input
+            value={latValue}
+            onFocus={() => {
+              setLatValue(marker.lat.toFixed(6))
+              setInvalid(null)
+            }}
+            onChange={(event) => {
+              setLatValue(event.target.value)
+              setInvalid(null)
+            }}
+            onKeyDown={onKeyDown}
+            aria-label={tx('Широта B', 'Latitude B')}
+            aria-invalid={invalid === 'lat'}
+            inputMode="decimal"
+            spellCheck={false}
+          />
+        </label>
+        <label
+          className={`coord-field${invalid === 'lon' ? ' is-invalid' : ''}`}
+          title={tx('Долгота (L), WGS84', 'Longitude (L), WGS84')}
+        >
+          <span aria-hidden="true">L</span>
+          <input
+            value={lonValue}
+            onFocus={() => {
+              setLonValue(marker.lon.toFixed(6))
+              setInvalid(null)
+            }}
+            onChange={(event) => {
+              setLonValue(event.target.value)
+              setInvalid(null)
+            }}
+            onKeyDown={onKeyDown}
+            aria-label={tx('Долгота L', 'Longitude L')}
+            aria-invalid={invalid === 'lon'}
+            inputMode="decimal"
+            spellCheck={false}
+          />
+        </label>
+      </div>
+      <div className="marker-coordinate-row is-secondary">
+        <label
+          className={`coord-field${invalid === 'height' ? ' is-invalid' : ''}`}
+          title={tx(
+            'Высота (h), метры — задел для рельефа',
+            'Elevation (h), metres — reserved for terrain',
+          )}
+        >
+          <span aria-hidden="true">h</span>
+          <input
+            value={heightValue}
+            onFocus={() => {
+              setHeightValue(
+                marker.elevation === undefined ? '' : String(marker.elevation),
+              )
+              setInvalid(null)
+            }}
+            onChange={(event) => {
+              setHeightValue(event.target.value)
+              setInvalid(null)
+            }}
+            onKeyDown={onKeyDown}
+            aria-label={tx('Высота h, метры', 'Elevation h, metres')}
+            aria-invalid={invalid === 'height'}
+            inputMode="decimal"
+            placeholder="—"
+            spellCheck={false}
+          />
+        </label>
         <button
           type="button"
           className="ghost-button marker-coordinate-apply"
           onClick={apply}
+          aria-label={tx('Применить координаты', 'Apply coordinates')}
           title={tx('Применить координаты', 'Apply coordinates')}
         >
-          <CheckCircle2 size={13} />
-          {tx('ОК', 'Apply')}
+          <CheckCircle2 size={14} />
         </button>
       </div>
-      {error && (
+      {invalid && (
         <span className="marker-coordinate-error" role="alert">
-          {tx(
-            'Не удалось разобрать координаты. Поддерживаются градусы, ГМС, UTM и MGRS.',
-            'Could not parse the coordinates. Degrees, DMS, UTM and MGRS are supported.',
-          )}
+          {invalid === 'height'
+            ? tx('Высота должна быть числом', 'Elevation must be a number')
+            : tx(
+                'Проверьте B (−90…90) и L (−180…180)',
+                'Check B (−90…90) and L (−180…180)',
+              )}
         </span>
       )}
     </div>
@@ -844,21 +900,18 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
                         >
                           <MarkerCoordinateEditor
                             marker={marker}
-                            defaultFormat={coordinateFormat}
-                            onApply={(lon, lat) => {
-                              updateMarker(marker.id, { lon, lat })
+                            onApply={(lon, lat, elevation) => {
+                              updateMarker(marker.id, {
+                                lon,
+                                lat,
+                                elevation,
+                              })
                               map?.easeTo({
                                 center: [lon, lat],
                                 duration: 400,
                               })
                             }}
                           />
-                          <span className="marker-style-caption">
-                            {tx(
-                              'Стиль точки: иконка и цвет',
-                              'Point style: icon and colour',
-                            )}
-                          </span>
                           <input
                             value={marker.folder ?? ''}
                             onChange={(event) =>
@@ -868,6 +921,7 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
                             }
                             placeholder={tx('Папка', 'Folder')}
                             aria-label={tx('Папка метки', 'Marker folder')}
+                            title={tx('Папка', 'Folder')}
                           />
                           <select
                             value={marker.icon ?? ''}
@@ -877,6 +931,7 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
                               })
                             }
                             aria-label={tx('Иконка метки', 'Marker icon')}
+                            title={tx('Иконка', 'Icon')}
                           >
                             <option value="">
                               ● {tx('метка', 'marker')}
@@ -905,6 +960,7 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
                               })
                             }
                             aria-label={tx('Цвет метки', 'Marker colour')}
+                            title={tx('Цвет', 'Colour')}
                           />
                         </div>
                       )}

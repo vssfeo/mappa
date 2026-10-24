@@ -192,6 +192,16 @@ const projectMarkers = (value: unknown): MapMarker[] => {
       lon,
       lat,
     }
+    const elevation = Number(record.elevation)
+    if (
+      (typeof record.elevation === 'number' ||
+        typeof record.elevation === 'string') &&
+      Number.isFinite(elevation) &&
+      elevation >= -12_000 &&
+      elevation <= 12_000
+    ) {
+      marker.elevation = elevation
+    }
     if (typeof record.description === 'string' && record.description.trim()) {
       marker.description = record.description.slice(0, 2_000)
     }

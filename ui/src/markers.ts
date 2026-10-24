@@ -18,6 +18,8 @@ export interface MapMarker {
   name: string
   lon: number
   lat: number
+  /** Optional elevation in metres; reserved for terrain-aware tools. */
+  elevation?: number
   description?: string
   /** Optional user folder; markers are grouped by it in the panel. */
   folder?: string

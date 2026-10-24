@@ -399,29 +399,37 @@ try {
       fail('point icon did not change')
     }
 
-    const pointFormat = page.locator('.marker-coordinate-row select')
-    const pointCoords = page.locator('.marker-coordinate-row input')
-    if ((await pointCoords.count()) === 0) {
-      fail('point coordinate editor is missing')
+    const latField = page.locator('input[aria-label="Широта B"]')
+    const lonField = page.locator('input[aria-label="Долгота L"]')
+    const heightField = page.locator('input[aria-label="Высота h, метры"]')
+    if (
+      (await latField.count()) === 0 ||
+      (await lonField.count()) === 0 ||
+      (await heightField.count()) === 0
+    ) {
+      fail('point coordinate editor is missing B/L/h fields')
     } else {
-      await pointFormat.selectOption('dd')
-      await page.waitForTimeout(150)
-      const decimalValue = await pointCoords.inputValue()
-      if (!/^-?\d+\.\d{5}, -?\d+\.\d{5}$/.test(decimalValue)) {
-        fail(`point coordinates are not decimal (${decimalValue})`)
+      const latBox = await latField.boundingBox()
+      if (!latBox || latBox.width < 60) {
+        fail(`latitude field is too narrow (${latBox?.width})`)
       }
-      await pointCoords.fill('55.75580, 37.61730')
-      await pointCoords.press('Enter')
+      await latField.fill('55.75580')
+      await lonField.fill('37.61730')
+      await heightField.fill('145')
+      await heightField.press('Enter')
       await page.waitForTimeout(400)
       const movedCoords = await page.locator('.marker-coords').first().innerText()
       if (!/^37N 413\d{3}E 6179\d{3}N$/.test(movedCoords)) {
         fail(`edited coordinates were not applied (${movedCoords})`)
       }
-      await pointFormat.selectOption('mgrs')
-      await page.waitForTimeout(150)
-      const mgrsValue = await pointCoords.inputValue()
-      if (!/^37U\b/.test(mgrsValue)) {
-        fail(`MGRS coordinate system did not apply to the point (${mgrsValue})`)
+      const storedMarkers = await page.evaluate(() =>
+        JSON.parse(localStorage.getItem('mappa-ui') ?? '{}')?.state?.markers,
+      )
+      const edited = Array.isArray(storedMarkers)
+        ? storedMarkers.find((marker) => marker.name === 'Тестовая метка')
+        : null
+      if (!edited || edited.elevation !== 145) {
+        fail(`point elevation was not stored (${JSON.stringify(edited)})`)
       }
     }
   }
