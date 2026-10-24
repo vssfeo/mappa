@@ -24,6 +24,21 @@ import {
   type VertexPath,
 } from './geometryEdit.ts'
 
+/** Moves an item by `delta`; a positive delta raises it in the stack. */
+const moveLayerItem = <T extends { id: string }>(
+  items: T[],
+  id: string,
+  delta: number,
+): T[] => {
+  const index = items.findIndex((item) => item.id === id)
+  const target = index + delta
+  if (index < 0 || target < 0 || target >= items.length) return items
+  const next = [...items]
+  const [item] = next.splice(index, 1)
+  next.splice(target, 0, item)
+  return next
+}
+
 export type Theme = 'dark' | 'light'
 export type Panel =
   | 'layers'
@@ -113,6 +128,7 @@ interface AppState {
   vectorLayers: VectorLayer[]
   addVectorLayer: (layer: VectorLayer) => void
   removeVectorLayer: (id: string) => void
+  moveVectorLayer: (id: string, delta: number) => void
   toggleVectorLayer: (id: string) => void
   setVectorLayerOpacity: (id: string, opacity: number) => void
   setVectorLayerStyle: (id: string, patch: Partial<VectorStyle>) => void
@@ -140,6 +156,7 @@ interface AppState {
   packPaths: string[]
   addPack: (pack: PackLayer) => void
   removePack: (id: string) => void
+  movePack: (id: string, delta: number) => void
   forgetPackPath: (path: string) => void
   togglePack: (id: string) => void
   setPackOpacity: (id: string, opacity: number) => void
@@ -526,6 +543,11 @@ export const useAppStore = create<AppState>()(
         selectedVector:
           state.selectedVector?.layerId === id ? null : state.selectedVector,
       })),
+    moveVectorLayer: (id, delta) =>
+      set((state) => {
+        const vectorLayers = moveLayerItem(state.vectorLayers, id, delta)
+        return vectorLayers === state.vectorLayers ? {} : { vectorLayers }
+      }),
     toggleVectorLayer: (id) =>
       set((state) => ({
         vectorLayers: state.vectorLayers.map((layer) =>
@@ -639,6 +661,18 @@ export const useAppStore = create<AppState>()(
             ? state.packPaths.filter((path) => path !== pack.path)
             : state.packPaths,
         }
+      }),
+    movePack: (id, delta) =>
+      set((state) => {
+        const packs = moveLayerItem(state.packs, id, delta)
+        if (packs === state.packs) return {}
+        const order = new Map(packs.map((pack, index) => [pack.path, index]))
+        const packPaths = [...state.packPaths].sort(
+          (left, right) =>
+            (order.get(left) ?? Number.MAX_SAFE_INTEGER) -
+            (order.get(right) ?? Number.MAX_SAFE_INTEGER),
+        )
+        return { packs, packPaths }
       }),
     forgetPackPath: (path) =>
       set((state) => ({

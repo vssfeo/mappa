@@ -11,6 +11,8 @@ import { Marker, type Map as MapLibreMap } from 'maplibre-gl'
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Circle,
   Clock3,
   Database,
@@ -3073,8 +3075,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   )
   const togglePack = useAppStore((state) => state.togglePack)
   const setPackOpacity = useAppStore((state) => state.setPackOpacity)
+  const movePack = useAppStore((state) => state.movePack)
   const vectorLayers = useAppStore((state) => state.vectorLayers)
   const removeVectorLayer = useAppStore((state) => state.removeVectorLayer)
+  const moveVectorLayer = useAppStore((state) => state.moveVectorLayer)
   const toggleVectorLayer = useAppStore((state) => state.toggleVectorLayer)
   const setVectorLayerOpacity = useAppStore(
     (state) => state.setVectorLayerOpacity,
@@ -3112,6 +3116,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const [cache, setCache] = useState<NativeCacheStats | null>(null)
   const [sourceForm, setSourceForm] = useState(false)
   const [sourceBusy, setSourceBusy] = useState(false)
+  const [sourceError, setSourceError] = useState<string | null>(null)
   const [sourceDraft, setSourceDraft] = useState<CustomSourceDraft>({
     name: '',
     kind: 'xyz',
@@ -3286,11 +3291,34 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   }
 
   const submitSource = async () => {
+    setSourceError(null)
     if (!sourceDraft.name.trim() || !sourceDraft.url.trim()) {
-      showToast(
+      setSourceError(
         tx(
           'Укажите название и URL источника',
           'Provide a source name and URL',
+        ),
+      )
+      return
+    }
+    const url = sourceDraft.url.trim()
+    let parsedUrl: URL
+    try {
+      parsedUrl = new URL(url)
+    } catch {
+      setSourceError(
+        tx(
+          'URL должен быть полным и начинаться с http:// или https://',
+          'The URL must be absolute and start with http:// or https://',
+        ),
+      )
+      return
+    }
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      setSourceError(
+        tx(
+          'Поддерживаются только http:// и https://',
+          'Only http:// and https:// are supported',
         ),
       )
       return
@@ -3325,7 +3353,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
               /\{TileRow\}/.test(sourceDraft.url))
           : hasXyzTokens(sourceDraft.url)
     if (!validUrl) {
-      showToast(
+      setSourceError(
         sourceDraft.kind === 'wms'
           ? tx(
               'В URL WMS нужен плейсхолдер {bbox-epsg-3857}',
@@ -3414,11 +3442,13 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
     })
     setHeaderText(formatHeaders(source.headers))
     setWmtsLayers([])
+    setSourceError(null)
     setSourceForm(true)
   }
 
   const closeSourceForm = () => {
     setSourceForm(false)
+    setSourceError(null)
     setHeaderText('')
     setWmtsLayers([])
     setSourceDraft((draft) => ({
@@ -3718,21 +3748,6 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
           <section className="section">
             <div className="section-heading">
               <span>{tx('Слои', 'Layers')}</span>
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={() =>
-                  showToast(
-                    tx(
-                      'Добавление слоёв — следующий этап',
-                      'Adding layers is the next milestone',
-                    ),
-                  )
-                }
-              >
-                <Plus size={14} />
-                {tx('Добавить', 'Add')}
-              </button>
             </div>
 
             <div className="layer-list">
@@ -3944,11 +3959,14 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                     value={sourceDraft.url}
                     onChange={(event) => {
                       setWmtsLayers([])
+                      setSourceError(null)
                       setSourceDraft((draft) => ({
                         ...draft,
                         url: event.target.value,
                       }))
                     }}
+                    aria-invalid={sourceError !== null}
+                    title={tx('Полный URL источника', 'Absolute source URL')}
                     placeholder={
                       sourceDraft.kind === 'wms'
                         ? 'https://wms.example.org/?service=WMS&request=GetMap&layers=demo&crs=EPSG:3857&bbox={bbox-epsg-3857}&width=256&height=256'
@@ -3958,6 +3976,11 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                     }
                     spellCheck={false}
                   />
+                  {sourceError && (
+                    <span className="source-error" role="alert">
+                      {sourceError}
+                    </span>
+                  )}
                 </label>
                 {sourceDraft.kind === 'wms' && (
                   <span className="source-hint">
@@ -4380,7 +4403,11 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
               </p>
             ) : (
               <div className="layer-list">
-                {vectorLayers.map((layer) => (
+                {[...vectorLayers].reverse().map((layer) => {
+                  const index = vectorLayers.findIndex(
+                    (item) => item.id === layer.id,
+                  )
+                  return (
                   <div
                     className={`layer-row pack-row vector-row${layer.visible ? ' is-visible' : ''}`}
                     key={layer.id}
@@ -4490,6 +4517,32 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                     <span className="layer-opacity">
                       {Math.round(layer.opacity * 100)}%
                     </span>
+                    <div className="layer-order">
+                      <button
+                        type="button"
+                        onClick={() => moveVectorLayer(layer.id, 1)}
+                        disabled={index === vectorLayers.length - 1}
+                        aria-label={tx(
+                          `Поднять ${layer.name} выше`,
+                          `Raise ${layer.name}`,
+                        )}
+                        title={tx('Выше на карте', 'Raise on the map')}
+                      >
+                        <ChevronUp size={11} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveVectorLayer(layer.id, -1)}
+                        disabled={index === 0}
+                        aria-label={tx(
+                          `Опустить ${layer.name} ниже`,
+                          `Lower ${layer.name}`,
+                        )}
+                        title={tx('Ниже на карте', 'Lower on the map')}
+                      >
+                        <ChevronDown size={11} />
+                      </button>
+                    </div>
                     <button
                       type="button"
                       className="icon-button pack-close"
@@ -4573,7 +4626,8 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                       <X size={14} />
                     </button>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
             <label className="source-check vector-snap">
@@ -4663,7 +4717,9 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
               </p>
             ) : (
               <div className="layer-list">
-                {packs.map((pack) => (
+                {[...packs].reverse().map((pack) => {
+                  const index = packs.findIndex((item) => item.id === pack.id)
+                  return (
                   <div
                     className={`layer-row pack-row${pack.visible ? ' is-visible' : ''}`}
                     key={pack.id}
@@ -4746,6 +4802,32 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                     <span className="layer-opacity">
                       {Math.round(pack.opacity * 100)}%
                     </span>
+                    <div className="layer-order">
+                      <button
+                        type="button"
+                        onClick={() => movePack(pack.id, 1)}
+                        disabled={index === packs.length - 1}
+                        aria-label={tx(
+                          `Поднять ${pack.name} выше`,
+                          `Raise ${pack.name}`,
+                        )}
+                        title={tx('Выше на карте', 'Raise on the map')}
+                      >
+                        <ChevronUp size={11} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => movePack(pack.id, -1)}
+                        disabled={index === 0}
+                        aria-label={tx(
+                          `Опустить ${pack.name} ниже`,
+                          `Lower ${pack.name}`,
+                        )}
+                        title={tx('Ниже на карте', 'Lower on the map')}
+                      >
+                        <ChevronDown size={11} />
+                      </button>
+                    </div>
                     <button
                       type="button"
                       className="icon-button pack-close"
@@ -4777,7 +4859,8 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                       <X size={14} />
                     </button>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </section>

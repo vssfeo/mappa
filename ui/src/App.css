@@ -786,6 +786,29 @@
   text-align: right;
 }
 
+.layer-order {
+  display: flex;
+  flex-direction: column;
+}
+
+.layer-order button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 14px;
+  border-radius: 3px;
+  color: var(--faint);
+}
+
+.layer-order button:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.layer-order button:disabled {
+  opacity: 0.25;
+}
+
 .coverage-controls {
   display: flex;
   align-items: center;
@@ -862,6 +885,16 @@
   color: var(--faint);
   font-size: 10.5px;
   line-height: 1.4;
+}
+
+.source-error {
+  color: var(--danger);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.source-form input[aria-invalid='true'] {
+  border-color: var(--danger);
 }
 
 .source-grid {

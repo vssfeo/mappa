@@ -1404,6 +1404,15 @@ export function MapCanvas({
       if (map.getSource(sourceId)) map.removeSource(sourceId)
       vectorDataRef.current.delete(id)
     }
+    // The store array is the stack order: later layers render above.
+    if (map.getLayer('selection-fill')) {
+      for (const layer of vectorLayers) {
+        for (const suffix of ['fill', 'line', 'point']) {
+          const layerId = `vector-${layer.id}-${suffix}`
+          if (map.getLayer(layerId)) map.moveLayer(layerId, 'selection-fill')
+        }
+      }
+    }
     vectorLayerIdsRef.current = active
   }, [vectorLayers, ready])
 
@@ -2347,8 +2356,21 @@ export function MapCanvas({
     }
     // Packs are added on top of the style; keep overlays above them.
     if (structuresChanged) raiseFeatureLayers(map)
+    const firstVector = vectorLayers[0]
+    const vectorAnchor =
+      firstVector && map.getLayer(`vector-${firstVector.id}-fill`)
+        ? `vector-${firstVector.id}-fill`
+        : map.getLayer('selection-fill')
+          ? 'selection-fill'
+          : null
+    if (vectorAnchor) {
+      for (const pack of packs) {
+        const layerId = `pack-layer-${pack.id}`
+        if (map.getLayer(layerId)) map.moveLayer(layerId, vectorAnchor)
+      }
+    }
     packIdsRef.current = current
-  }, [packs, ready])
+  }, [packs, vectorLayers, ready])
 
   useEffect(() => {
     const map = mapRef.current

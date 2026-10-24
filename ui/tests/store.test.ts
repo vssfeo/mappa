@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { distance, polygonArea } from '../src/geo.ts'
-import { useAppStore } from '../src/store.ts'
+import { useAppStore, type PackLayer } from '../src/store.ts'
+import type { VectorLayer } from '../src/vectorLayers.ts'
 
 const marker = {
   id: 'm1',
@@ -41,6 +42,62 @@ test('undo and redo restore markers and collapse rapid edits', () => {
   assert.equal(useAppStore.getState().markers[0].name, 'Вторая')
   assert.equal(useAppStore.getState().future.length, 0)
   useAppStore.getState().clearHistory()
+})
+
+test('layer order follows the map stack and pack paths stay in sync', () => {
+  const vector = (id: string): VectorLayer => ({
+    id,
+    name: id,
+    format: 'geojson',
+    features: [],
+    style: { color: '#ffffff', lineWidth: 1, fillOpacity: 0.2, pointRadius: 3 },
+    visible: true,
+    opacity: 1,
+    source: null,
+  })
+  const pack = (id: string): PackLayer => ({
+    id,
+    name: id,
+    path: `/maps/${id}.mbtiles`,
+    kind: 'mbtiles',
+    format: 'png',
+    minZoom: 0,
+    maxZoom: 12,
+    west: 30,
+    south: 44,
+    east: 36,
+    north: 46,
+    attribution: null,
+    tiles: 10,
+    visible: true,
+    opacity: 1,
+  })
+  useAppStore.setState({ vectorLayers: [], packs: [], packPaths: [] })
+  const store = useAppStore.getState()
+  for (const id of ['a', 'b', 'c']) store.addVectorLayer(vector(id))
+  store.moveVectorLayer('a', 1)
+  assert.deepEqual(
+    useAppStore.getState().vectorLayers.map((layer) => layer.id),
+    ['b', 'a', 'c'],
+  )
+  store.moveVectorLayer('c', -1)
+  assert.deepEqual(
+    useAppStore.getState().vectorLayers.map((layer) => layer.id),
+    ['b', 'c', 'a'],
+  )
+
+  useAppStore.setState({ packs: [], packPaths: [] })
+  store.addPack(pack('one'))
+  store.addPack(pack('two'))
+  store.movePack('one', 1)
+  assert.deepEqual(
+    useAppStore.getState().packs.map((item) => item.id),
+    ['two', 'one'],
+  )
+  assert.deepEqual(useAppStore.getState().packPaths, [
+    '/maps/two.mbtiles',
+    '/maps/one.mbtiles',
+  ])
 })
 
 test('drawing a circle stores a round polygon with its radius', () => {
