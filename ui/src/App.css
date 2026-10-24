@@ -928,8 +928,10 @@
 }
 
 .source-check {
+  display: flex;
   flex-direction: row !important;
   align-items: center;
+  width: 100%;
   gap: 7px !important;
 }
 
@@ -1171,15 +1173,16 @@
 
 .csv-columns {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
   margin: 8px 4px 0;
 }
 
 .csv-column {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   color: var(--muted);
   font-size: 10.5px;
   cursor: pointer;

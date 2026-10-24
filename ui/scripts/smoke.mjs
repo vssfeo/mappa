@@ -499,6 +499,15 @@ try {
         fail('custom icon was not stored on the marker')
       }
     }
+
+    const csvRows = await page
+      .locator('.csv-column')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => Math.round(node.getBoundingClientRect().top)),
+      )
+    if (csvRows.length > 1 && new Set(csvRows).size !== csvRows.length) {
+      fail('CSV checkboxes are not on separate rows')
+    }
   }
   await page.keyboard.press('Escape')
   await page.waitForTimeout(200)
