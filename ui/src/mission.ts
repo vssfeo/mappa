@@ -14,6 +14,8 @@ export interface MissionOptions {
   name?: string
   mode?: 'agl' | 'asl'
   cruiseSpeed?: number
+  /** Inclusion circle around the home point. */
+  geofenceRadiusM?: number
 }
 
 const round = (value: number, digits = 7) =>
@@ -90,7 +92,23 @@ export function qgcPlan(
   return JSON.stringify(
     {
       fileType: 'Plan',
-      geoFence: { circles: [], polygons: [], version: 2 },
+      geoFence: {
+        circles:
+          options.geofenceRadiusM && options.geofenceRadiusM > 0
+            ? [
+                {
+                  circle: {
+                    center: [round(home.lat), round(home.lon)],
+                    radius: options.geofenceRadiusM,
+                  },
+                  inclusion: true,
+                  version: 1,
+                },
+              ]
+            : [],
+        polygons: [],
+        version: 2,
+      },
       groundStation: 'Mappa',
       mission: {
         cruiseSpeed: options.cruiseSpeed ?? 15,
@@ -168,4 +186,74 @@ export function missionKmz(
   return createStoredZip([
     { name: 'doc.kml', data: new TextEncoder().encode(kml) },
   ])
+}
+
+
+/**
+ * Lawnmower survey: parallel lines inside a polygon, spaced `spacingM`
+ * apart, alternating direction. Coordinates are WGS84; the local metric
+ * frame uses an equirectangular approximation around the centroid, which is
+ * accurate enough for fields under a few kilometres.
+ */
+export function surveyWaypoints(
+  polygon: [number, number][],
+  spacingM: number,
+  angleDeg = 0,
+): [number, number][] {
+  if (polygon.length < 3) return []
+  if (!(spacingM > 0.5)) throw new Error('spacing must be positive')
+  const ring =
+    polygon[0][0] === polygon[polygon.length - 1][0] &&
+    polygon[0][1] === polygon[polygon.length - 1][1]
+      ? polygon.slice(0, -1)
+      : polygon.slice()
+  if (ring.length < 3) return []
+
+  const lon0 = ring.reduce((sum, point) => sum + point[0], 0) / ring.length
+  const lat0 = ring.reduce((sum, point) => sum + point[1], 0) / ring.length
+  const metresPerDegreeLat = 111_320
+  const metresPerDegreeLon = 111_320 * Math.cos((lat0 * Math.PI) / 180)
+  const angle = (angleDeg * Math.PI) / 180
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  const toLocal = ([lon, lat]: [number, number]): [number, number] => {
+    const x = (lon - lon0) * metresPerDegreeLon
+    const y = (lat - lat0) * metresPerDegreeLat
+    return [x * cos + y * sin, -x * sin + y * cos]
+  }
+  const fromLocal = ([x, y]: [number, number]): [number, number] => {
+    const rx = x * cos - y * sin
+    const ry = x * sin + y * cos
+    return [lon0 + rx / metresPerDegreeLon, lat0 + ry / metresPerDegreeLat]
+  }
+
+  const local = ring.map(toLocal)
+  const minY = Math.min(...local.map((point) => point[1]))
+  const maxY = Math.max(...local.map((point) => point[1]))
+  const waypoints: [number, number][] = []
+  let flipped = false
+  for (let y = minY + spacingM / 2; y <= maxY; y += spacingM) {
+    const crossings: number[] = []
+    for (let index = 0; index < local.length; index += 1) {
+      const [x1, y1] = local[index]
+      const [x2, y2] = local[(index + 1) % local.length]
+      if ((y1 <= y && y2 > y) || (y2 <= y && y1 > y)) {
+        crossings.push(x1 + ((y - y1) / (y2 - y1)) * (x2 - x1))
+      }
+    }
+    crossings.sort((a, b) => a - b)
+    for (let index = 0; index + 1 < crossings.length; index += 2) {
+      const left = crossings[index]
+      const right = crossings[index + 1]
+      if (right - left < 1) continue
+      const pair: [number, number][] = [
+        [left, y],
+        [right, y],
+      ]
+      if (flipped) pair.reverse()
+      waypoints.push(...pair.map(fromLocal))
+    }
+    flipped = !flipped
+  }
+  return waypoints
 }

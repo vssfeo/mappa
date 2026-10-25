@@ -134,7 +134,8 @@ export function GeorefPanel({ onClose }: GeorefPanelProps) {
     }
   }
 
-  const enough = gcps.length >= (model === 'helmert' ? 2 : 3)
+  const required = { affine: 3, helmert: 2, poly: 6, tps: 3 }[model]
+  const enough = gcps.length >= required
   const good = solution !== null && solution.rmse <= 30
 
   return (
@@ -206,6 +207,12 @@ export function GeorefPanel({ onClose }: GeorefPanelProps) {
                     </option>
                     <option value="helmert">
                       {tx('Гельмерта (2+ точки)', 'Helmert (2+ points)')}
+                    </option>
+                    <option value="poly">
+                      {tx('Полином (6+ точек)', 'Polynomial (6+ points)')}
+                    </option>
+                    <option value="tps">
+                      {tx('TPS (3+ точки)', 'TPS (3+ points)')}
                     </option>
                   </select>
                 </label>

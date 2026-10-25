@@ -3,7 +3,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { isNative } from './native'
 
-export type GeorefModel = 'affine' | 'helmert'
+export type GeorefModel = 'affine' | 'helmert' | 'poly' | 'tps'
 
 export interface Gcp {
   px: number

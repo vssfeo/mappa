@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { missionKml, missionKmz, qgcPlan, type MissionPoint } from '../src/mission.ts'
+import { missionKml, missionKmz, qgcPlan, surveyWaypoints, type MissionPoint } from '../src/mission.ts'
 
 const points: MissionPoint[] = [
   { name: 'Start', lon: 34.1, lat: 44.9, alt: 100 },
@@ -61,4 +61,44 @@ test('packs the KML into a stored ZIP', () => {
   const text = new TextDecoder().decode(kmz)
   assert.match(text, /doc\.kml/)
   assert.match(text, /<LineString>/)
+})
+
+
+test('adds an inclusion geofence circle', () => {
+  const plan = JSON.parse(qgcPlan(points, { geofenceRadiusM: 500 }))
+  assert.equal(plan.geoFence.circles.length, 1)
+  assert.equal(plan.geoFence.circles[0].circle.radius, 500)
+  assert.deepEqual(plan.geoFence.circles[0].circle.center, [44.9, 34.1])
+  assert.equal(plan.geoFence.circles[0].inclusion, true)
+})
+
+test('no geofence when the radius is zero', () => {
+  const plan = JSON.parse(qgcPlan(points))
+  assert.equal(plan.geoFence.circles.length, 0)
+})
+
+test('builds a lawnmower survey inside a polygon', () => {
+  const polygon: [number, number][] = [
+    [34.0, 44.9],
+    [34.01, 44.9],
+    [34.01, 44.91],
+    [34.0, 44.91],
+    [34.0, 44.9],
+  ]
+  const waypoints = surveyWaypoints(polygon, 100)
+  assert.ok(waypoints.length >= 10, `only ${waypoints.length} waypoints`)
+  assert.equal(waypoints.length % 2, 0)
+  for (const [lon, lat] of waypoints) {
+    assert.ok(lon >= 34.0 && lon <= 34.01)
+    assert.ok(lat >= 44.9 && lat <= 44.91)
+  }
+  // Boustrophedon: every second line runs the other way.
+  const first = waypoints[0]
+  const third = waypoints[2]
+  assert.ok(first[0] < third[0] || first[0] > third[0])
+})
+
+test('survey rejects a bad spacing', () => {
+  assert.throws(() => surveyWaypoints([[0, 0], [1, 0], [1, 1]], 0))
+  assert.deepEqual(surveyWaypoints([[0, 0], [1, 0]], 100), [])
 })

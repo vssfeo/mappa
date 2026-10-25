@@ -4,7 +4,7 @@ import { Download, Send, X } from 'lucide-react'
 import { useText } from './i18n'
 import { useAppStore } from './store'
 import { writeBinaryFile, writeTextFile } from './native'
-import { missionKml, missionKmz, qgcPlan, type MissionPoint } from './mission'
+import { missionKml, missionKmz, qgcPlan, surveyWaypoints, type MissionPoint } from './mission'
 import { useDialogFocus } from './useDialogFocus'
 
 interface MissionPanelProps {
@@ -15,6 +15,7 @@ interface MissionPanelProps {
 export function MissionPanel({ onClose }: MissionPanelProps) {
   const tx = useText()
   const markers = useAppStore((state) => state.markers)
+  const features = useAppStore((state) => state.features)
   const showToast = useAppStore((state) => state.showToast)
   const dialogRef = useRef<HTMLElement | null>(null)
   useDialogFocus(dialogRef, onClose)
@@ -29,19 +30,38 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
   const [name, setName] = useState('Mappa mission')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [geofenceRadius, setGeofenceRadius] = useState(0)
+  const [polygonId, setPolygonId] = useState('')
+  const [spacing, setSpacing] = useState(100)
 
-  const points: MissionPoint[] = useMemo(
-    () =>
-      markers
-        .filter((marker) => (folder === '' ? true : (marker.folder ?? '') === folder))
-        .map((marker) => ({
-          name: marker.name,
-          lon: marker.lon,
-          lat: marker.lat,
-          alt: altitude,
-        })),
-    [markers, folder, altitude],
+  const polygons = useMemo(
+    () => features.filter((feature) => feature.kind === 'polygon'),
+    [features],
   )
+  const points: MissionPoint[] = useMemo(() => {
+    if (polygonId) {
+      const polygon = features.find((feature) => feature.id === polygonId)
+      if (!polygon) return []
+      try {
+        return surveyWaypoints(polygon.coordinates, spacing).map(([lon, lat], index) => ({
+          name: `WP ${index + 1}`,
+          lon,
+          lat,
+          alt: altitude,
+        }))
+      } catch {
+        return []
+      }
+    }
+    return markers
+      .filter((marker) => (folder === '' ? true : (marker.folder ?? '') === folder))
+      .map((marker) => ({
+        name: marker.name,
+        lon: marker.lon,
+        lat: marker.lat,
+        alt: altitude,
+      }))
+  }, [markers, features, folder, altitude, polygonId, spacing])
 
   const exportFile = async (kind: 'plan' | 'kml' | 'kmz') => {
     if (points.length === 0) return
@@ -66,7 +86,10 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
       })
       if (typeof target !== 'string') return
       if (kind === 'plan') {
-        await writeTextFile(target, qgcPlan(points, { name, mode }))
+        await writeTextFile(
+          target,
+          qgcPlan(points, { name, mode, geofenceRadiusM: geofenceRadius }),
+        )
       } else if (kind === 'kml') {
         await writeTextFile(target, missionKml(points, name, mode))
       } else {
@@ -111,8 +134,8 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
 
         <p className="settings-hint">
           {tx(
-            'Каждая метка становится путевой точкой в порядке списка «Объекты». Высота задаётся для всех точек сразу; для QGC это AGL или ASL.',
-            'Every marker becomes a waypoint in Objects order. One altitude applies to all points; QGC treats it as AGL or ASL.',
+            'Без полигона каждая метка становится путевой точкой. С полигоном строится «змейка» с заданным шагом линий. Высота общая; для QGC это AGL или ASL.',
+            'Without a polygon every marker becomes a waypoint. With a polygon a lawnmower grid is built with the given line spacing. One altitude for all points; QGC treats it as AGL or ASL.',
           )}
         </p>
 
@@ -147,6 +170,40 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
               <option value="agl">{tx('AGL — над рельефом', 'AGL — above terrain')}</option>
               <option value="asl">{tx('ASL — над морем', 'ASL — above sea level')}</option>
             </select>
+          </label>
+          <label>
+            <span>{tx('Геозона, м', 'Geofence, m')}</span>
+            <input
+              type="number"
+              min={0}
+              max={50000}
+              step={100}
+              value={geofenceRadius}
+              onChange={(event) => setGeofenceRadius(Number(event.target.value))}
+            />
+          </label>
+          <label>
+            <span>{tx('Полигон-съёмка', 'Survey polygon')}</span>
+            <select value={polygonId} onChange={(event) => setPolygonId(event.target.value)}>
+              <option value="">{tx('Нет', 'None')}</option>
+              {polygons.map((feature) => (
+                <option key={feature.id} value={feature.id}>
+                  {feature.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{tx('Шаг линий, м', 'Line spacing, m')}</span>
+            <input
+              type="number"
+              min={5}
+              max={5000}
+              step={5}
+              value={spacing}
+              disabled={!polygonId}
+              onChange={(event) => setSpacing(Number(event.target.value))}
+            />
           </label>
           <label>
             <span>{tx('Название', 'Name')}</span>

@@ -45,6 +45,103 @@ pub struct GeorefSolution {
     pub residuals: Vec<f64>,
     /// EPSG:3857 bounding box of the whole scan: west, south, east, north.
     pub bounds: [f64; 4],
+    /// Non-linear transform; `None` means the affine field is exact.
+    pub transform: Option<Transform>,
+}
+
+/// Non-linear pixel-to-mercator transforms.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum Transform {
+    Poly {
+        cx: [f64; 6],
+        cy: [f64; 6],
+        hint: Affine,
+    },
+    Tps {
+        points: Vec<[f64; 2]>,
+        wx: Vec<f64>,
+        wy: Vec<f64>,
+        ax: [f64; 3],
+        ay: [f64; 3],
+        hint: Affine,
+    },
+}
+
+fn poly_terms(px: f64, py: f64) -> [f64; 6] {
+    [1.0, px, py, px * px, px * py, py * py]
+}
+
+fn dot(coefficients: &[f64; 6], terms: &[f64; 6]) -> f64 {
+    (0..6).map(|i| coefficients[i] * terms[i]).sum()
+}
+
+fn tps_basis(r2: f64) -> f64 {
+    if r2 <= 0.0 { 0.0 } else { 0.5 * r2 * r2.ln() }
+}
+
+impl Transform {
+    pub fn apply(&self, px: f64, py: f64) -> (f64, f64) {
+        match self {
+            Transform::Poly { cx, cy, .. } => {
+                let terms = poly_terms(px, py);
+                (dot(cx, &terms), dot(cy, &terms))
+            }
+            Transform::Tps {
+                points,
+                wx,
+                wy,
+                ax,
+                ay,
+                ..
+            } => {
+                let mut x = ax[0] + ax[1] * px + ax[2] * py;
+                let mut y = ay[0] + ay[1] * px + ay[2] * py;
+                for (index, point) in points.iter().enumerate() {
+                    let r2 = (px - point[0]).powi(2) + (py - point[1]).powi(2);
+                    let basis = tps_basis(r2);
+                    x += wx[index] * basis;
+                    y += wy[index] * basis;
+                }
+                (x, y)
+            }
+        }
+    }
+
+    /// Inverse via Newton iterations; the affine hint gives the first guess.
+    pub fn inverse(&self, x: f64, y: f64) -> Option<(f64, f64)> {
+        let hint = match self {
+            Transform::Poly { hint, .. } | Transform::Tps { hint, .. } => *hint,
+        };
+        let (mut px, mut py) = hint.inverse_point(x, y);
+        for _ in 0..40 {
+            let (fx, fy) = self.apply(px, py);
+            let ex = fx - x;
+            let ey = fy - y;
+            if ex * ex + ey * ey < 1e-4 {
+                return Some((px, py));
+            }
+            let step = 0.5;
+            let (gx, gy) = self.apply(px + step, py);
+            let (hx, hy) = self.apply(px, py + step);
+            let j11 = (gx - fx) / step;
+            let j21 = (gy - fy) / step;
+            let j12 = (hx - fx) / step;
+            let j22 = (hy - fy) / step;
+            let determinant = j11 * j22 - j12 * j21;
+            if determinant.abs() < 1e-12 {
+                return None;
+            }
+            let dx = (j22 * ex - j12 * ey) / determinant;
+            let dy = (-j21 * ex + j11 * ey) / determinant;
+            px -= dx;
+            py -= dy;
+            if !px.is_finite() || !py.is_finite() {
+                return None;
+            }
+        }
+        None
+    }
 }
 
 const MAX_OUTPUT_PIXELS: u64 = 120_000_000;
@@ -76,6 +173,10 @@ pub enum GeorefModel {
     Affine,
     /// Similarity (Helmert): scale, rotation and translation, four parameters.
     Helmert,
+    /// Second-order polynomial: twelve parameters, for slightly warped scans.
+    Poly,
+    /// Thin plate spline: exact through control points, for rubber-sheet scans.
+    Tps,
 }
 
 /// Fits an affine transform by least squares. Needs at least three points
@@ -89,6 +190,8 @@ pub fn solve_model(gcps: &[Gcp], model: GeorefModel) -> Result<GeorefSolution, S
     let required = match model {
         GeorefModel::Affine => 3,
         GeorefModel::Helmert => 2,
+        GeorefModel::Poly => 6,
+        GeorefModel::Tps => 3,
     };
     if gcps.len() < required {
         return Err(format!(
@@ -102,58 +205,16 @@ pub fn solve_model(gcps: &[Gcp], model: GeorefModel) -> Result<GeorefSolution, S
         return Err("a control point has invalid coordinates".to_owned());
     }
 
-    let affine = match model {
-        GeorefModel::Affine => {
-            let mut normal = [[0.0_f64; 3]; 3];
-            let mut rhs_x = [0.0_f64; 3];
-            let mut rhs_y = [0.0_f64; 3];
-            for gcp in gcps {
-                let (x, y) = mercator(gcp.lon, gcp.lat);
-                let row = [gcp.px, gcp.py, 1.0];
-                for (i, value) in row.iter().enumerate() {
-                    for (j, other) in row.iter().enumerate() {
-                        normal[i][j] += value * other;
-                    }
-                    rhs_x[i] += value * x;
-                    rhs_y[i] += value * y;
-                }
-            }
-            let [a, b, c] =
-                solve_linear(normal, rhs_x).ok_or("control points are collinear on the scan")?;
-            let [d, e, f] =
-                solve_linear(normal, rhs_y).ok_or("control points are collinear on the scan")?;
-            Affine { a, b, c, d, e, f }
+    let (affine, transform) = match model {
+        GeorefModel::Affine => (fit_affine(gcps)?, None),
+        GeorefModel::Helmert => (fit_helmert(gcps)?, None),
+        GeorefModel::Poly => {
+            let hint = fit_affine(gcps)?;
+            (hint, Some(fit_poly(gcps, hint)?))
         }
-        GeorefModel::Helmert => {
-            // x = a*px - b*py + c, y = b*px + a*py + f.
-            let mut normal = [[0.0_f64; 4]; 4];
-            let mut rhs = [0.0_f64; 4];
-            for gcp in gcps {
-                let (x, y) = mercator(gcp.lon, gcp.lat);
-                for (row, target) in [
-                    ([gcp.px, -gcp.py, 1.0, 0.0], x),
-                    ([gcp.py, gcp.px, 0.0, 1.0], y),
-                ] {
-                    for (i, value) in row.iter().enumerate() {
-                        for (j, other) in row.iter().enumerate() {
-                            normal[i][j] += value * other;
-                        }
-                        rhs[i] += value * target;
-                    }
-                }
-            }
-            let parameters =
-                solve_linear(normal, rhs).ok_or("control points are collinear on the scan")?;
-            // Store the rotation in the affine convention: the y term of the
-            // x equation is negative in a Helmert transform.
-            Affine {
-                a: parameters[0],
-                b: -parameters[1],
-                c: parameters[2],
-                d: parameters[1],
-                e: parameters[0],
-                f: parameters[3],
-            }
+        GeorefModel::Tps => {
+            let hint = fit_affine(gcps)?;
+            (hint, Some(fit_tps(gcps, hint)?))
         }
     };
 
@@ -161,9 +222,11 @@ pub fn solve_model(gcps: &[Gcp], model: GeorefModel) -> Result<GeorefSolution, S
     let mut residuals = Vec::with_capacity(gcps.len());
     for gcp in gcps {
         let (x, y) = mercator(gcp.lon, gcp.lat);
-        let dx = affine.a * gcp.px + affine.b * gcp.py + affine.c - x;
-        let dy = affine.d * gcp.px + affine.e * gcp.py + affine.f - y;
-        let error = (dx * dx + dy * dy).sqrt();
+        let (fx, fy) = match &transform {
+            Some(transform) => transform.apply(gcp.px, gcp.py),
+            None => affine.apply(gcp.px, gcp.py),
+        };
+        let error = ((fx - x).powi(2) + (fy - y).powi(2)).sqrt();
         squares += error * error;
         residuals.push(error);
     }
@@ -174,7 +237,149 @@ pub fn solve_model(gcps: &[Gcp], model: GeorefModel) -> Result<GeorefSolution, S
         rmse,
         residuals,
         bounds: [0.0; 4],
+        transform,
     })
+}
+
+fn fit_affine(gcps: &[Gcp]) -> Result<Affine, String> {
+    let mut normal = [[0.0_f64; 3]; 3];
+    let mut rhs_x = [0.0_f64; 3];
+    let mut rhs_y = [0.0_f64; 3];
+    for gcp in gcps {
+        let (x, y) = mercator(gcp.lon, gcp.lat);
+        let row = [gcp.px, gcp.py, 1.0];
+        for (i, value) in row.iter().enumerate() {
+            for (j, other) in row.iter().enumerate() {
+                normal[i][j] += value * other;
+            }
+            rhs_x[i] += value * x;
+            rhs_y[i] += value * y;
+        }
+    }
+    let [a, b, c] =
+        solve_linear(normal, rhs_x).ok_or("control points are collinear on the scan")?;
+    let [d, e, f] =
+        solve_linear(normal, rhs_y).ok_or("control points are collinear on the scan")?;
+    Ok(Affine { a, b, c, d, e, f })
+}
+
+fn fit_helmert(gcps: &[Gcp]) -> Result<Affine, String> {
+    // x = a*px - b*py + c, y = b*px + a*py + f.
+    let mut normal = [[0.0_f64; 4]; 4];
+    let mut rhs = [0.0_f64; 4];
+    for gcp in gcps {
+        let (x, y) = mercator(gcp.lon, gcp.lat);
+        for (row, target) in [
+            ([gcp.px, -gcp.py, 1.0, 0.0], x),
+            ([gcp.py, gcp.px, 0.0, 1.0], y),
+        ] {
+            for (i, value) in row.iter().enumerate() {
+                for (j, other) in row.iter().enumerate() {
+                    normal[i][j] += value * other;
+                }
+                rhs[i] += value * target;
+            }
+        }
+    }
+    let parameters = solve_linear(normal, rhs).ok_or("control points are collinear on the scan")?;
+    Ok(Affine {
+        a: parameters[0],
+        b: -parameters[1],
+        c: parameters[2],
+        d: parameters[1],
+        e: parameters[0],
+        f: parameters[3],
+    })
+}
+
+fn fit_poly(gcps: &[Gcp], hint: Affine) -> Result<Transform, String> {
+    let mut normal = [[0.0_f64; 6]; 6];
+    let mut rhs_x = [0.0_f64; 6];
+    let mut rhs_y = [0.0_f64; 6];
+    for gcp in gcps {
+        let (x, y) = mercator(gcp.lon, gcp.lat);
+        let terms = poly_terms(gcp.px, gcp.py);
+        for (i, value) in terms.iter().enumerate() {
+            for (j, other) in terms.iter().enumerate() {
+                normal[i][j] += value * other;
+            }
+            rhs_x[i] += value * x;
+            rhs_y[i] += value * y;
+        }
+    }
+    let matrix: Vec<Vec<f64>> = normal.iter().map(|row| row.to_vec()).collect();
+    let cx = solve_dense(matrix.clone(), rhs_x.to_vec())
+        .ok_or("control points do not define a polynomial")?;
+    let cy =
+        solve_dense(matrix, rhs_y.to_vec()).ok_or("control points do not define a polynomial")?;
+    Ok(Transform::Poly {
+        cx: [cx[0], cx[1], cx[2], cx[3], cx[4], cx[5]],
+        cy: [cy[0], cy[1], cy[2], cy[3], cy[4], cy[5]],
+        hint,
+    })
+}
+
+fn fit_tps(gcps: &[Gcp], hint: Affine) -> Result<Transform, String> {
+    let n = gcps.len();
+    let size = n + 3;
+    let mut matrix = vec![vec![0.0_f64; size]; size];
+    let mut rhs_x = vec![0.0_f64; size];
+    let mut rhs_y = vec![0.0_f64; size];
+    for (i, gcp) in gcps.iter().enumerate() {
+        let (x, y) = mercator(gcp.lon, gcp.lat);
+        rhs_x[i] = x;
+        rhs_y[i] = y;
+        for (j, other) in gcps.iter().enumerate() {
+            let r2 = (gcp.px - other.px).powi(2) + (gcp.py - other.py).powi(2);
+            matrix[i][j] = tps_basis(r2);
+        }
+        matrix[i][n] = 1.0;
+        matrix[i][n + 1] = gcp.px;
+        matrix[i][n + 2] = gcp.py;
+        matrix[n][i] = 1.0;
+        matrix[n + 1][i] = gcp.px;
+        matrix[n + 2][i] = gcp.py;
+    }
+    let solution_x = solve_dense(matrix.clone(), rhs_x)
+        .ok_or("control points do not define a thin plate spline")?;
+    let solution_y =
+        solve_dense(matrix, rhs_y).ok_or("control points do not define a thin plate spline")?;
+    Ok(Transform::Tps {
+        points: gcps.iter().map(|gcp| [gcp.px, gcp.py]).collect(),
+        wx: solution_x[..n].to_vec(),
+        wy: solution_y[..n].to_vec(),
+        ax: [solution_x[n], solution_x[n + 1], solution_x[n + 2]],
+        ay: [solution_y[n], solution_y[n + 1], solution_y[n + 2]],
+        hint,
+    })
+}
+
+/// Extent of a non-linear transform across the whole scan.
+fn extent_with(transform: &Transform, width: f64, height: f64) -> [f64; 4] {
+    let corners = [
+        transform.apply(0.0, 0.0),
+        transform.apply(width, 0.0),
+        transform.apply(width, height),
+        transform.apply(0.0, height),
+    ];
+    [
+        corners
+            .iter()
+            .map(|corner| corner.0)
+            .fold(f64::INFINITY, f64::min),
+        corners
+            .iter()
+            .map(|corner| corner.1)
+            .fold(f64::INFINITY, f64::min),
+        corners
+            .iter()
+            .map(|corner| corner.0)
+            .fold(f64::NEG_INFINITY, f64::max),
+        corners
+            .iter()
+            .map(|corner| corner.1)
+            .fold(f64::NEG_INFINITY, f64::max),
+    ]
 }
 
 /// Bounding box of the transformed scan: west, south, east, north.
@@ -203,6 +408,44 @@ pub fn extent(affine: &Affine, width: f64, height: f64) -> [f64; 4] {
             .map(|corner| corner.1)
             .fold(f64::NEG_INFINITY, f64::max),
     ]
+}
+
+/// Solves a dense system with partial pivoting; `None` when singular.
+fn solve_dense(mut matrix: Vec<Vec<f64>>, mut rhs: Vec<f64>) -> Option<Vec<f64>> {
+    let n = rhs.len();
+    if matrix.len() != n || matrix.iter().any(|row| row.len() != n) {
+        return None;
+    }
+    for column in 0..n {
+        let mut pivot = column;
+        for row in column + 1..n {
+            if matrix[row][column].abs() > matrix[pivot][column].abs() {
+                pivot = row;
+            }
+        }
+        if matrix[pivot][column].abs() < 1e-12 {
+            return None;
+        }
+        matrix.swap(column, pivot);
+        rhs.swap(column, pivot);
+        let pivot_row = matrix[column].clone();
+        for row in column + 1..n {
+            let factor = matrix[row][column] / pivot_row[column];
+            for cell in column..n {
+                matrix[row][cell] -= factor * pivot_row[cell];
+            }
+            rhs[row] -= factor * rhs[column];
+        }
+    }
+    let mut result = vec![0.0_f64; n];
+    for row in (0..n).rev() {
+        let mut sum = rhs[row];
+        for column in row + 1..n {
+            sum -= matrix[row][column] * result[column];
+        }
+        result[row] = sum / matrix[row][row];
+    }
+    Some(result)
 }
 
 /// Solves a square system with partial pivoting; `None` when singular.
@@ -248,6 +491,14 @@ impl Affine {
         )
     }
 
+    /// Applies the inverse transform, falling back to the input on failure.
+    pub fn inverse_point(&self, x: f64, y: f64) -> (f64, f64) {
+        match self.invert() {
+            Some(inverse) => inverse.apply(x, y),
+            None => (x, y),
+        }
+    }
+
     /// Inverse transform, used when resampling the output grid.
     fn invert(&self) -> Option<Affine> {
         let determinant = self.a * self.e - self.b * self.d;
@@ -277,13 +528,27 @@ pub fn warp_to_cog(
     let width = image.width() as f64;
     let height = image.height() as f64;
 
-    let [west, south, east, north] = extent(&solution.affine, width, height);
+    let [west, south, east, north] = match &solution.transform {
+        Some(transform) => extent_with(transform, width, height),
+        None => extent(&solution.affine, width, height),
+    };
     if !(west.is_finite() && east.is_finite() && south.is_finite() && north.is_finite()) {
         return Err("the transform produced an invalid extent".to_owned());
     }
 
-    let det = (solution.affine.a * solution.affine.e - solution.affine.b * solution.affine.d).abs();
-    let natural = det.sqrt().max(1e-6);
+    let natural = match &solution.transform {
+        Some(transform) => {
+            let (x0, y0) = transform.apply(0.0, 0.0);
+            let (x1, y1) = transform.apply(1.0, 0.0);
+            let (x2, y2) = transform.apply(0.0, 1.0);
+            let det = ((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)).abs();
+            det.sqrt().max(1e-6)
+        }
+        None => (solution.affine.a * solution.affine.e - solution.affine.b * solution.affine.d)
+            .abs()
+            .sqrt()
+            .max(1e-6),
+    };
     let resolution = resolution.filter(|value| *value > 0.0).unwrap_or(natural);
     let out_width = ((east - west) / resolution).ceil().max(1.0);
     let out_height = ((north - south) / resolution).ceil().max(1.0);
@@ -295,10 +560,10 @@ pub fn warp_to_cog(
     let out_width = out_width as u32;
     let out_height = out_height as u32;
 
-    let inverse = solution
-        .affine
-        .invert()
-        .ok_or("the affine transform is not invertible")?;
+    let transform = solution.transform.clone();
+    if transform.is_none() && solution.affine.invert().is_none() {
+        return Err("the affine transform is not invertible".to_owned());
+    }
     let mut canvas = RgbImage::from_pixel(out_width, out_height, image::Rgb([0, 0, 0]));
     let source = image.as_raw();
     let source_width = image.width() as i64;
@@ -308,7 +573,13 @@ pub fn warp_to_cog(
         let y = north - (row as f64 + 0.5) * resolution;
         for column in 0..out_width {
             let x = west + (column as f64 + 0.5) * resolution;
-            let (px, py) = inverse.apply(x, y);
+            let (px, py) = match &transform {
+                Some(transform) => match transform.inverse(x, y) {
+                    Some(point) => point,
+                    None => continue,
+                },
+                None => solution.affine.inverse_point(x, y),
+            };
             if px < -0.5 || py < -0.5 || px > width - 0.5 || py > height - 0.5 {
                 continue;
             }
@@ -470,6 +741,72 @@ mod tests {
         ];
         assert!(solve_model(&two, GeorefModel::Helmert).is_ok());
         assert!(solve_model(&two, GeorefModel::Affine).is_err());
+    }
+
+    fn quadratic_gcps() -> Vec<Gcp> {
+        let (bx, by) = mercator(10.0, 50.0);
+        [
+            (0.0, 0.0),
+            (100.0, 0.0),
+            (0.0, 100.0),
+            (100.0, 100.0),
+            (50.0, 0.0),
+            (0.0, 50.0),
+            (100.0, 50.0),
+            (50.0, 100.0),
+        ]
+        .into_iter()
+        .map(|(px, py)| {
+            let x = bx + 80.0 * px + 0.02 * py * py;
+            let y = by - 80.0 * py + 0.01 * px * py;
+            let (lon, lat) = lonlat(x, y);
+            Gcp { px, py, lon, lat }
+        })
+        .collect()
+    }
+
+    #[test]
+    fn polynomial_fits_a_quadratic_warp() {
+        let gcps = quadratic_gcps();
+        let solution = solve_model(&gcps, GeorefModel::Poly).unwrap();
+        assert!(solution.rmse < 0.01, "rmse {}", solution.rmse);
+        assert!(solution.transform.is_some());
+        let (x, y) = solution.transform.as_ref().unwrap().apply(25.0, 25.0);
+        let expected = lonlat_to_mercator_for_test(10.0, 50.0, 25.0, 25.0);
+        assert!((x - expected.0).abs() < 1.0);
+        assert!((y - expected.1).abs() < 1.0);
+    }
+
+    fn lonlat_to_mercator_for_test(base_lon: f64, base_lat: f64, px: f64, py: f64) -> (f64, f64) {
+        let (bx, by) = mercator(base_lon, base_lat);
+        (
+            bx + 80.0 * px + 0.02 * py * py,
+            by - 80.0 * py + 0.01 * px * py,
+        )
+    }
+
+    #[test]
+    fn polynomial_needs_six_points() {
+        let gcps = &quadratic_gcps()[..5];
+        assert!(solve_model(gcps, GeorefModel::Poly).is_err());
+    }
+
+    #[test]
+    fn thin_plate_spline_passes_through_points() {
+        let gcps = quadratic_gcps();
+        let solution = solve_model(&gcps, GeorefModel::Tps).unwrap();
+        assert!(solution.rmse < 0.5, "rmse {}", solution.rmse);
+        let transform = solution.transform.as_ref().unwrap();
+        let (x, y) = transform.apply(50.0, 50.0);
+        let (px, py) = transform.inverse(x, y).unwrap();
+        assert!((px - 50.0).abs() < 0.05, "px {px}");
+        assert!((py - 50.0).abs() < 0.05, "py {py}");
+    }
+
+    #[test]
+    fn thin_plate_spline_needs_three_points() {
+        let gcps = &quadratic_gcps()[..2];
+        assert!(solve_model(gcps, GeorefModel::Tps).is_err());
     }
 
     #[test]
