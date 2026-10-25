@@ -5,7 +5,7 @@ import { readBinaryFile } from './native'
 import { useText } from './i18n'
 import { useAppStore } from './store'
 import { useViewStore } from './viewStore'
-import { solveGeoref, warpScan, type Gcp, type GeorefSolution } from './georef'
+import { solveGeoref, warpScan, type Gcp, type GeorefModel, type GeorefSolution } from './georef'
 import { useDialogFocus } from './useDialogFocus'
 
 interface Scan {
@@ -28,6 +28,7 @@ export function GeorefPanel({ onClose }: GeorefPanelProps) {
   const [scan, setScan] = useState<Scan | null>(null)
   const [gcps, setGcps] = useState<Gcp[]>([])
   const [solution, setSolution] = useState<GeorefSolution | null>(null)
+  const [model, setModel] = useState<GeorefModel>('affine')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   useDialogFocus(dialogRef, onClose)
@@ -98,7 +99,7 @@ export function GeorefPanel({ onClose }: GeorefPanelProps) {
     setBusy(true)
     setError(null)
     try {
-      setSolution(await solveGeoref(gcps, scan.width, scan.height))
+      setSolution(await solveGeoref(gcps, scan.width, scan.height, model))
     } catch (cause) {
       setError(String(cause))
     } finally {
@@ -117,7 +118,7 @@ export function GeorefPanel({ onClose }: GeorefPanelProps) {
         filters: [{ name: 'GeoTIFF', extensions: ['tif', 'tiff'] }],
       })
       if (typeof target !== 'string') return
-      const report = await warpScan(scan.path, target, gcps)
+      const report = await warpScan(scan.path, target, gcps, model)
       showToast(
         tx('Сохранено: {p0} ({p1}×{p2})', 'Saved: {p0} ({p1}×{p2})', {
           p0: target,
@@ -133,7 +134,7 @@ export function GeorefPanel({ onClose }: GeorefPanelProps) {
     }
   }
 
-  const enough = gcps.length >= 3
+  const enough = gcps.length >= (model === 'helmert' ? 2 : 3)
   const good = solution !== null && solution.rmse <= 30
 
   return (
@@ -191,6 +192,23 @@ export function GeorefPanel({ onClose }: GeorefPanelProps) {
                 onClick={addPoint}
               />
               <div className="georef-side">
+                <label className="georef-model">
+                  <span>{tx('Преобразование', 'Transform')}</span>
+                  <select
+                    value={model}
+                    onChange={(event) => {
+                      setModel(event.target.value as GeorefModel)
+                      setSolution(null)
+                    }}
+                  >
+                    <option value="affine">
+                      {tx('Аффинное (3+ точки)', 'Affine (3+ points)')}
+                    </option>
+                    <option value="helmert">
+                      {tx('Гельмерта (2+ точки)', 'Helmert (2+ points)')}
+                    </option>
+                  </select>
+                </label>
                 <div className="georef-actions">
                   <button type="button" className="ghost-button" onClick={() => void pickScan()}>
                     <FileImage size={14} />

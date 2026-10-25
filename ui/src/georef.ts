@@ -3,6 +3,8 @@
 import { invoke } from '@tauri-apps/api/core'
 import { isNative } from './native'
 
+export type GeorefModel = 'affine' | 'helmert'
+
 export interface Gcp {
   px: number
   py: number
@@ -39,17 +41,19 @@ export const solveGeoref = async (
   gcps: Gcp[],
   width: number,
   height: number,
+  model: GeorefModel = 'affine',
 ): Promise<GeorefSolution> => {
   if (!isNative) throw new Error('georeferencing is available in the desktop app')
-  return invoke<GeorefSolution>('georef_solve', { gcps, width, height })
+  return invoke<GeorefSolution>('georef_solve', { gcps, width, height, model })
 }
 
 export const warpScan = async (
   input: string,
   output: string,
   gcps: Gcp[],
+  model: GeorefModel = 'affine',
   resolution: number | null = null,
 ): Promise<WarpReport> => {
   if (!isNative) throw new Error('georeferencing is available in the desktop app')
-  return invoke<WarpReport>('georef_warp', { input, output, gcps, resolution })
+  return invoke<WarpReport>('georef_warp', { input, output, gcps, model, resolution })
 }

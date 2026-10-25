@@ -2604,6 +2604,27 @@ body.is-layer-dragging {
   color: var(--danger);
 }
 
+/* ---------- georeferencing ---------- */
+
+.georef-model {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.georef-model select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+}
+
 /* ---------- crash reports ---------- */
 
 .crash-list {

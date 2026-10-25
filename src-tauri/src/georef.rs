@@ -55,7 +55,8 @@ const ORIGIN_SHIFT: f64 = std::f64::consts::PI * EARTH_RADIUS;
 pub fn mercator(lon: f64, lat: f64) -> (f64, f64) {
     let x = lon * ORIGIN_SHIFT / 180.0;
     let clamped = lat.clamp(-85.051_128_78, 85.051_128_78);
-    let y = (std::f64::consts::PI * clamped / 180.0).tan().ln() * EARTH_RADIUS;
+    let phi = std::f64::consts::PI * clamped / 180.0;
+    let y = (std::f64::consts::FRAC_PI_4 + phi / 2.0).tan().ln() * EARTH_RADIUS;
     (x, y)
 }
 
@@ -67,11 +68,32 @@ pub fn lonlat(x: f64, y: f64) -> (f64, f64) {
     (lon, lat)
 }
 
+/// Which transform to fit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GeorefModel {
+    /// Full affine transform: six parameters.
+    Affine,
+    /// Similarity (Helmert): scale, rotation and translation, four parameters.
+    Helmert,
+}
+
 /// Fits an affine transform by least squares. Needs at least three points
 /// that are not collinear on the scan.
 pub fn solve(gcps: &[Gcp]) -> Result<GeorefSolution, String> {
-    if gcps.len() < 3 {
-        return Err("at least three ground control points are required".to_owned());
+    solve_model(gcps, GeorefModel::Affine)
+}
+
+/// Fits the requested transform by least squares.
+pub fn solve_model(gcps: &[Gcp], model: GeorefModel) -> Result<GeorefSolution, String> {
+    let required = match model {
+        GeorefModel::Affine => 3,
+        GeorefModel::Helmert => 2,
+    };
+    if gcps.len() < required {
+        return Err(format!(
+            "at least {required} ground control points are required"
+        ));
     }
     if gcps
         .iter()
@@ -80,24 +102,60 @@ pub fn solve(gcps: &[Gcp]) -> Result<GeorefSolution, String> {
         return Err("a control point has invalid coordinates".to_owned());
     }
 
-    let mut normal = [[0.0_f64; 3]; 3];
-    let mut rhs_x = [0.0_f64; 3];
-    let mut rhs_y = [0.0_f64; 3];
-    for gcp in gcps {
-        let (x, y) = mercator(gcp.lon, gcp.lat);
-        let row = [gcp.px, gcp.py, 1.0];
-        for i in 0..3 {
-            for j in 0..3 {
-                normal[i][j] += row[i] * row[j];
+    let affine = match model {
+        GeorefModel::Affine => {
+            let mut normal = [[0.0_f64; 3]; 3];
+            let mut rhs_x = [0.0_f64; 3];
+            let mut rhs_y = [0.0_f64; 3];
+            for gcp in gcps {
+                let (x, y) = mercator(gcp.lon, gcp.lat);
+                let row = [gcp.px, gcp.py, 1.0];
+                for (i, value) in row.iter().enumerate() {
+                    for (j, other) in row.iter().enumerate() {
+                        normal[i][j] += value * other;
+                    }
+                    rhs_x[i] += value * x;
+                    rhs_y[i] += value * y;
+                }
             }
-            rhs_x[i] += row[i] * x;
-            rhs_y[i] += row[i] * y;
+            let [a, b, c] =
+                solve_linear(normal, rhs_x).ok_or("control points are collinear on the scan")?;
+            let [d, e, f] =
+                solve_linear(normal, rhs_y).ok_or("control points are collinear on the scan")?;
+            Affine { a, b, c, d, e, f }
         }
-    }
-
-    let (a, b, c) = solve3(normal, rhs_x).ok_or("control points are collinear on the scan")?;
-    let (d, e, f) = solve3(normal, rhs_y).ok_or("control points are collinear on the scan")?;
-    let affine = Affine { a, b, c, d, e, f };
+        GeorefModel::Helmert => {
+            // x = a*px - b*py + c, y = b*px + a*py + f.
+            let mut normal = [[0.0_f64; 4]; 4];
+            let mut rhs = [0.0_f64; 4];
+            for gcp in gcps {
+                let (x, y) = mercator(gcp.lon, gcp.lat);
+                for (row, target) in [
+                    ([gcp.px, -gcp.py, 1.0, 0.0], x),
+                    ([gcp.py, gcp.px, 0.0, 1.0], y),
+                ] {
+                    for (i, value) in row.iter().enumerate() {
+                        for (j, other) in row.iter().enumerate() {
+                            normal[i][j] += value * other;
+                        }
+                        rhs[i] += value * target;
+                    }
+                }
+            }
+            let parameters =
+                solve_linear(normal, rhs).ok_or("control points are collinear on the scan")?;
+            // Store the rotation in the affine convention: the y term of the
+            // x equation is negative in a Helmert transform.
+            Affine {
+                a: parameters[0],
+                b: -parameters[1],
+                c: parameters[2],
+                d: parameters[1],
+                e: parameters[0],
+                f: parameters[3],
+            }
+        }
+    };
 
     let mut squares = 0.0;
     let mut residuals = Vec::with_capacity(gcps.len());
@@ -147,11 +205,11 @@ pub fn extent(affine: &Affine, width: f64, height: f64) -> [f64; 4] {
     ]
 }
 
-/// Solves a 3x3 system with partial pivoting; `None` when singular.
-fn solve3(mut matrix: [[f64; 3]; 3], mut rhs: [f64; 3]) -> Option<(f64, f64, f64)> {
-    for column in 0..3 {
+/// Solves a square system with partial pivoting; `None` when singular.
+fn solve_linear<const N: usize>(mut matrix: [[f64; N]; N], mut rhs: [f64; N]) -> Option<[f64; N]> {
+    for column in 0..N {
         let mut pivot = column;
-        for row in column + 1..3 {
+        for row in column + 1..N {
             if matrix[row][column].abs() > matrix[pivot][column].abs() {
                 pivot = row;
             }
@@ -162,7 +220,7 @@ fn solve3(mut matrix: [[f64; 3]; 3], mut rhs: [f64; 3]) -> Option<(f64, f64, f64
         matrix.swap(column, pivot);
         rhs.swap(column, pivot);
         let pivot_row = matrix[column];
-        for row in column + 1..3 {
+        for row in column + 1..N {
             let factor = matrix[row][column] / pivot_row[column];
             for (cell, value) in matrix[row].iter_mut().enumerate().skip(column) {
                 *value -= factor * pivot_row[cell];
@@ -170,15 +228,15 @@ fn solve3(mut matrix: [[f64; 3]; 3], mut rhs: [f64; 3]) -> Option<(f64, f64, f64
             rhs[row] -= factor * rhs[column];
         }
     }
-    let mut result = [0.0_f64; 3];
-    for row in (0..3).rev() {
+    let mut result = [0.0_f64; N];
+    for row in (0..N).rev() {
         let mut sum = rhs[row];
-        for column in row + 1..3 {
+        for column in row + 1..N {
             sum -= matrix[row][column] * result[column];
         }
         result[row] = sum / matrix[row][row];
     }
-    Some((result[0], result[1], result[2]))
+    Some(result)
 }
 
 impl Affine {
@@ -211,10 +269,11 @@ impl Affine {
 pub fn warp_to_cog(
     image: &RgbImage,
     gcps: &[Gcp],
+    model: GeorefModel,
     output: &Path,
     resolution: Option<f64>,
 ) -> Result<WarpReport, String> {
-    let solution = solve(gcps)?;
+    let solution = solve_model(gcps, model)?;
     let width = image.width() as f64;
     let height = image.height() as f64;
 
@@ -366,6 +425,54 @@ mod tests {
     }
 
     #[test]
+    fn fits_a_similarity_exactly() {
+        // Scale 2, rotation 30 degrees, translation; 2 points suffice.
+        let angle: f64 = 30.0_f64.to_radians();
+        let (a, b) = (2.0 * angle.cos(), 2.0 * angle.sin());
+        let gcps: Vec<Gcp> = [(0.0, 0.0), (60.0, 20.0)]
+            .into_iter()
+            .map(|(px, py)| {
+                let x = 1_000_000.0 + a * px - b * py + 500.0;
+                let y = 6_000_000.0 + b * px + a * py - 200.0;
+                let (lon, lat) = lonlat(x, y);
+                Gcp { px, py, lon, lat }
+            })
+            .collect();
+        let solution = solve_model(&gcps, GeorefModel::Helmert).unwrap();
+        assert!(solution.rmse < 0.5, "rmse {}", solution.rmse);
+        assert!((solution.affine.a - a).abs() < 1e-6);
+        assert!((solution.affine.b + b).abs() < 1e-6);
+        assert!((solution.affine.d - b).abs() < 1e-6);
+    }
+
+    #[test]
+    fn helmert_needs_two_points_and_affine_three() {
+        let one = [Gcp {
+            px: 0.0,
+            py: 0.0,
+            lon: 10.0,
+            lat: 50.0,
+        }];
+        assert!(solve_model(&one, GeorefModel::Helmert).is_err());
+        let two = [
+            Gcp {
+                px: 0.0,
+                py: 0.0,
+                lon: 10.0,
+                lat: 50.0,
+            },
+            Gcp {
+                px: 10.0,
+                py: 10.0,
+                lon: 10.1,
+                lat: 50.1,
+            },
+        ];
+        assert!(solve_model(&two, GeorefModel::Helmert).is_ok());
+        assert!(solve_model(&two, GeorefModel::Affine).is_err());
+    }
+
+    #[test]
     fn rejects_collinear_points() {
         let gcps = vec![
             Gcp {
@@ -428,7 +535,8 @@ mod tests {
         let image = RgbImage::from_fn(100, 100, |x, y| {
             image::Rgb([(x % 256) as u8, (y % 256) as u8, 128])
         });
-        let report = warp_to_cog(&image, &exact_gcps(), &output, None).unwrap();
+        let report =
+            warp_to_cog(&image, &exact_gcps(), GeorefModel::Affine, &output, None).unwrap();
         assert!(report.width > 0 && report.height > 0);
         let bytes = std::fs::read(&output).unwrap();
         assert!(bytes.starts_with(b"II*\0"), "not a TIFF: {:?}", &bytes[..4]);
@@ -456,6 +564,7 @@ pub async fn georef_warp(
     output: String,
     gcps: Vec<Gcp>,
     resolution: Option<f64>,
+    model: Option<GeorefModel>,
 ) -> Result<WarpReport, String> {
     let image = image::open(&input).map_err(|error| format!("cannot open {input}: {error}"))?;
     let rgb = image.to_rgb8();
@@ -465,5 +574,11 @@ pub async fn georef_warp(
     if !output.ends_with(".tif") && !output.ends_with(".tiff") {
         return Err("the output must end with .tif or .tiff".to_owned());
     }
-    warp_to_cog(&rgb, &gcps, Path::new(&output), resolution)
+    warp_to_cog(
+        &rgb,
+        &gcps,
+        model.unwrap_or(GeorefModel::Affine),
+        Path::new(&output),
+        resolution,
+    )
 }
