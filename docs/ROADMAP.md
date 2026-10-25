@@ -327,7 +327,7 @@ curl http://127.0.0.1:8080/health
 - [ ] Performance pass: старт, память, рендер.
 - [x] Accessibility pass: контраст, клавиатура, focus trap, screen reader.
 - [x] i18n RU/EN/DE/FR/ES, переключение языка в настройках и верхней панели.
-- [ ] Онбординг и демо-пак.
+- [x] Онбординг и демо-пак.
 - [ ] Импорт SAS.Planet cache (best-effort).
 - [x] Подпись паков (Ed25519).
 - [ ] AppImage/deb/Flatpak.

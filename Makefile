@@ -3,7 +3,7 @@ export PATH := $(dir $(CARGO)):$(PATH)
 TAURI ?= ./ui/node_modules/.bin/tauri
 DISPLAY_ENV ?= env -u WAYLAND_DISPLAY GDK_BACKEND=x11
 
-.PHONY: run dev build deb deb-check cli test fmt fmt-check clippy unicode-check smoke bench bench-large bench-ui bench-start startup ui-install ui-dev ui-check check ci
+.PHONY: run dev build deb deb-check cli test fmt fmt-check clippy unicode-check smoke bench bench-large bench-ui bench-start startup demo-pack ui-install ui-dev ui-check check ci
 
 run dev:
 	$(DISPLAY_ENV) $(TAURI) dev --no-watch
@@ -56,6 +56,9 @@ bench-start:
 
 startup:
 	./scripts/measure-startup.sh target/release/mappa 3
+
+demo-pack:
+	python3 scripts/make_demo_pack.py assets/demo/demo.mbtiles
 
 ui-install:
 	cd ui && npm install

@@ -324,6 +324,9 @@ interface AppState {
   routingProfile: string
   setRoutingProfile: (profile: string) => void
 
+  onboardingDone: boolean
+  setOnboardingDone: (done: boolean) => void
+
   snapping: boolean
   toggleSnapping: () => void
   mapGrid: boolean
@@ -367,6 +370,7 @@ const PERSISTED_KEYS = [
   'mapGrid',
   'packLicense',
   'autosaveEnabled',
+  'onboardingDone',
 ] as const
 
 /**
@@ -406,6 +410,7 @@ const persistedSlice = (state: AppState) => ({
   routingEngine: state.routingEngine,
   routingUrl: state.routingUrl,
   routingProfile: state.routingProfile,
+  onboardingDone: state.onboardingDone,
 })
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null
@@ -1233,6 +1238,9 @@ export const useAppStore = create<AppState>()(
     routingUrl: '',
     setRoutingUrl: (routingUrl) =>
       set({ routingUrl: routingUrl.trim().slice(0, 500) }),
+    onboardingDone: false,
+    setOnboardingDone: (onboardingDone) => set({ onboardingDone }),
+
     routingProfile: 'driving',
     setRoutingProfile: (routingProfile) =>
       set({
@@ -1352,6 +1360,7 @@ const restorePersisted = () => {
     if (!['precise', 'balanced', 'saver'].includes(String(patch.gpsPowerMode))) {
       delete patch.gpsPowerMode
     }
+    if (typeof patch.onboardingDone !== 'boolean') delete patch.onboardingDone
     if (!['offline', 'osrm', 'brouter'].includes(String(patch.routingEngine))) {
       delete patch.routingEngine
     }

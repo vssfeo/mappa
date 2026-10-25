@@ -3192,6 +3192,7 @@ function SettingsPanel() {
   const setRoutingUrl = useAppStore((state) => state.setRoutingUrl)
   const routingProfile = useAppStore((state) => state.routingProfile)
   const setRoutingProfile = useAppStore((state) => state.setRoutingProfile)
+  const setOnboardingDone = useAppStore((state) => state.setOnboardingDone)
   const crs = useAppStore((state) => state.crs)
   const crsLabel = useAppStore((state) => state.crsLabel)
   const setCrs = useAppStore((state) => state.setCrs)
@@ -3373,6 +3374,30 @@ function SettingsPanel() {
         </select>
       </div>
       <p className="settings-hint">{t('settings.languageHint')}</p>
+    </section>
+  )
+
+  const trainingSection = (
+    <section className="section">
+      <div className="section-heading">
+        <span>{tx('Обучение', 'Tour')}</span>
+        <Settings2 size={13} />
+      </div>
+      <div className="settings-actions">
+        <button
+          type="button"
+          className="primary-button"
+          onClick={() => setOnboardingDone(false)}
+        >
+          {tx('Показать обучение заново', 'Show the tour again')}
+        </button>
+      </div>
+      <p className="settings-hint">
+        {tx(
+          'Короткий тур по возможностям приложения и демо-пак.',
+          'A short tour of what the app can do, plus the demo pack.',
+        )}
+      </p>
     </section>
   )
 
@@ -3669,6 +3694,7 @@ function SettingsPanel() {
       )}
 
       {languageSection}
+      {trainingSection}
       {fieldSection}
 
       <section className="section">

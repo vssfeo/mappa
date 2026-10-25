@@ -25,6 +25,7 @@ ARM64 (Rock Pi 4A, NanoPi M4).
 | `ui/tests` | `node --test`, чистые модульные тесты без DOM |
 | `docs/` | ТЗ, UX, ROADMAP, STATUS, API, BATCH, DEM, GEOCODER, NMEA, PACKS, ROUTING, COMPETITORS |
 | `providers/` | YAML-каталог провайдеров |
+| `assets/demo/` | синтетический демо-пак `demo.mbtiles`, встроен в бинарник через `include_bytes!` |
 
 Точки входа: `src-tauri/src/lib.rs` (регистрация команд), `ui/src/App.tsx`,
 `ui/src/store.ts` (всё состояние UI). Карта хранится в `MapCanvas.tsx`,
@@ -41,11 +42,12 @@ make bench        # бенчмарк хранилища/паков
 make bench-start  # FCP/LCP/карта/длинные задачи (Playwright, preview)
 make bench-ui     # fps панорамирования 2560x1440
 make startup      # окно, WebKit, PSS реального бинарника (X11/XWayland)
+make demo-pack    # перерисовать assets/demo/demo.mbtiles
 cd ui && npm test # node scripts/i18n-check.mjs + node --test
 ```
 
-`make check` — обязательный минимум перед отчётом. Эталон: 194 Rust-теста,
-113 UI-тестов, зелёный clippy, `.deb` ~6,6 МиБ.
+`make check` — обязательный минимум перед отчётом. Эталон: 198 Rust-тестов,
+113 UI-тестов, зелёный clippy, `.deb` ~7,7 МиБ.
 
 ## Правила работы
 
@@ -69,7 +71,7 @@ cd ui && npm test # node scripts/i18n-check.mjs + node --test
   `tx('русский', 'english')`, вне React — `tr('русский', 'english')`.
 - Динамика — только через плейсхолдеры: `tx('Точек: {p0}', 'Points: {p0}', { p0: n })`.
   Конкатенация строк и `template literal` вокруг перевода запрещены.
-- Новая видимая строка сразу идёт в `ui/src/locales/{de,fr,es}.ts` (сейчас 855 ключей).
+- Новая видимая строка сразу идёт в `ui/src/locales/{de,fr,es}.ts` (сейчас 883 ключа).
 - Проверка: `cd ui && node scripts/i18n-check.mjs` (входит в `npm test`).
 
 ## Ловушки

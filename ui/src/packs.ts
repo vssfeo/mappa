@@ -39,6 +39,20 @@ export const openPackPath = async (path: string): Promise<PackLayer> => {
   return layer
 }
 
+/** Materialises the bundled demo pack and opens it as a layer. */
+export const openDemoPack = async (): Promise<PackLayer> => {
+  if (!isNative) {
+    throw new Error(
+      tr(
+        'Демо-пак доступен в настольном приложении',
+        'The demo pack is available in the desktop app',
+      ),
+    )
+  }
+  const path = await invoke<string>('demo_pack')
+  return openPackPath(path)
+}
+
 export const importPack = async (): Promise<PackLayer | null> => {
   if (!isNative) {
     throw new Error(tr('Импорт паков доступен в нативном приложении', 'Pack import is available in the native app'))

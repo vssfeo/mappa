@@ -56,6 +56,15 @@ try {
   await page.goto(url, { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(3000)
 
+  if ((await page.locator('.onboarding-modal').count()) === 0) {
+    fail('first run did not show the onboarding tour')
+  }
+  await page.locator('.onboarding-skip').click()
+  await page.waitForTimeout(300)
+  if ((await page.locator('.onboarding-modal').count()) > 0) {
+    fail('onboarding tour did not close')
+  }
+
   if ((await page.locator('.maplibregl-canvas').count()) === 0) {
     fail('map canvas not found')
   }
@@ -852,6 +861,9 @@ try {
   }
   if ((await page.locator('.map-marker-pin[data-image]').count()) === 0) {
     fail('custom marker icon was not restored after reload')
+  }
+  if ((await page.locator('.onboarding-modal').count()) > 0) {
+    fail('onboarding tour reappeared after the first run')
   }
 } finally {
   await browser.close()

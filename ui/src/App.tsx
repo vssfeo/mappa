@@ -44,6 +44,7 @@ import { useScreenAwake } from './useScreenAwake.ts'
 import { Inspector } from './Inspector'
 import { MapCanvas } from './MapCanvas'
 import { MapHud } from './MapHud'
+import { Onboarding } from './Onboarding'
 import { Rail } from './Rail'
 import { Shortcuts } from './Shortcuts'
 import { StatusBar } from './StatusBar'
@@ -52,7 +53,8 @@ import { TopBar } from './TopBar'
 import type { Command } from './commands'
 import { listCustomSources } from './customSources'
 import { transformPoints } from './native'
-import { importPack, restorePacks } from './packs'
+import { importPack, openDemoPack, restorePacks } from './packs'
+import { isNative } from './native'
 import { restoreDem } from './dem'
 import {
   newProject,
@@ -164,8 +166,11 @@ function App() {
   const toggleFieldMode = useAppStore((state) => state.toggleFieldMode)
   const toggleTheme = useAppStore((state) => state.toggleTheme)
   const showToast = useAppStore((state) => state.showToast)
+  const onboardingDone = useAppStore((state) => state.onboardingDone)
+  const setOnboardingDone = useAppStore((state) => state.setOnboardingDone)
 
   const [map, setMap] = useState<MapLibreMap | null>(null)
+  const [demoBusy, setDemoBusy] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
 
   useEffect(() => {
@@ -293,6 +298,7 @@ function App() {
         } else if (state.measurePoints.length > 0) state.clearMeasure()
         else if (commandOpen) setCommandOpen(false)
         else if (shortcutsOpen) setShortcutsOpen(false)
+        else if (!state.onboardingDone) state.setOnboardingDone(true)
         else if (state.downloadOpen) setDownloadOpen(false)
         else setPanel(null)
         return
@@ -511,6 +517,29 @@ function App() {
   const onReady = useCallback((instance: MapLibreMap) => {
     setMap(instance)
   }, [])
+
+  const openDemo = useCallback(async () => {
+    setDemoBusy(true)
+    try {
+      const pack = await openDemoPack()
+      setOnboardingDone(true)
+      map?.fitBounds(
+        [
+          [pack.west, pack.south],
+          [pack.east, pack.north],
+        ],
+        { padding: 48, duration: 800 },
+      )
+      showToast(tx('Демо-пак открыт', 'Demo pack opened'))
+    } catch (error) {
+      console.warn('cannot open the demo pack', error)
+      showToast(
+        tx('Не удалось открыть демо-пак', 'Could not open the demo pack'),
+      )
+    } finally {
+      setDemoBusy(false)
+    }
+  }, [map, setOnboardingDone, showToast, tx])
 
   const onViewChange = useCallback(
     (view: Parameters<typeof setMapView>[0]) => {
@@ -1352,6 +1381,18 @@ function App() {
       )}
       {shortcutsOpen && (
         <Shortcuts onClose={() => setShortcutsOpen(false)} />
+      )}
+      {!onboardingDone && (
+        <Onboarding
+          demoBusy={demoBusy}
+          demoAvailable={isNative}
+          onOpenDemo={() => void openDemo()}
+          onDownload={() => {
+            setOnboardingDone(true)
+            setDownloadOpen(true)
+          }}
+          onClose={() => setOnboardingDone(true)}
+        />
       )}
       <Toast />
     </div>

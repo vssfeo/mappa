@@ -4,6 +4,7 @@ mod atomic;
 mod commands;
 mod custom;
 mod dem;
+mod demo;
 mod downloads;
 mod export;
 mod files;
@@ -142,6 +143,7 @@ pub fn run() {
             dem::dem_sample,
             dem::dem_profile,
             dem::dem_contours,
+            demo::demo_pack,
             gnss::start_nmea_tcp,
             gnss::stop_nmea_tcp,
             gnss::start_gpsd_tcp,
