@@ -2,7 +2,7 @@
 
 **Рабочее название:** Mappa  
 **Статус:** 1.0 release candidate — офлайн-карты, паки, полевая геодезия  
-**Дата:** 2026-10-24
+**Дата:** 2026-10-25
 
 Mappa — Linux-first рабочая станция для офлайн-карт и спутниковых снимков.
 Не «порт SAS.Planet», а современный продукт: GPU-рендеринг, мгновенный
@@ -21,6 +21,13 @@ tile-server и интеграция с роботами/полевыми уст�
 | [docs/COMPETITORS.md](docs/COMPETITORS.md) | разбор функций SAS.Planet, QGIS, MapTiler, Felt, QGC, CalTopo и полевых приложений, приоритетный бэклог |
 | [docs/STATUS.md](docs/STATUS.md) | что уже сделано, чем заблокировано, как запустить |
 | [docs/API.md](docs/API.md) | `mappa serve`: tile-server, REST, QGIS/MapLibre, токен |
+| [docs/BATCH.md](docs/BATCH.md) | batch JSON jobs, идемпотентность, JSON-вывод CLI |
+| [docs/GEOCODER.md](docs/GEOCODER.md) | поиск мест: локальный кэш, Photon/Nominatim, настройки |
+| [docs/DEM.md](docs/DEM.md) | DEM: SRTM `.hgt`, ASCII Grid, GeoTIFF/COG, hillshade, 3D-рельеф, горизонтали, профиль и min AGL |
+| [docs/PACKS.md](docs/PACKS.md) | офлайн-паки MBTiles/PMTiles, включая векторные MVT |
+| [docs/NMEA.md](docs/NMEA.md) | NMEA 0183, gpsd: имитация и внешние потоки |
+| [docs/ROUTING.md](docs/ROUTING.md) | офлайн- и онлайн-маршруты, подсказки, изохроны и off-route alerts |
+| [docs/HANDOVER.md](docs/HANDOVER.md) | передача контекста: состояние git, что проверено, следующие шаги |
 
 ## Позиционирование
 
@@ -47,7 +54,8 @@ SAS.Planet — это про «скачать район и посмотреть
   команды кэша/загрузок, реестр паков, настройки кэша и прокси.
 - `ui/` — React + MapLibre: семь подложек (включая спутниковые Esri
   World Imagery и NASA Blue Marble), тёмная/светлая тема,
-  командная палитра, inspector, download sheet, рисование области и
+  командная палитра с поиском мест (локальный кэш + Photon/Nominatim),
+  inspector, download sheet, рисование области и
   линий/полигонов с редактированием вершин, линейка с азимутами,
   площадь, метки с папками/иконками/поиском и CSV/GeoJSON/GPX/KML/KMZ,
   импорт паков, свои XYZ/TMS, WMS и WMTS-источники (GetCapabilities),
@@ -55,9 +63,17 @@ SAS.Planet — это про «скачать район и посмотреть
   таблицей, редактированием вершин и snapping, coverage map,
   CRS-пересчёт, MGRS/сетка/сближение/WMM2025, undo/redo,
   профиль высоты/скорости GPX-трека, GPS/GNSS-позиция и запись трека,
+  NMEA 0183 (GGA/RMC/VTG/GSA) с имитацией сигнала без приёмника,
+  внешним TCP-потоком и gpsd,
+  маршруты по линиям, OSRM/BRouter, изохроны, коридор и off-route alerts,
+  полевой режим с крупным UI, контрастом и удержанием экрана,
+  DEM SRTM `.hgt`/ASCII Grid/GeoTIFF/COG с hillshade, 3D-рельефом, горизонталями,
+  профилем высот по DEM, min AGL и чтением высоты/уклона/экспозиции,
   экспорт PNG/GeoTIFF/COG/PDF/KMZ, недавние проекты, автосохранение,
   живая очередь со скоростью и ETA, настройки, статус-бар.
-- Интерфейс RU/EN, клавиатурная навигация и focus trap в диалогах.
+- CLI: `providers`, `download`, `pack`, `doctor`, `stats`, `batch`,
+  `serve`; JSON-вывод, batch JSON jobs и идемпотентные паки.
+- Интерфейс RU/EN/DE/FR/ES, клавиатурная навигация и focus trap в диалогах.
 - `providers/` — YAML-каталог встроенных источников с `offline_allowed`.
 - `docs/` — ТЗ, UX, roadmap, статус.
 
@@ -126,6 +142,12 @@ cd ui && npm run dev -- --host 127.0.0.1 --port 4173
   или полигона в «Объектах» — цвет.
 - При наведении на линию или полигон появляется всплывающая подпись
   с названием объекта.
+- Панель «Маршрут» строит путь по импортированным линиям и нарисованным
+  объектам: старт/финиш вводятся координатами, берутся из GPS или
+  центра карты, допуск стыков настраивается. Маршрут добавляется в
+  «Объекты» и экспортируется как обычная линия. Для выбранной линии
+  включается off-route alert с коридором 5–500 м: отклонение видно в
+  статус-баре и сопровождается уведомлением.
 - `C` — шторка сравнения подложек: справа показывается второй источник,
   границу можно тянуть мышью или стрелками `←`/`→`, источник меняется
   в нижней панели.
@@ -133,8 +155,11 @@ cd ui && npm run dev -- --host 127.0.0.1 --port 4173
   курсом; круг точности и маркер на карте, режим слежения. Запись
   трека можно ставить на паузу, а затем сохранить в «Объекты» — трек
   получает высоты и время, проигрывается и экспортируется в GPX.
-  Используется системная геолокация (GeoClue/WebKit); при отказе
-  доступа или отсутствии GNSS панель показывает понятную ошибку.
+  Источник выбирается в панели: системная геолокация (GeoClue/WebKit),
+  встроенная NMEA-имитация, внешний NMEA 0183 по TCP (например,
+  приёмник через `socat`) или gpsd по JSON. TCP-потоки переподключаются
+  автоматически; при отказе доступа или отсутствии GNSS панель
+  показывает понятную ошибку.
 - Для выбранной линии в «Объектах» доступен плеер трека: play/pause,
   перемотка, скорость ×1–×10 и маркер, движущийся по маршруту. Если
   линия импортирована из GPX с высотами и временем, под плеером
@@ -190,15 +215,25 @@ cargo run -q -p mappa-cli -- pack \
 # диагностика
 cargo run -q -p mappa-cli -- doctor --vacuum
 
+# пакет заданий download/pack из JSON
+cargo run -q -p mappa-cli -- batch jobs.json
+
+# машинный JSON для скриптов
+cargo run -q -p mappa-cli -- --json stats
+
 # локальный tile-server + REST для MapLibre/QGIS
 cargo run -q -p mappa-cli -- serve --port 8080
 
-# LAN с токеном и паками
+# LAN с токеном, паками и QR-кодом
 cargo run -q -p mappa-cli -- serve --host 0.0.0.0 --port 8080 \
   --token mappa-lan \
   --pack "$HOME/Downloads/mappa-crimea.mbtiles"
 ```
 
+При запуске в LAN сервер печатает QR-код для телефона; `--qr-svg
+~/mappa-lan.svg` сохранит его в файл, `--no-qr` отключит вывод.
+Batch-задания, идемпотентность и JSON-отчёты — в
+[docs/BATCH.md](docs/BATCH.md).
 REST и примеры подключения — в [docs/API.md](docs/API.md).
 `/api/status`, `/api/providers`, `/api/packs`, `/api/jobs`; тайлы из
 кэша — `/tiles/{provider}/{z}/{x}/{y}`, из пака —
@@ -226,7 +261,7 @@ CI собирает `.deb` на amd64, а на `ubuntu-24.04-arm` собирае
 
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"
-make check   # fmt, clippy, 148 Rust-тестов, 90 UI-тестов, Unicode, сборка
+make check   # fmt, clippy, 194 Rust-теста, 113 UI-тестов, i18n, Unicode, сборка
 make deb-check
 make smoke   # Playwright
 make bench   # кэш/очередь/паки на 10k тайлов
@@ -235,7 +270,7 @@ make bench-ui # FPS при панорамировании
 
 ## Ближайший шаг
 
-Внешний GNSS/gpsd, `mappa serve` с REST и LAN/QR, DEM/3D
-и профиль рельефа, офлайн-геокодер, векторные PMTiles.
-Полный приоритетный бэклог — в
+Полевая проверка СК-42/МСК, маршрутов OSRM/BRouter и режима `F` на
+реальном оборудовании, затем голосовые подсказки и ведение по
+манёврам. Полный приоритетный бэклог — в
 [docs/COMPETITORS.md](docs/COMPETITORS.md).

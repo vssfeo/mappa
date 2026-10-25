@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
@@ -12,6 +12,8 @@ use mappa_storage::SqliteCache;
 use tokio::sync::{Mutex, MutexGuard, RwLock, watch};
 
 use crate::custom::{self, CustomSource};
+use crate::dem::DemStore;
+use crate::geocode::Geocoder;
 use crate::packs::Packs;
 use crate::settings::AppSettings;
 
@@ -42,6 +44,10 @@ pub struct AppState {
     pub cache_path: PathBuf,
     /// Configured cache budget.
     pub cache_limit_bytes: AtomicU64,
+    /// Whether place search may call Photon/Nominatim.
+    pub geocode_online: AtomicBool,
+    /// Local place cache and online fallback.
+    pub geocoder: Geocoder,
     /// Counts stored tiles so eviction runs off the request hot path.
     pub tile_writes: AtomicU64,
     /// Active HTTP proxy, if any.
@@ -50,6 +56,8 @@ pub struct AppState {
     pub settings_path: PathBuf,
     /// Open MBTiles/PMTiles packs.
     pub packs: Packs,
+    /// Active elevation model used for hillshade and terrain.
+    pub dem: DemStore,
 }
 
 impl AppState {
@@ -70,6 +78,7 @@ impl AppState {
             }
             Err(error) => return Err(error.into()),
         };
+        let geocoder = Geocoder::load(settings_path.with_file_name("geocode.json"));
         let custom_sources = custom::load(&custom_path);
         let custom = custom_sources
             .iter()
@@ -92,10 +101,13 @@ impl AppState {
             cancels: Mutex::new(CancelState::default()),
             cache_path,
             cache_limit_bytes: AtomicU64::new(settings.cache_limit_bytes),
+            geocode_online: AtomicBool::new(settings.geocode_online),
+            geocoder,
             tile_writes: AtomicU64::new(0),
             proxy: RwLock::new(settings.proxy),
             settings_path,
             packs: Packs::new(),
+            dem: DemStore::new(),
         })
     }
 

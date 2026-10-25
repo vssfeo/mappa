@@ -3,11 +3,18 @@
 mod atomic;
 mod commands;
 mod custom;
+mod dem;
 mod downloads;
 mod export;
 mod files;
+mod geocode;
+mod geotiff;
+mod gnss;
 mod gpkg;
+mod inflate;
 mod packs;
+mod power;
+mod routing;
 mod settings;
 mod state;
 mod tiles;
@@ -24,6 +31,8 @@ use crate::state::AppState;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(downloads::Exports::default())
+        .manage(power::ScreenAwake::default())
         .on_permission_request(|_, kind| match kind {
             tauri::webview::PermissionKind::Geolocation => {
                 tauri::webview::PermissionResponse::Allow
@@ -70,6 +79,7 @@ pub fn run() {
             let queue = mappa_storage::DownloadStore::open(&queue_path)?;
             let downloads = Downloads::new(queue, Arc::clone(&state), app.handle().clone());
             app.manage(downloads);
+            app.manage(gnss::GnssTcp::default());
 
             log::info!(
                 "cache {} (limit {:.1} GiB, {} providers)",
@@ -95,6 +105,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::list_providers,
             commands::crs_presets,
+            geocode::geocode_search,
+            routing::route_remote,
+            power::set_screen_awake,
             commands::transform_points,
             commands::list_custom_sources,
             commands::save_custom_source,
@@ -118,10 +131,21 @@ pub fn run() {
             downloads::delete_download,
             downloads::clear_finished_downloads,
             downloads::export_job_pack,
+            downloads::cancel_export_pack,
             packs::open_pack,
             packs::list_packs,
             packs::close_pack,
             packs::read_pack_tile,
+            dem::open_dem,
+            dem::close_dem,
+            dem::read_dem_tile,
+            dem::dem_sample,
+            dem::dem_profile,
+            dem::dem_contours,
+            gnss::start_nmea_tcp,
+            gnss::stop_nmea_tcp,
+            gnss::start_gpsd_tcp,
+            gnss::stop_gpsd_tcp,
             files::read_text_file,
             files::read_binary_file,
             files::write_binary_file,

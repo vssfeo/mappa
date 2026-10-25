@@ -125,12 +125,12 @@ CalTopo, Avenza и полевых приложений. Код и ассеты �
   (GPX/KML/KMZ/GeoJSON/CSV/SHP/TCX/FIT/IGC/OZI/LOC).
 - **Датчики:** BLE/ANT+ HR/cadence/power, барометр, внешний GNSS,
   NMEA/gpsd, AIS, OBD-II; у OsmAnd есть accessibility-плагин.
-- **Mappa:** нет записи трека, GPS-позиции, маршрутов, профиля,
-  навигации, датчиков и полевых форм.
-- **Нужно:** GPS/NMEA/gpsd, запись и воспроизведение трека, импорт
-  GPX-маршрутов, профиль высот, офлайн routing (BRouter/GraphHopper/
-  Valhalla), route-scoped download, off-route/proximity alerts,
-  полевой режим, формы, фото и геотеггинг.
+- **Mappa:** запись и playback трека, GPS/GeoClue, NMEA-имитация,
+  внешний NMEA TCP, gpsd, профиль высоты/скорости; офлайн-маршруты по
+  загруженным линиям и off-route alerts. Нет прямого serial, готового
+  дорожного графа, профилей car/foot/bike, датчиков и полевых форм.
+- **Нужно:** OSRM/BRouter по готовому графу, route-scoped download,
+  turn-by-turn, полевой режим, формы, фото и геотеггинг.
 
 ### 2.6 Погода, безопасность, доступность
 
@@ -154,10 +154,11 @@ CalTopo, Avenza и полевых приложений. Код и ассеты �
   3D-измерения.
 - **Mission-планировщики:** DEM для AGL, terrain following, corridor
   scan, geofence, SAR-паттерны.
-- **Mappa:** нет DEM, профиля, slope, viewshed, 3D.
-- **Нужно:** terrain-RGB/COG, hillshade, contours, профиль высот,
-  min AGL/clearance, slope/aspect, LOS/viewshed v1, MapLibre terrain,
-  3D buildings, 3D Tiles/LiDAR — позже.
+- **Mappa:** локальный DEM `.hgt`/`.asc` и GeoTIFF/COG напрямую,
+  hillshade, 3D terrain, slope/aspect, горизонтали, профиль высот по DEM
+  и min AGL по профилю линии; нет viewshed и terrain following.
+- **Нужно:** LOS/viewshed v1, terrain following, 3D buildings,
+  3D Tiles/LiDAR — позже.
 
 ### 2.8 Миссии, роботы, телеметрия
 
@@ -217,7 +218,7 @@ CalTopo, Avenza и полевых приложений. Код и ассеты �
 | 3 | Векторные слои: KML/KMZ/GPX/GeoJSON/SHP/GeoPackage, стили, attribute table, рисование point/line/polygon, snapping | QGIS-lite и полевые данные | MapLibre GeoJSON; `geozero`/`shapefile` для SHP; лимиты памяти |
 | 4 | Папки/иконки/цвета/поиск меток; шаблоны (GPX/KML/CSV/GeoJSON уже есть) | Управление POI | Модель маркера расширить; SQLite при >20k |
 | 5 | DEM/terrain: SRTM/Copernicus, hillshade, contours, профиль, min AGL, slope, 3D terrain | Поле и миссии | raster-dem в MapLibre, terrain-RGB, локальный кэш DEM |
-| 6 | GPS и треки: позиция/курс, запись, playback, GPX-маршруты, off-route alerts, полевой режим | Полевой сценарий | gpsd/NMEA; Android/iOS позже |
+| 6 | GPS и треки: позиция/курс, запись, playback, GPX-маршруты, off-route alerts, полевой режим | Полевой сценарий | Android/iOS позже |
 | 7 | Экспорт: GeoTIFF/COG + world file, PNG/PDF с сеткой/легендой/масштабом, KMZ | Главный офлайн-деливерабл | GDAL (MIT) или Rust-писатели; streaming mosaic |
 | 8 | Проект `.mappa`: слои, метки, измерения, вид, настройки, паки | Рабочие области | SQLite + JSON manifest; версионирование |
 | 9 | Download engine 2.0: полигон/маска, диапазон зумов, мультиисточник, оценка размера, coverage map, целостность | Главная привычка SAS и полевой минимум | SQLite-агрегаты, bbox/полигон-слой, per-source лимиты |
@@ -238,7 +239,7 @@ CalTopo, Avenza и полевых приложений. Код и ассеты �
 - Локальный tile-server и раздача паков по LAN/QR.
 - Исторические снимки/таймлайн, погода, солнце/луна, приливы.
 - Safety: backtrack, proximity/geofence-алерты, live tracking.
-- Внешний GNSS/NMEA/gpsd, барометр, BLE-датчики.
+- Прямой serial-порт, барометр, BLE-датчики.
 - Accessibility: screen reader, крупные цели, reduced motion.
 - Coordinate extras: MGRS/USNG, Maidenhead, Plus Codes.
 - Слои avalanche/fire/parcels/public land (где позволяет лицензия).

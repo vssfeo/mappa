@@ -92,7 +92,7 @@
 - [x] Координаты: DD/DMS/UTM, ввод и копирование.
 - [x] Масштаб, атрибуция; линейка — Phase 4.
 - [x] Настройки: тема, лимит кэша, очистка, HTTP-прокси.
-- [x] Язык интерфейса RU/EN.
+- [x] Язык интерфейса RU/EN/DE/FR/ES.
 - [x] Сохранение view между запусками.
 - [x] Клавиатурные сокращения v1.
 - [x] Empty/error/offline состояния: пустые панели, toast ошибок карты,
@@ -153,6 +153,7 @@
 - [x] PMTiles v3 writer/reader.
 - [x] Манифест пака, SHA-256 и Ed25519-подпись.
 - [x] Импорт PMTiles/MBTiles как слоя в UI.
+- [x] Векторные PMTiles (MVT) с базовым стилем по metadata `vector_layers`.
 - [x] Экспорт MBTiles/PMTiles из кэша с транскодингом PNG/JPEG.
 - [x] Метаданные: bbox, zooms, provider, attribution.
 - [x] License в метаданных пака и манифесте.
@@ -195,7 +196,10 @@
 - [x] Живое позиционирование и запись GPS/GNSS через системную
   геолокацию: точность, высота, скорость, курс, follow, пауза,
   сохранение трека в «Объекты» с профилем и GPX-экспортом.
-- [ ] Внешний GNSS/gpsd/NMEA, off-route alerts.
+- [x] Внешний NMEA 0183 по TCP (нативный сокет, автопереподключение).
+- [x] gpsd по TCP (JSON TPV/SKY).
+- [x] офлайн-маршруты по линиям и off-route alerts.
+- [ ] прямой serial-порт.
 - [x] Undo/redo для меток, линий/полигонов и импортированных слоёв (`Ctrl+Z`, `Ctrl+Shift+Z`).
 - [x] Сравнение «шторка» (`C`, синхронный второй источник, граница
   мышью и стрелками).
@@ -242,11 +246,15 @@
   статус-бар и ввод координат в выбранной проекции.
 - [x] CRS 2.0: MGRS, сетка координат на карте, сближение меридианов,
   СК-42 X/Y/Z в редакторе точек.
-- [ ] Офлайн-геокодер Nominatim/Photon + online fallback.
+- [x] Офлайн-геокодер: локальный `geocode.json` + кэш результатов,
+  Photon/Nominatim fallback, настройка онлайн-поиска;
+  [docs/GEOCODER.md](GEOCODER.md).
 - [x] `mappa serve` — tile-server из кэша и паков, LAN-адреса, токен.
-- [ ] QR-код для подключения телефона по LAN.
+- [x] QR-код для подключения телефона по LAN: терминал и SVG,
+  токен в ссылке, `--no-qr`.
 - [x] REST API: статус, очередь, паки (read-only).
-- [ ] Batch JSON jobs, JSON-вывод, идемпотентность.
+- [x] Batch JSON jobs: `mappa-cli batch`, `--json`, `--fail-fast`,
+  идемпотентные download/pack; [docs/BATCH.md](BATCH.md).
 - [x] Headless-режим для download/pack/doctor/serve.
 - [x] Документация CLI и API ([docs/API.md](API.md)).
 - [x] Примеры для CI/роботов (USGS, public domain).
@@ -256,6 +264,7 @@
 ```bash
 mappa-cli download --provider usgs --bbox=-122.5,37.7,-122.4,37.8 --zoom 12-14
 mappa-cli pack --provider usgs --bbox=-122.5,37.7,-122.4,37.8 --zoom 12-14 --output sf.mbtiles
+mappa-cli batch jobs.json --json
 mappa-cli serve --pack sf.mbtiles --port 8080
 curl http://127.0.0.1:8080/health
 ```
@@ -265,6 +274,7 @@ curl http://127.0.0.1:8080/health
 - [x] CLI работает без GUI.
 - [x] Tile-server отдаёт тайлы MapLibre и QGIS (кэш и паки).
 - [x] REST API документирован.
+- [x] JSON-отчёты CLI и batch-задания идемпотентны.
 - [x] Коды возврата и ошибки предсказуемы.
 
 ---
@@ -273,13 +283,19 @@ curl http://127.0.0.1:8080/health
 
 ### Задачи
 
-- [ ] Полевой режим: крупный UI, контраст, reduced motion.
+- [x] Полевой режим: крупный UI, контраст, reduced motion, удержание экрана, профили батареи.
 - [x] GPS/GNSS-позиция, курс, скорость, высота, запись трека,
   playback и GPX-экспорт.
-- [ ] Внешний GNSS/gpsd/NMEA, off-route alerts и запись при
-  выключенном экране.
-- [ ] DEM: SRTM/Copernicus, hillshade, contours, профиль высот, min AGL,
-  slope; MapLibre terrain.
+- [x] NMEA 0183: GGA/RMC/VTG/GSA, checksums, встроенная имитация
+  сигнала и внешний TCP-поток.
+- [x] gpsd: JSON-отчёты TPV/SKY, точность, спутники и HDOP.
+- [x] off-route alerts с коридором и уведомлениями.
+- [x] удержание экрана при активном полевом режиме и профили энергосбережения GPS.
+- [x] DEM `.hgt`/`.asc`, hillshade, 3D terrain, высота/уклон/экспозиция.
+- [x] DEM 2.0: горизонтали (marching squares), профиль высот по DEM,
+  минимальный AGL по профилю линии.
+- [x] DEM 2.1: GeoTIFF/COG напрямую: strips/tiles, DEFLATE/PackBits,
+  predictor 2/3, georeferencing WGS84.
 - [ ] Viewshed/LOS + Fresnel для радиолинков.
 - [ ] Планирование миссий: waypoint/полигон/коридор/геозона, altitude
   modes, экспорт QGC `.plan`/MAVLink/DJI KMZ.
@@ -310,7 +326,7 @@ curl http://127.0.0.1:8080/health
 
 - [ ] Performance pass: старт, память, рендер.
 - [x] Accessibility pass: контраст, клавиатура, focus trap, screen reader.
-- [x] i18n RU/EN, переключение языка в настройках.
+- [x] i18n RU/EN/DE/FR/ES, переключение языка в настройках и верхней панели.
 - [ ] Онбординг и демо-пак.
 - [ ] Импорт SAS.Planet cache (best-effort).
 - [x] Подпись паков (Ed25519).
@@ -370,9 +386,12 @@ QGC/Mission Planner, UgCS, CalTopo, Avenza и полевых приложени�
 - [x] GPX/KML/CSV/GeoJSON импорт-экспорт меток.
 - [x] Папки, иконки, цвета и поиск меток.
 - [ ] Шаблоны меток.
-- [ ] DEM и рельеф: hillshade, contours, профиль высот, min AGL, slope,
-  3D terrain.
-- [ ] GPS и треки: позиция, запись, playback, маршруты, off-route alerts.
+- [x] DEM и рельеф: `.hgt`/`.asc`/GeoTIFF/COG, hillshade, slope/aspect,
+  3D terrain, горизонтали, профиль высот, min AGL.
+- [x] GPS и треки: позиция, запись, playback, GPX, NMEA-имитация
+  и внешний TCP-поток.
+- [x] gpsd.
+- [x] офлайн-маршруты по загруженным линиям и off-route alerts.
 - [x] Экспорт: GeoTIFF + `.tfw`, PNG + `.pgw`, PDF с сеткой/легендой,
   KMZ. COG — позже.
 - [x] Проект `.mappa` (JSON + паки; SQLite-хранилище — по мере роста).
@@ -388,13 +407,15 @@ QGC/Mission Planner, UgCS, CalTopo, Avenza и полевых приложени�
 - [ ] Viewshed/LOS + Fresnel, SAR-паттерны.
 - [ ] Mission planning и экспорт QGC/MAVLink/DJI.
 - [ ] Телеметрия MAVLink/ROS2/MQTT, replay.
-- [ ] Офлайн-геокодер и routing OSRM/Valhalla/BRouter, изохроны,
-  turn-by-turn, route-scoped download.
+- [x] Офлайн-геокодер (локальный кэш + Photon/Nominatim).
+- [x] Routing OSRM/BRouter, изохроны, turn-by-turn-список, скачивание
+  коридора маршрута.
+- [ ] Valhalla, голосовые подсказки и ведение по манёврам.
 - [ ] Полевые формы, фото/аудио, geotagging.
 - [ ] Safety: backtrack, proximity/geofence-алерты, live tracking.
-- [ ] Внешний GNSS/NMEA/gpsd, барометр, BLE-датчики.
+- [ ] прямой serial-порт, барометр, BLE-датчики.
 - [ ] Погода, солнце/луна, тренд давления; avalanche/fire-слои.
-- [ ] Accessibility: screen reader, крупные цели, reduced motion.
+- [ ] Accessibility: screen reader; крупные цели и reduced motion уже есть в полевом режиме.
 - [ ] MGRS/USNG, Maidenhead, Plus Codes.
 - [ ] SHP/DXF/GeoPackage/Excel, RMaps/OruxMaps.
 - [ ] 3D buildings, COG overlay, vector tiles из своих данных.
