@@ -5,7 +5,11 @@
 
 import { useCallback } from 'react'
 import { useAppStore } from './store.ts'
-import type { Locale } from './locale.ts'
+import {
+  translateText,
+  type Locale,
+  type MessageParams,
+} from './locale.ts'
 
 export type { Locale } from './locale.ts'
 
@@ -13,9 +17,11 @@ const ru = {
   'brand.preview': 'preview',
   'nav.map': 'Карта',
   'nav.layers': 'Слои',
+  'nav.dem': 'Рельеф',
   'nav.downloads': 'Загрузки',
   'nav.markers': 'Метки',
   'nav.features': 'Объекты',
+  'nav.route': 'Маршрут',
   'nav.gps': 'GPS',
   'nav.projects': 'Проекты',
   'nav.settings': 'Настройки',
@@ -28,6 +34,7 @@ const ru = {
   'top.lightTheme': 'Светлая тема',
   'top.darkTheme': 'Тёмная тема',
   'top.settings': 'Настройки',
+  'field.mode': 'Полевой режим',
   'top.download': 'Скачать',
   'status.online': 'online',
   'status.offline': 'offline',
@@ -72,9 +79,11 @@ const ru = {
   'hud.savePolygon': 'Сохранить полигон',
   'hud.undoPoint': 'Точка назад',
   'panel.layers': 'Слои',
+  'panel.dem': 'Рельеф и высоты',
   'panel.downloads': 'Загрузки',
   'panel.markers': 'Метки',
   'panel.features': 'Объекты',
+  'panel.route': 'Маршрут',
   'panel.gps': 'GPS / GNSS',
   'panel.projects': 'Проекты',
   'panel.settings': 'Настройки',
@@ -150,9 +159,11 @@ const en: Partial<Record<MessageKey, string>> = {
   'brand.preview': 'preview',
   'nav.map': 'Map',
   'nav.layers': 'Layers',
+  'nav.dem': 'Terrain',
   'nav.downloads': 'Downloads',
   'nav.markers': 'Markers',
   'nav.features': 'Features',
+  'nav.route': 'Route',
   'nav.gps': 'GPS',
   'nav.projects': 'Projects',
   'nav.settings': 'Settings',
@@ -165,6 +176,7 @@ const en: Partial<Record<MessageKey, string>> = {
   'top.lightTheme': 'Light theme',
   'top.darkTheme': 'Dark theme',
   'top.settings': 'Settings',
+  'field.mode': 'Field mode',
   'top.download': 'Download',
   'status.copied': 'Coordinates copied',
   'status.copyTitle': 'Copy coordinates',
@@ -206,9 +218,11 @@ const en: Partial<Record<MessageKey, string>> = {
   'hud.savePolygon': 'Save polygon',
   'hud.undoPoint': 'Undo point',
   'panel.layers': 'Layers',
+  'panel.dem': 'Terrain and elevation',
   'panel.downloads': 'Downloads',
   'panel.markers': 'Markers',
   'panel.features': 'Features',
+  'panel.route': 'Route',
   'panel.gps': 'GPS / GNSS',
   'panel.projects': 'Projects',
   'panel.settings': 'Settings',
@@ -278,23 +292,35 @@ const en: Partial<Record<MessageKey, string>> = {
     'Changes interface labels only. Projects and data stay untouched.',
 }
 
-export const translate = (locale: Locale, key: MessageKey): string =>
-  locale === 'en' ? (en[key] ?? ru[key]) : ru[key]
+export const translate = (
+  locale: Locale,
+  key: MessageKey,
+  params?: MessageParams,
+): string => translateText(locale, ru[key], en[key] ?? ru[key], params)
 
 /** Translator hook for components that render static interface labels. */
-export function useT(): (key: MessageKey) => string {
+export function useT(): (key: MessageKey, params?: MessageParams) => string {
   const locale = useAppStore((state) => state.locale)
-  return useCallback((key: MessageKey) => translate(locale, key), [locale])
+  return useCallback(
+    (key: MessageKey, params?: MessageParams) =>
+      translate(locale, key, params),
+    [locale],
+  )
 }
 
 /**
  * Inline translator for strings that interpolate values or live next to the
  * markup they describe. Passing both languages keeps them together on screen.
  */
-export function useText(): (ru: string, en: string) => string {
+export function useText(): (
+  ru: string,
+  en: string,
+  params?: MessageParams,
+) => string {
   const locale = useAppStore((state) => state.locale)
   return useCallback(
-    (ru: string, en: string) => (locale === 'en' ? en : ru),
+    (ru: string, en: string, params?: MessageParams) =>
+      translateText(locale, ru, en, params),
     [locale],
   )
 }

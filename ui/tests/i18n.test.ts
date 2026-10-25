@@ -3,7 +3,8 @@ import test from 'node:test'
 
 import { formatBytes, formatDuration } from '../src/format.ts'
 import { translate } from '../src/i18n.ts'
-import { setActiveLocale } from '../src/locale.ts'
+import { setActiveLocale, translateText } from '../src/locale.ts'
+import { CATALOGS } from '../src/locales/index.ts'
 import { PROVIDERS } from '../src/providers.ts'
 
 test('translates interface labels into both languages', () => {
@@ -34,4 +35,48 @@ test('russian labels never contain english placeholders', () => {
     assert.ok(translate('ru', key).length > 1)
     assert.notEqual(translate('ru', key), translate('en', key))
   }
+})
+
+test('additional locales translate labels and fall back to english', () => {
+  assert.equal(translate('de', 'nav.map'), 'Karte')
+  assert.equal(translate('fr', 'nav.map'), 'Carte')
+  assert.equal(translate('es', 'nav.map'), 'Mapa')
+  assert.equal(translate('de', 'settings.language'), 'Oberflächensprache')
+  assert.equal(translate('fr', 'settings.language'), "Langue de l'interface")
+  assert.equal(translate('es', 'settings.language'), 'Idioma de la interfaz')
+  assert.equal(translateText('de', 'Карта', 'Map'), 'Karte')
+  assert.equal(translateText('fr', 'Карта', 'Map'), 'Carte')
+  assert.equal(translateText('es', 'Карта', 'Map'), 'Mapa')
+  assert.equal(
+    translateText('de', 'Карта', 'An untranslated sample'),
+    'An untranslated sample',
+  )
+  const reference = Object.keys(CATALOGS.de).sort()
+  assert.ok(reference.length > 700)
+  for (const locale of ['de', 'fr', 'es'] as const) {
+    const catalog = CATALOGS[locale]
+    assert.deepEqual(Object.keys(catalog).sort(), reference)
+    assert.ok(Object.values(catalog).every((value) => value.trim().length > 0))
+    for (const key of reference) {
+      const expected = key.match(/\{\w+\}/g)?.sort() ?? []
+      const actual = catalog[key].match(/\{\w+\}/g)?.sort() ?? []
+      assert.deepEqual(actual, expected, `${locale}: ${key}`)
+    }
+  }
+})
+
+test('placeholder values are substituted after translation', () => {
+  assert.equal(
+    translateText(
+      'de',
+      'Слишком много координат: лимит {p0}',
+      'Too many coordinates: the limit is {p0}',
+      { p0: '12 000' },
+    ),
+    'Zu viele Koordinaten: Limit 12 000',
+  )
+  assert.equal(
+    translateText('es', 'Карта', 'Map', { p0: 'ignored' }),
+    'Mapa',
+  )
 })

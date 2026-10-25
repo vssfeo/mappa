@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node --test tests/*.test.ts",
+    "test": "node scripts/i18n-check.mjs && node --test tests/*.test.ts",
     "smoke": "node scripts/smoke.mjs",
     "bench:fps": "node scripts/bench-fps.mjs",
     "preview": "vite preview"
