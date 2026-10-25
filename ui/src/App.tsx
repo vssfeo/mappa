@@ -45,6 +45,7 @@ import { Inspector } from './Inspector'
 import { MapCanvas } from './MapCanvas'
 import { MapHud } from './MapHud'
 import { Onboarding } from './Onboarding'
+import { GeorefPanel } from './GeorefPanel'
 import { Rail } from './Rail'
 import { Shortcuts } from './Shortcuts'
 import { StatusBar } from './StatusBar'
@@ -172,6 +173,7 @@ function App() {
 
   const [map, setMap] = useState<MapLibreMap | null>(null)
   const [demoBusy, setDemoBusy] = useState(false)
+  const [georefOpen, setGeorefOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
 
   useEffect(() => {
@@ -1241,6 +1243,13 @@ function App() {
         action: () => setPanel('projects'),
       },
       {
+        id: 'georef',
+        label: tx('Геореференсинг скана', 'Scan georeferencing'),
+        group: tx('Инструменты', 'Tools'),
+        icon: MapIcon,
+        action: () => setGeorefOpen(true),
+      },
+      {
         id: 'shortcuts',
         label: tx('Горячие клавиши', 'Keyboard shortcuts'),
         group: tx('Помощь', 'Help'),
@@ -1256,6 +1265,7 @@ function App() {
       setDownloadOpen,
       setDrawing,
       setFeatureMode,
+      setGeorefOpen,
       setMeasureMode,
       setPanel,
       setPlacingMarker,
@@ -1397,6 +1407,7 @@ function App() {
       {shortcutsOpen && (
         <Shortcuts onClose={() => setShortcutsOpen(false)} />
       )}
+      {georefOpen && <GeorefPanel onClose={() => setGeorefOpen(false)} />}
       {!onboardingDone && (
         <Onboarding
           demoBusy={demoBusy}

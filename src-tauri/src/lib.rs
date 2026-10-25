@@ -10,6 +10,7 @@ mod downloads;
 mod export;
 mod files;
 mod geocode;
+mod georef;
 mod geotiff;
 mod gnss;
 mod gpkg;
@@ -153,6 +154,8 @@ pub fn run() {
             crash::crash_delete,
             crash::crash_report_js,
             crash::crash_enabled,
+            georef::georef_solve,
+            georef::georef_warp,
             gnss::start_nmea_tcp,
             gnss::stop_nmea_tcp,
             gnss::start_gpsd_tcp,
