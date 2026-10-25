@@ -6,6 +6,7 @@
 
 pub mod bbox;
 pub mod crs;
+pub mod inflate;
 pub mod polygon;
 pub mod provider;
 pub mod tile;

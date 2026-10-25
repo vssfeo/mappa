@@ -20,5 +20,7 @@ pub use error::{StorageError, StorageResult};
 pub use jobs::{DownloadJob, DownloadStore, JobStatus, NewJob};
 pub use manifest::{PackManifest, verify_manifest, write_manifest};
 pub use mbtiles::{Mbtiles, MbtilesMetadata, MbtilesWriter};
-pub use pack::{ExportReport, ExportSpec, export_region, pack_file_name};
+pub use pack::{
+    ExportPhase, ExportProgress, ExportReport, ExportSpec, export_region, pack_file_name,
+};
 pub use pmtiles_pack::{PmtilesPack, PmtilesPackInfo, export_region_pmtiles};

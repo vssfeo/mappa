@@ -24,8 +24,10 @@ pub struct PackInfo {
     pub path: String,
     /// `mbtiles` or `pmtiles`.
     pub kind: String,
-    /// Raster format.
+    /// Raster format or `mvt` for vector tiles.
     pub format: String,
+    /// Vector tile source layers; empty for raster packs.
+    pub vector_layers: Vec<String>,
     /// Minimum zoom.
     pub min_zoom: u8,
     /// Maximum zoom.
@@ -193,12 +195,22 @@ async fn open_reader(path: &Path, id: String) -> Result<(PackInfo, PackReader), 
                 move || -> Result<(PackInfo, Mbtiles), String> {
                     let pack = Mbtiles::open(&path).map_err(|error| error.to_string())?;
                     let metadata = pack.metadata().clone();
-                    let format = if metadata.format.is_empty() {
-                        "png".to_owned()
+                    let raw_format = if metadata.format.is_empty() {
+                        "png"
                     } else {
-                        metadata.format.clone()
+                        metadata.format.as_str()
                     };
-                    ensure_raster(&format)?;
+                    let format = normalize_pack_format(raw_format);
+                    let vector_layers = if format == "mvt" {
+                        let json = metadata
+                            .extra
+                            .get("json")
+                            .and_then(|value| serde_json::from_str::<Value>(value).ok());
+                        vector_layer_names(json.as_ref())
+                    } else {
+                        Vec::new()
+                    };
+                    ensure_pack_format(&format, &vector_layers)?;
                     let bounds = metadata.bounds;
                     let info = PackInfo {
                         id,
@@ -206,6 +218,7 @@ async fn open_reader(path: &Path, id: String) -> Result<(PackInfo, PackReader), 
                         path: path.display().to_string(),
                         kind: "mbtiles".to_owned(),
                         format,
+                        vector_layers,
                         min_zoom: pack
                             .min_zoom()
                             .map_err(|error| error.to_string())?
@@ -236,13 +249,14 @@ async fn open_reader(path: &Path, id: String) -> Result<(PackInfo, PackReader), 
                 .await
                 .map_err(|error| error.to_string())?;
             let header = pack.info().clone();
-            ensure_raster(&header.format)?;
             let metadata = pack
                 .metadata()
                 .await
                 .ok()
                 .flatten()
                 .and_then(|value| serde_json::from_str::<Value>(&value).ok());
+            let vector_layers = vector_layer_names(metadata.as_ref());
+            ensure_pack_format(&header.format, &vector_layers)?;
             let name = metadata
                 .as_ref()
                 .and_then(|value| value.get("name"))
@@ -260,6 +274,7 @@ async fn open_reader(path: &Path, id: String) -> Result<(PackInfo, PackReader), 
                 path: path.display().to_string(),
                 kind: "pmtiles".to_owned(),
                 format: header.format,
+                vector_layers,
                 min_zoom: header.min_zoom,
                 max_zoom: header.max_zoom,
                 west: header.west,
@@ -277,14 +292,59 @@ async fn open_reader(path: &Path, id: String) -> Result<(PackInfo, PackReader), 
     }
 }
 
+fn normalize_pack_format(format: &str) -> String {
+    match format.trim().to_ascii_lowercase().as_str() {
+        "pbf" | "mvt" => "mvt".to_owned(),
+        other => other.to_owned(),
+    }
+}
+
 fn ensure_raster(format: &str) -> Result<(), String> {
     if matches!(format, "png" | "jpg" | "jpeg" | "webp" | "avif") {
         Ok(())
     } else {
         Err(format!(
-            "pack format {format:?} is not a raster image; Mappa currently opens raster packs only"
+            "pack format {format:?} is not supported; use a raster pack or a vector MBTiles/PMTiles archive"
         ))
     }
+}
+
+fn ensure_pack_format(format: &str, vector_layers: &[String]) -> Result<(), String> {
+    if format == "mvt" {
+        if vector_layers.is_empty() {
+            return Err(
+                "vector pack has no vector_layers metadata; re-export it with layer metadata"
+                    .to_owned(),
+            );
+        }
+        Ok(())
+    } else {
+        ensure_raster(format)
+    }
+}
+
+fn vector_layer_names(metadata: Option<&Value>) -> Vec<String> {
+    let mut layers = Vec::new();
+    for value in [metadata] {
+        let Some(value) = value else { continue };
+        let Some(items) = value.get("vector_layers").and_then(Value::as_array) else {
+            continue;
+        };
+        for item in items {
+            let Some(id) = item.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            let id = id.trim();
+            if id.is_empty() || id.len() > 200 || layers.iter().any(|layer| layer == id) {
+                continue;
+            }
+            layers.push(id.to_owned());
+            if layers.len() == 128 {
+                return layers;
+            }
+        }
+    }
+    layers
 }
 
 fn pack_id(path: &Path) -> String {
@@ -307,10 +367,69 @@ mod tests {
     }
 
     #[test]
-    fn rejects_vector_formats() {
+    fn validates_raster_and_vector_formats() {
         assert!(ensure_raster("mvt").is_err());
         assert!(ensure_raster("png").is_ok());
         assert!(ensure_raster("avif").is_ok());
+        assert!(ensure_pack_format("mvt", &["roads".to_owned()]).is_ok());
+        assert!(ensure_pack_format("mvt", &[]).is_err());
+        assert!(ensure_pack_format("png", &[]).is_ok());
+        assert_eq!(normalize_pack_format("pbf"), "mvt");
+        assert_eq!(normalize_pack_format("MVT"), "mvt");
+        assert_eq!(normalize_pack_format("PNG"), "png");
+    }
+
+    #[test]
+    fn extracts_unique_vector_layer_names() {
+        let metadata = serde_json::json!({
+            "vector_layers": [{"id": "roads"}, {"id": "water"}, {"id": "roads"}]
+        });
+        assert_eq!(
+            vector_layer_names(Some(&metadata)),
+            ["roads".to_owned(), "water".to_owned()]
+        );
+        assert!(vector_layer_names(None).is_empty());
+    }
+
+    #[test]
+    fn imports_vector_mbtiles_and_decompresses_tiles() {
+        use mappa_storage::{MbtilesMetadata, MbtilesWriter};
+
+        let directory =
+            std::env::temp_dir().join(format!("mappa-vector-mbtiles-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("vector.mbtiles");
+        let metadata = MbtilesMetadata {
+            name: Some("Vector sample".to_owned()),
+            format: "pbf".to_owned(),
+            minzoom: Some(0),
+            maxzoom: Some(0),
+            extra: [(
+                "json".to_owned(),
+                r#"{"vector_layers":[{"id":"roads"},{"id":"water"}]}"#.to_owned(),
+            )]
+            .into_iter()
+            .collect(),
+            ..MbtilesMetadata::default()
+        };
+        let mut writer = MbtilesWriter::create(&path, metadata).unwrap();
+        let gzipped = [
+            0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x2b, 0x4b, 0x4d, 0x2e,
+            0xc9, 0x2f, 0xd2, 0x2d, 0xc9, 0xcc, 0x49, 0x05, 0x00, 0x08, 0xc9, 0xa4, 0x52, 0x0b,
+            0x00, 0x00, 0x00,
+        ];
+        writer.put_tile(0, 0, 0, &gzipped).unwrap();
+        writer.finish().unwrap();
+
+        let (info, reader) =
+            tauri::async_runtime::block_on(open_reader(&path, pack_id(&path))).unwrap();
+        assert_eq!(info.format, "mvt");
+        assert_eq!(info.vector_layers, ["roads", "water"]);
+        let tile = tauri::async_runtime::block_on(reader.get_tile(0, 0, 0))
+            .unwrap()
+            .unwrap();
+        assert_eq!(tile, b"vector-tile");
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]

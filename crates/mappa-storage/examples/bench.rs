@@ -221,10 +221,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             format: "png".to_owned(),
             attribution: Some("bench".to_owned()),
             license: None,
+            cancel: None,
             output: directory.join("bench.mbtiles"),
         };
         let started = Instant::now();
-        let report = export_region(&cache, &export, |_, _| {})?;
+        let report = export_region(&cache, &export, |_| {})?;
         let elapsed = started.elapsed();
         let mbtiles_path = export.output.clone();
         let size = file_bytes(&mbtiles_path);
@@ -249,7 +250,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..export
         };
         let started = Instant::now();
-        let report = export_region_pmtiles(&cache, &pmtiles_spec, |_, _| {})?;
+        let report = export_region_pmtiles(&cache, &pmtiles_spec, |_| {})?;
         let elapsed = started.elapsed();
         let size = file_bytes(&pmtiles_spec.output);
         let started = Instant::now();

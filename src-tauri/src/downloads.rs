@@ -7,10 +7,10 @@ use std::time::{Duration, Instant};
 
 use mappa_core::TileRange;
 use mappa_storage::{
-    DownloadJob, DownloadStore, ExportReport, ExportSpec, JobStatus, NewJob, TileKey,
-    export_region, export_region_pmtiles, pack_file_name,
+    DownloadJob, DownloadStore, ExportPhase, ExportProgress, ExportReport, ExportSpec, JobStatus,
+    NewJob, TileKey, export_region, export_region_pmtiles, pack_file_name,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -21,6 +21,8 @@ use crate::tiles::{has_tile, load_tile};
 pub const JOB_EVENT: &str = "downloads://job";
 /// Event emitted when a job is deleted by id.
 pub const REMOVED_EVENT: &str = "downloads://removed";
+/// Event emitted while a cached job is packed into MBTiles/PMTiles.
+pub const EXPORT_EVENT: &str = "packs://export";
 /// Guard rail against accidental world-scale downloads.
 pub const MAX_JOB_TILES: u64 = 2_000_000;
 
@@ -40,6 +42,65 @@ struct JobControl {
     cancelled: AtomicBool,
     /// Wakes the worker out of an in-flight tile fetch.
     notify: tokio::sync::Notify,
+}
+
+/// Cancellation flags for pack exports started from the downloads panel.
+#[derive(Default)]
+pub struct Exports {
+    running: Mutex<HashMap<String, Arc<AtomicBool>>>,
+}
+
+impl Exports {
+    fn begin(&self, key: &str, flag: Arc<AtomicBool>) -> bool {
+        let mut running = self.running.lock().expect("exports mutex poisoned");
+        if running.contains_key(key) {
+            return false;
+        }
+        running.insert(key.to_owned(), flag);
+        true
+    }
+
+    fn cancel(&self, key: &str) -> bool {
+        let running = self.running.lock().expect("exports mutex poisoned");
+        let Some(flag) = running.get(key) else {
+            return false;
+        };
+        flag.store(true, Ordering::Relaxed);
+        true
+    }
+
+    fn finish(&self, key: &str) {
+        self.running
+            .lock()
+            .expect("exports mutex poisoned")
+            .remove(key);
+    }
+}
+
+/// Progress payload for the downloads panel.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportEvent {
+    /// Source download job id.
+    pub id: String,
+    /// `mbtiles` or `pmtiles`.
+    pub kind: String,
+    /// Current stage.
+    pub phase: ExportPhase,
+    /// Completed units in the stage.
+    pub done: u64,
+    /// Expected units in the stage.
+    pub total: u64,
+    /// Tiles already written.
+    pub written_tiles: u64,
+    /// Bytes already written.
+    pub written_bytes: u64,
+    /// `running`, `done`, `cancelled` or `failed`.
+    pub status: &'static str,
+    /// Written pack path for a completed export.
+    pub path: Option<String>,
+    /// Failure description.
+    pub error: Option<String>,
 }
 
 /// Request from the download sheet.
@@ -666,6 +727,7 @@ pub async fn clear_finished_downloads(downloads: State<'_, Arc<Downloads>>) -> R
 #[tauri::command]
 pub async fn export_job_pack(
     downloads: State<'_, Arc<Downloads>>,
+    exports: State<'_, Exports>,
     id: String,
     kind: String,
     license: Option<String>,
@@ -703,6 +765,11 @@ pub async fn export_job_pack(
         output = directory.join(format!("{stem}-{}.{extension}", mappa_storage::now_unix()));
     }
 
+    let key = format!("{id}:{kind}");
+    let cancelled = Arc::new(AtomicBool::new(false));
+    if !exports.begin(&key, Arc::clone(&cancelled)) {
+        return Err("этот пак уже экспортируется".to_owned());
+    }
     let spec = ExportSpec {
         provider_id: job.provider_id.clone(),
         name: job.name.clone(),
@@ -716,23 +783,112 @@ pub async fn export_job_pack(
         format: provider.format.clone(),
         attribution: Some(provider.attribution.clone()),
         license: license.clone(),
+        cancel: Some(Arc::clone(&cancelled)),
         output: output.clone(),
     };
     let cache = Arc::clone(&downloads.state.cache);
     log::info!("export {id} -> {}", output.display());
-    let report = tauri::async_runtime::spawn_blocking(move || {
+    let app = downloads.app.clone();
+    let event_id = id.clone();
+    let event_kind = kind.clone();
+    let progress_app = app.clone();
+    let progress_id = id.clone();
+    let progress_kind = kind.clone();
+    let mut last_emit = Instant::now() - EMIT_INTERVAL;
+    let mut last_phase = None;
+    let progress = move |progress: ExportProgress| {
+        let phase_changed = last_phase != Some(progress.phase);
+        if !phase_changed && last_emit.elapsed() < EMIT_INTERVAL {
+            return;
+        }
+        last_emit = Instant::now();
+        last_phase = Some(progress.phase);
+        let _ = progress_app.emit(
+            EXPORT_EVENT,
+            ExportEvent {
+                id: progress_id.clone(),
+                kind: progress_kind.clone(),
+                phase: progress.phase,
+                done: progress.done,
+                total: progress.total,
+                written_tiles: progress.written_tiles,
+                written_bytes: progress.written_bytes,
+                status: "running",
+                path: None,
+                error: None,
+            },
+        );
+    };
+    let report = match tauri::async_runtime::spawn_blocking(move || {
         let result = if extension == "pmtiles" {
-            export_region_pmtiles(&cache, &spec, |_, _| {})
+            export_region_pmtiles(&cache, &spec, progress)
         } else {
-            export_region(&cache, &spec, |_, _| {})
+            export_region(&cache, &spec, progress)
         };
         result.map_err(|error| error.to_string())
     })
     .await
-    .map_err(|error| error.to_string())??;
+    {
+        Ok(Ok(report)) => report,
+        Ok(Err(error)) => {
+            let was_cancelled = cancelled.load(Ordering::Relaxed);
+            exports.finish(&key);
+            let _ = app.emit(
+                EXPORT_EVENT,
+                ExportEvent {
+                    id: event_id,
+                    kind: event_kind,
+                    phase: ExportPhase::Writing,
+                    done: 0,
+                    total: 0,
+                    written_tiles: 0,
+                    written_bytes: 0,
+                    status: if was_cancelled { "cancelled" } else { "failed" },
+                    path: None,
+                    error: Some(error.clone()),
+                },
+            );
+            return Err(error);
+        }
+        Err(error) => {
+            exports.finish(&key);
+            let message = error.to_string();
+            let _ = app.emit(
+                EXPORT_EVENT,
+                ExportEvent {
+                    id: event_id,
+                    kind: event_kind,
+                    phase: ExportPhase::Writing,
+                    done: 0,
+                    total: 0,
+                    written_tiles: 0,
+                    written_bytes: 0,
+                    status: "failed",
+                    path: None,
+                    error: Some(message.clone()),
+                },
+            );
+            return Err(message);
+        }
+    };
 
     // The manifest lives next to the pack; its signing key belongs to the
     // application data directory and never travels with an exported pack.
+    let _ = app.emit(
+        EXPORT_EVENT,
+        ExportEvent {
+            id: event_id.clone(),
+            kind: event_kind.clone(),
+            phase: ExportPhase::Signing,
+            done: report.tiles,
+            total: report.tiles,
+            written_tiles: report.tiles,
+            written_bytes: report.bytes,
+            status: "running",
+            path: None,
+            error: None,
+        },
+    );
     let key_path = downloads
         .app
         .path()
@@ -740,12 +896,60 @@ pub async fn export_job_pack(
         .map_err(|error| error.to_string())?
         .join("pack-signing.key");
     let pack_path = report.path.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let sign_result = tauri::async_runtime::spawn_blocking(move || {
         mappa_storage::write_manifest(&pack_path, license.as_deref(), &key_path)
             .map(|_| ())
             .map_err(|error| error.to_string())
     })
     .await
-    .map_err(|error| error.to_string())??;
-    Ok(report)
+    .map_err(|error| error.to_string())?;
+    exports.finish(&key);
+    match sign_result {
+        Ok(()) => {
+            let _ = app.emit(
+                EXPORT_EVENT,
+                ExportEvent {
+                    id: event_id,
+                    kind: event_kind,
+                    phase: ExportPhase::Finalizing,
+                    done: report.tiles,
+                    total: report.tiles,
+                    written_tiles: report.tiles,
+                    written_bytes: report.bytes,
+                    status: "done",
+                    path: Some(report.path.display().to_string()),
+                    error: None,
+                },
+            );
+            Ok(report)
+        }
+        Err(error) => {
+            let _ = app.emit(
+                EXPORT_EVENT,
+                ExportEvent {
+                    id: event_id,
+                    kind: event_kind,
+                    phase: ExportPhase::Signing,
+                    done: report.tiles,
+                    total: report.tiles,
+                    written_tiles: report.tiles,
+                    written_bytes: report.bytes,
+                    status: "failed",
+                    path: Some(report.path.display().to_string()),
+                    error: Some(error.clone()),
+                },
+            );
+            Err(error)
+        }
+    }
+}
+
+/// Aborts a running pack export; the temporary archive is removed.
+#[tauri::command]
+pub async fn cancel_export_pack(
+    exports: State<'_, Exports>,
+    id: String,
+    kind: String,
+) -> Result<bool, String> {
+    Ok(exports.cancel(&format!("{id}:{kind}")))
 }

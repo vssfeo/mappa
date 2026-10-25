@@ -2,6 +2,8 @@
 
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use image::codecs::jpeg::JpegEncoder;
 use image::{DynamicImage, ImageFormat};
@@ -41,6 +43,38 @@ pub struct ExportSpec {
     pub license: Option<String>,
     /// Output file path.
     pub output: PathBuf,
+    /// Set by the UI to abort a long export; the temporary file is removed.
+    pub cancel: Option<Arc<AtomicBool>>,
+}
+
+/// Export stage reported to the UI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ExportPhase {
+    /// Counting or sorting the requested tiles.
+    Scanning,
+    /// Encoding and writing tiles.
+    Writing,
+    /// Closing the archive and its indexes.
+    Finalizing,
+    /// Hashing and signing the manifest.
+    Signing,
+}
+
+/// One progress sample from an export.
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportProgress {
+    /// Current stage.
+    pub phase: ExportPhase,
+    /// Completed units in the current stage.
+    pub done: u64,
+    /// Units expected in the current stage.
+    pub total: u64,
+    /// Tiles already written.
+    pub written_tiles: u64,
+    /// Encoded bytes already written.
+    pub written_bytes: u64,
 }
 
 /// Result of a pack operation.
@@ -60,14 +94,14 @@ pub struct ExportReport {
 /// Packs cached tiles in `spec` into a new MBTiles file.
 ///
 /// Tiles whose actual encoding differs from the target format (USGS mixes PNG
-/// and JPEG) are transcoded. The callback receives `(processed, written)`.
+/// and JPEG) are transcoded.
 pub fn export_region<F>(
     cache: &SqliteCache,
     spec: &ExportSpec,
     mut progress: F,
 ) -> StorageResult<ExportReport>
 where
-    F: FnMut(u64, u64),
+    F: FnMut(ExportProgress),
 {
     let bbox = Bbox::new(spec.west, spec.south, spec.east, spec.north)
         .map_err(|error| StorageError::InvalidJob(error.to_string()))?;
@@ -83,6 +117,7 @@ where
         )));
     }
     let format = normalize_format(&spec.format)?;
+    let expected = count_masked_tiles(spec, &bbox)?;
     let mut metadata = MbtilesMetadata {
         name: Some(spec.name.clone()),
         format: format.to_owned(),
@@ -126,6 +161,7 @@ where
                         continue;
                     }
                 }
+                check_cancelled(spec)?;
                 let key = TileKey::new(&spec.provider_id, zoom, coord.x(), coord.y(), format);
                 match cache.peek(&key)? {
                     Some(tile) => {
@@ -136,10 +172,25 @@ where
                     None => missing += 1,
                 }
                 processed += 1;
-                progress(processed, writer.count());
+                progress(ExportProgress {
+                    phase: ExportPhase::Writing,
+                    done: processed,
+                    total: expected.max(1),
+                    written_tiles: writer.count(),
+                    written_bytes: bytes,
+                });
             }
         }
+        check_cancelled(spec)?;
+        progress(ExportProgress {
+            phase: ExportPhase::Finalizing,
+            done: expected,
+            total: expected.max(1),
+            written_tiles: writer.count(),
+            written_bytes: bytes,
+        });
         writer.finish()?;
+        check_cancelled(spec)?;
         std::fs::rename(&temporary, &spec.output)?;
         Ok(ExportReport {
             path: spec.output.clone(),
@@ -152,6 +203,41 @@ where
         let _ = std::fs::remove_file(&temporary);
     }
     result
+}
+
+pub(crate) fn check_cancelled(spec: &ExportSpec) -> StorageResult<()> {
+    if spec
+        .cancel
+        .as_ref()
+        .is_some_and(|flag| flag.load(Ordering::Relaxed))
+    {
+        Err(StorageError::InvalidJob("export cancelled".to_owned()))
+    } else {
+        Ok(())
+    }
+}
+
+/// Counts tiles selected by the bbox and optional polygon mask.
+pub(crate) fn count_masked_tiles(spec: &ExportSpec, bbox: &Bbox) -> StorageResult<u64> {
+    let mask = spec
+        .polygon
+        .as_deref()
+        .map(|ring| (ring, ring_bounds(ring)));
+    let mut total = 0_u64;
+    for zoom in spec.min_zoom..=spec.max_zoom {
+        let range = TileRange::new(bbox, zoom)
+            .map_err(|error| StorageError::InvalidJob(error.to_string()))?;
+        for coord in range.iter() {
+            if let Some((ring, bounds)) = mask {
+                let (west, south, east, north) = coord.bounds();
+                if !tile_intersects_ring_with_bounds(west, south, east, north, ring, bounds) {
+                    continue;
+                }
+            }
+            total += 1;
+        }
+    }
+    Ok(total)
 }
 
 /// Unique sibling path so concurrent exports cannot truncate each other.
@@ -298,9 +384,10 @@ mod tests {
                 format: "png".into(),
                 attribution: None,
                 license: None,
+                cancel: None,
                 output,
             },
-            |_, _| {},
+            |_| {},
         )
         .unwrap();
         assert_eq!(report.tiles, 1);
@@ -333,13 +420,77 @@ mod tests {
                 format: "png".into(),
                 attribution: None,
                 license: None,
+                cancel: None,
                 output: output.clone(),
             },
-            |_, _| {},
+            |_| {},
         );
         assert!(result.is_err());
         assert!(!output.exists());
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn reports_progress_and_honours_cancellation() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = SqliteCache::open_in_memory().unwrap();
+        cache
+            .put(&Tile::new(
+                TileKey::new("usgs", 1, 0, 0, "png"),
+                sample(ImageFormat::Png),
+            ))
+            .unwrap();
+        let output = dir.path().join("progress.mbtiles");
+        let mut phases = Vec::new();
+        let report = export_region(
+            &cache,
+            &ExportSpec {
+                provider_id: "usgs".into(),
+                name: "Progress".into(),
+                west: -180.0,
+                south: -85.0,
+                east: 180.0,
+                north: 85.0,
+                min_zoom: 1,
+                max_zoom: 1,
+                polygon: None,
+                format: "png".into(),
+                attribution: None,
+                license: None,
+                cancel: None,
+                output: output.clone(),
+            },
+            |progress| phases.push(progress.phase),
+        )
+        .unwrap();
+        assert_eq!(report.tiles, 1);
+        assert!(phases.contains(&ExportPhase::Writing));
+        assert_eq!(phases.last(), Some(&ExportPhase::Finalizing));
+
+        let cancelled_output = dir.path().join("cancelled.mbtiles");
+        let cancel = Arc::new(AtomicBool::new(true));
+        let result = export_region(
+            &cache,
+            &ExportSpec {
+                provider_id: "usgs".into(),
+                name: "Cancelled".into(),
+                west: -180.0,
+                south: -85.0,
+                east: 180.0,
+                north: 85.0,
+                min_zoom: 1,
+                max_zoom: 1,
+                polygon: None,
+                format: "png".into(),
+                attribution: None,
+                license: None,
+                cancel: Some(cancel),
+                output: cancelled_output.clone(),
+            },
+            |_| {},
+        );
+        assert!(result.is_err());
+        assert!(!cancelled_output.exists());
     }
 
     #[test]
@@ -371,9 +522,10 @@ mod tests {
                 format: "png".into(),
                 attribution: Some("USGS".into()),
                 license: Some("public-domain".into()),
+                cancel: None,
                 output: output.clone(),
             },
-            |_, _| {},
+            |_| {},
         )
         .unwrap();
 
@@ -417,9 +569,10 @@ mod tests {
                 format: "jpg".into(),
                 attribution: None,
                 license: None,
+                cancel: None,
                 output: output.clone(),
             },
-            |_, _| {},
+            |_| {},
         )
         .unwrap();
         assert_eq!(report.tiles, 2);

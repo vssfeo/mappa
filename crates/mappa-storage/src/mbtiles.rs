@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use mappa_core::Bbox;
+use mappa_core::inflate::gzip_decompress;
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 
 use crate::cache::{SqliteCache, Tile, TileKey, now_unix};
@@ -89,6 +90,9 @@ impl MbtilesMetadata {
     }
 }
 
+/// Upper bound for one decompressed tile.
+const MAX_TILE_BYTES: usize = 64 * 1024 * 1024;
+
 /// Read-only MBTiles pack.
 #[derive(Debug)]
 pub struct Mbtiles {
@@ -138,7 +142,17 @@ impl Mbtiles {
                 |row| row.get::<_, Vec<u8>>(0),
             )
             .optional()?;
-        Ok(data)
+        data.map(|data| {
+            // Vector MBTiles stores MVT gzipped; MapLibre requires raw MVT.
+            if data.starts_with(&[0x1f, 0x8b]) {
+                gzip_decompress(&data, MAX_TILE_BYTES).map_err(|error| {
+                    StorageError::InvalidMbtiles(format!("cannot decompress gzip tile: {error}"))
+                })
+            } else {
+                Ok(data)
+            }
+        })
+        .transpose()
     }
 
     /// Number of stored tiles.
@@ -395,6 +409,7 @@ fn content_type(format: &str) -> &'static str {
     match format {
         "jpg" | "jpeg" => "image/jpeg",
         "webp" => "image/webp",
+        "mvt" | "pbf" => "application/vnd.mapbox-vector-tile",
         _ => "image/png",
     }
 }

@@ -11,7 +11,10 @@ use serde_json::json;
 
 use crate::cache::{SqliteCache, TileKey};
 use crate::error::{StorageError, StorageResult};
-use crate::pack::{ExportReport, ExportSpec, normalize_format, temporary_output, to_format};
+use crate::pack::{
+    ExportPhase, ExportProgress, ExportReport, ExportSpec, check_cancelled, count_masked_tiles,
+    normalize_format, temporary_output, to_format,
+};
 
 /// Public metadata of a local PMTiles pack.
 #[derive(Debug, Clone, Serialize)]
@@ -105,7 +108,7 @@ pub fn export_region_pmtiles<F>(
     mut progress: F,
 ) -> StorageResult<ExportReport>
 where
-    F: FnMut(u64, u64),
+    F: FnMut(ExportProgress),
 {
     let bbox = Bbox::new(spec.west, spec.south, spec.east, spec.north)
         .map_err(|error| StorageError::InvalidJob(error.to_string()))?;
@@ -137,8 +140,9 @@ where
         .polygon
         .as_deref()
         .map(|ring| (ring, ring_bounds(ring)));
+    let total = count_masked_tiles(spec, &bbox)?;
     let mut coords = Vec::new();
-    let mut total = 0_u64;
+    let mut scanned = 0_u64;
     for zoom in spec.min_zoom..=spec.max_zoom {
         let range = TileRange::new(&bbox, zoom)
             .map_err(|error| StorageError::InvalidJob(error.to_string()))?;
@@ -149,7 +153,8 @@ where
                     continue;
                 }
             }
-            total += 1;
+            check_cancelled(spec)?;
+            scanned += 1;
             let key = TileKey::new(&spec.provider_id, zoom, coord.x(), coord.y(), format);
             if cache.peek(&key)?.is_some() {
                 let pmt = PmtTileCoord::new(zoom, coord.x(), coord.y())
@@ -157,11 +162,20 @@ where
                 let id: TileId = pmt.into();
                 coords.push((id.value(), zoom, coord.x(), coord.y()));
             }
+            if scanned.is_multiple_of(64) || scanned == total {
+                progress(ExportProgress {
+                    phase: ExportPhase::Scanning,
+                    done: scanned,
+                    total: total.max(1),
+                    written_tiles: 0,
+                    written_bytes: 0,
+                });
+            }
         }
-        progress(total, 0);
     }
     let found = coords.len() as u64;
     coords.sort_unstable_by_key(|entry| entry.0);
+    check_cancelled(spec)?;
 
     let center_lon = (spec.west + spec.east) / 2.0;
     let center_lat = (spec.south + spec.north) / 2.0;
@@ -189,7 +203,8 @@ where
 
         let mut written = 0_u64;
         let mut bytes = 0_u64;
-        for (index, (_, zoom, x, y)) in coords.iter().enumerate() {
+        for (_, zoom, x, y) in &coords {
+            check_cancelled(spec)?;
             let key = TileKey::new(&spec.provider_id, *zoom, *x, *y, format);
             let Some(tile) = cache.peek(&key)? else {
                 continue;
@@ -200,9 +215,26 @@ where
             writer.add_tile(coord, &data)?;
             written += 1;
             bytes = bytes.saturating_add(data.len() as u64);
-            progress(total + index as u64 + 1, written);
+            if written.is_multiple_of(32) || written == found {
+                progress(ExportProgress {
+                    phase: ExportPhase::Writing,
+                    done: written,
+                    total: found.max(1),
+                    written_tiles: written,
+                    written_bytes: bytes,
+                });
+            }
         }
+        check_cancelled(spec)?;
+        progress(ExportProgress {
+            phase: ExportPhase::Finalizing,
+            done: found,
+            total: found.max(1),
+            written_tiles: written,
+            written_bytes: bytes,
+        });
         writer.finalize()?;
+        check_cancelled(spec)?;
         std::fs::rename(&temporary, &spec.output)?;
         Ok(ExportReport {
             path: spec.output.clone(),
@@ -219,11 +251,13 @@ where
 
 fn format_for(tile_type: TileType) -> String {
     match tile_type {
+        TileType::Mvt => "mvt",
         TileType::Png => "png",
         TileType::Jpeg => "jpg",
         TileType::Webp => "webp",
         TileType::Avif => "avif",
-        _ => "unknown",
+        TileType::Mlt => "mlt",
+        TileType::Unknown => "unknown",
     }
     .to_owned()
 }
@@ -272,9 +306,10 @@ mod tests {
                 format: "jpg".into(),
                 attribution: Some("test".into()),
                 license: None,
+                cancel: None,
                 output: output.clone(),
             },
-            |_, _| {},
+            |_| {},
         )
         .unwrap();
         assert_eq!(report.tiles, 2);
@@ -288,5 +323,53 @@ mod tests {
         let tile = pack.get_tile(1, 1, 0).await.unwrap().unwrap();
         assert_eq!(&tile[0..3], &[0xFF, 0xD8, 0xFF]);
         assert!(pack.metadata().await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn reads_vector_pmtiles_tiles() {
+        // One z0 tile with three MVT layers: polygons, lines and points.
+        let tile = hex(
+            "1a290a08706f6c79676f6e731218080112001803221009d00fd00f1aa01f0000a01f9f1f000f28802078021a1f0a056c696e65731211080112001802220909e807d83612f02e0028802078021a1c0a06706f696e7473120d080112001801220509802080202880207802",
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("vector.pmtiles");
+        let metadata = json!({
+            "name": "Vector test",
+            "format": "mvt",
+            "vector_layers": [{"id": "polygons"}, {"id": "lines"}, {"id": "points"}]
+        })
+        .to_string();
+        let mut writer = PmTilesWriter::new(TileType::Mvt)
+            .min_zoom(0)
+            .max_zoom(0)
+            .bounds(-180.0, -85.0, 180.0, 85.0)
+            .metadata(metadata)
+            .create(std::fs::File::create(&output).unwrap())
+            .unwrap();
+        writer
+            .add_tile(PmtTileCoord::new(0, 0, 0).unwrap(), &tile)
+            .unwrap();
+        writer.finalize().unwrap();
+
+        let pack = PmtilesPack::open(&output).await.unwrap();
+        assert_eq!(pack.info().format, "mvt");
+        assert_eq!(pack.info().max_zoom, 0);
+        let stored = pack.get_tile(0, 0, 0).await.unwrap().unwrap();
+        assert_eq!(stored, tile);
+        assert!(
+            pack.metadata()
+                .await
+                .unwrap()
+                .unwrap()
+                .contains("vector_layers")
+        );
+    }
+
+    fn hex(value: &str) -> Vec<u8> {
+        value
+            .as_bytes()
+            .chunks(2)
+            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect()
     }
 }

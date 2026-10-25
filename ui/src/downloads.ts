@@ -46,6 +46,28 @@ export interface ExportReport {
   missing: number
 }
 
+export type ExportPhase = 'scanning' | 'writing' | 'finalizing' | 'signing'
+
+export interface ExportEvent {
+  id: string
+  kind: 'mbtiles' | 'pmtiles'
+  phase: ExportPhase
+  done: number
+  total: number
+  writtenTiles: number
+  writtenBytes: number
+  status: 'running' | 'done' | 'cancelled' | 'failed'
+  path: string | null
+  error: string | null
+}
+
+export interface ExportRecord extends ExportEvent {
+  speedTilesPerSecond?: number
+  etaSeconds?: number | null
+}
+
+export const exportKey = (id: string, kind: string) => `${id}:${kind}`
+
 export interface NewDownloadRequest {
   name?: string
   providerId: string
@@ -74,6 +96,39 @@ const rateSamples = new Map<
   string,
   { at: number; processed: number; bytes: number }
 >()
+
+const exportSamples = new Map<
+  string,
+  { at: number; processed: number; phase: ExportPhase }
+>()
+
+/** Rate and ETA within one export phase; scanning and writing are separate. */
+const withExportRate = (event: ExportEvent): ExportRecord => {
+  const key = `${exportKey(event.id, event.kind)}:${event.phase}`
+  if (event.status !== 'running') {
+    exportSamples.delete(key)
+    return { ...event, speedTilesPerSecond: undefined, etaSeconds: null }
+  }
+  const now = Date.now()
+  const previous = exportSamples.get(key)
+  exportSamples.set(key, {
+    at: now,
+    processed: event.done,
+    phase: event.phase,
+  })
+  if (!previous) {
+    return { ...event, speedTilesPerSecond: undefined, etaSeconds: null }
+  }
+  const seconds = (now - previous.at) / 1000
+  if (seconds < 0.15) return event
+  const speed = Math.max(0, (event.done - previous.processed) / seconds)
+  const remaining = Math.max(0, event.total - event.done)
+  return {
+    ...event,
+    speedTilesPerSecond: speed,
+    etaSeconds: speed > 0.01 ? remaining / speed : null,
+  }
+}
 
 /** Adds a short-window rate and ETA without persisting either in SQLite. */
 const withRate = (job: DownloadJob): DownloadJob => {
@@ -116,6 +171,7 @@ const sortJobs = (jobs: DownloadJob[]) =>
 
 interface DownloadsState {
   jobs: DownloadJob[]
+  exports: Record<string, ExportRecord>
   loaded: boolean
   loading: boolean
   error: string | null
@@ -132,6 +188,7 @@ interface DownloadsState {
     kind: 'mbtiles' | 'pmtiles',
     license?: string,
   ) => Promise<ExportReport>
+  cancelExport: (id: string, kind: 'mbtiles' | 'pmtiles') => Promise<void>
 }
 
 let eventsReady: Promise<void> | null = null
@@ -153,8 +210,9 @@ const ensureEvents = () => {
             .getState()
             .showToast(
               tr(
-                `Загрузка завершена: ${event.payload.name} · ${event.payload.doneTiles}/${event.payload.totalTiles}`,
-                `Download complete: ${event.payload.name} · ${event.payload.doneTiles}/${event.payload.totalTiles}`,
+                'Загрузка завершена: {p0} · {p1}/{p2}',
+                'Download complete: {p0} · {p1}/{p2}',
+                { p0: event.payload.name, p1: event.payload.doneTiles, p2: event.payload.totalTiles },
               ),
             )
         } else if (event.payload.status === 'failed') {
@@ -162,8 +220,9 @@ const ensureEvents = () => {
             .getState()
             .showToast(
               tr(
-                `Загрузка не удалась: ${event.payload.name}${event.payload.error ? ` · ${event.payload.error}` : ''}`,
-                `Download failed: ${event.payload.name}${event.payload.error ? ` · ${event.payload.error}` : ''}`,
+                'Загрузка не удалась: {p0}{p1}',
+                'Download failed: {p0}{p1}',
+                { p0: event.payload.name, p1: event.payload.error ? ` · ${event.payload.error}` : '' },
               ),
             )
         }
@@ -181,6 +240,15 @@ const ensureEvents = () => {
       removedIds.add(event.payload)
       useDownloadsStore.setState((state) => ({
         jobs: state.jobs.filter((job) => job.id !== event.payload),
+      }))
+    })
+    await listen<ExportEvent>('packs://export', (event) => {
+      const key = exportKey(event.payload.id, event.payload.kind)
+      useDownloadsStore.setState((state) => ({
+        exports: {
+          ...state.exports,
+          [key]: withExportRate(event.payload),
+        },
       }))
     })
   })()
@@ -201,6 +269,7 @@ const call = async <T>(command: string, args?: Record<string, unknown>) => {
 
 export const useDownloadsStore = create<DownloadsState>((set, get) => ({
   jobs: [],
+  exports: {},
   loaded: false,
   loading: false,
   error: null,
@@ -288,6 +357,58 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
     }))
   },
 
-  exportJob: async (id, kind, license) =>
-    call<ExportReport>('export_job_pack', { id, kind, license: license ?? null }),
+  exportJob: async (id, kind, license) => {
+    const key = exportKey(id, kind)
+    set((state) => ({
+      exports: {
+        ...state.exports,
+        [key]: {
+          id,
+          kind,
+          phase: 'scanning',
+          done: 0,
+          total: 0,
+          writtenTiles: 0,
+          writtenBytes: 0,
+          status: 'running',
+          path: null,
+          error: null,
+        },
+      },
+    }))
+    try {
+      return await call<ExportReport>('export_job_pack', {
+        id,
+        kind,
+        license: license ?? null,
+      })
+    } catch (error) {
+      set((state) => {
+        const current = state.exports[key]
+        if (current && current.status !== 'running') return state
+        return {
+          exports: {
+            ...state.exports,
+            [key]: {
+              id,
+              kind,
+              phase: current?.phase ?? 'writing',
+              done: current?.done ?? 0,
+              total: current?.total ?? 0,
+              writtenTiles: current?.writtenTiles ?? 0,
+              writtenBytes: current?.writtenBytes ?? 0,
+              status: 'failed',
+              path: null,
+              error: String(error),
+            },
+          },
+        }
+      })
+      throw error
+    }
+  },
+
+  cancelExport: async (id, kind) => {
+    await call('cancel_export_pack', { id, kind })
+  },
 }))
