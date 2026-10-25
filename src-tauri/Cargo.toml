@@ -1,6 +1,6 @@
 [package]
 name = "mappa"
-version = "1.2.0"
+version = "1.3.0"
 description = "Mappa — Linux-first offline map workstation"
 authors = ["Mappa contributors"]
 license = "Apache-2.0"
@@ -17,7 +17,7 @@ tauri-build = { version = "2.7.4", features = [] }
 
 [dependencies]
 blake3 = "1"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff"] }
 log = "0.4"
 mappa-core = { path = "../crates/mappa-core" }
 mappa-net = { path = "../crates/mappa-net" }

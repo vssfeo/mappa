@@ -75,6 +75,16 @@ GitHub — зеркало, а не единственная копия: кано
 - Ограничения: только PNG/JPEG-сканы, без полинома/TPS и пакетной
   обработки; аффинное преобразование и Гельмерт уже есть.
 
+## Радиолинк, зона видимости, миссии
+
+- `src-tauri/src/viewshed.rs`: LOS-профиль, зона Френеля, кривизна
+  Земли, viewshed по 720 лучам; команды `los_compute`,
+  `viewshed_compute`; панель из командной палитры.
+- `ui/src/mission.ts`: QGC `.plan`, KML, KMZ из меток; панель
+  «Миссия из меток». 6 тестов в `ui/tests/mission.test.ts`.
+- Ограничения: viewshed приближённый (один луч на азимут), миссии без
+  геозон, полигонов-съёмки и телеметрии.
+
 ## Диагностика
 
 - Отчёты о падениях opt-in: `src-tauri/src/crash.rs`, настройка
@@ -85,8 +95,8 @@ GitHub — зеркало, а не единственная копия: кано
 
 ## Проверено (2026-10-25)
 
-- `make check` — зелёный: fmt, clippy `-D warnings`, 204 Rust-теста,
-  113 UI-тестов, unicode-scan, oxlint, production-сборка UI.
+- `make check` — зелёный: fmt, clippy `-D warnings`, 218 Rust-тестов,
+  119 UI-тестов, unicode-scan, oxlint, production-сборка UI.
 - `make smoke` — SMOKE OK; тур проверяется на первом запуске, после
   перезагрузки не появляется.
 - `make bench-start`, `make bench-ui`, `make startup` — числа и методика

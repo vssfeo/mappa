@@ -47,7 +47,7 @@ export function GeorefPanel({ onClose }: GeorefPanelProps) {
         multiple: false,
         directory: false,
         title: tx('Открыть скан карты', 'Open a map scan'),
-        filters: [{ name: 'PNG / JPEG', extensions: ['png', 'jpg', 'jpeg'] }],
+        filters: [{ name: 'PNG / JPEG / TIFF', extensions: ['png', 'jpg', 'jpeg', 'tif', 'tiff'] }],
       })
       const path = Array.isArray(selected) ? selected[0] : selected
       if (typeof path !== 'string') return

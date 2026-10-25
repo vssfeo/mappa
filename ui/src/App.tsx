@@ -46,6 +46,8 @@ import { MapCanvas } from './MapCanvas'
 import { MapHud } from './MapHud'
 import { Onboarding } from './Onboarding'
 import { GeorefPanel } from './GeorefPanel'
+import { LosPanel } from './LosPanel'
+import { MissionPanel } from './MissionPanel'
 import { Rail } from './Rail'
 import { Shortcuts } from './Shortcuts'
 import { StatusBar } from './StatusBar'
@@ -174,6 +176,8 @@ function App() {
   const [map, setMap] = useState<MapLibreMap | null>(null)
   const [demoBusy, setDemoBusy] = useState(false)
   const [georefOpen, setGeorefOpen] = useState(false)
+  const [losOpen, setLosOpen] = useState(false)
+  const [missionOpen, setMissionOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
 
   useEffect(() => {
@@ -1243,6 +1247,20 @@ function App() {
         action: () => setPanel('projects'),
       },
       {
+        id: 'mission',
+        label: tx('Миссия из меток', 'Mission from markers'),
+        group: tx('Инструменты', 'Tools'),
+        icon: MapIcon,
+        action: () => setMissionOpen(true),
+      },
+      {
+        id: 'los',
+        label: tx('Радиолинк и зона видимости', 'Radio link and viewshed'),
+        group: tx('Инструменты', 'Tools'),
+        icon: MapIcon,
+        action: () => setLosOpen(true),
+      },
+      {
         id: 'georef',
         label: tx('Геореференсинг скана', 'Scan georeferencing'),
         group: tx('Инструменты', 'Tools'),
@@ -1266,6 +1284,8 @@ function App() {
       setDrawing,
       setFeatureMode,
       setGeorefOpen,
+      setLosOpen,
+      setMissionOpen,
       setMeasureMode,
       setPanel,
       setPlacingMarker,
@@ -1408,6 +1428,8 @@ function App() {
         <Shortcuts onClose={() => setShortcutsOpen(false)} />
       )}
       {georefOpen && <GeorefPanel onClose={() => setGeorefOpen(false)} />}
+      {losOpen && <LosPanel onClose={() => setLosOpen(false)} />}
+      {missionOpen && <MissionPanel onClose={() => setMissionOpen(false)} />}
       {!onboardingDone && (
         <Onboarding
           demoBusy={demoBusy}

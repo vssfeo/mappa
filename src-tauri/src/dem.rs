@@ -235,6 +235,11 @@ impl Dem {
     }
 
     /// Bilinear elevation at a WGS84 coordinate, if it falls inside the grid.
+    pub fn height(&self, lon: f64, lat: f64) -> Option<f64> {
+        self.elevation(lon, lat)
+    }
+
+    /// Bilinear elevation at a WGS84 coordinate, if it falls inside the grid.
     fn elevation(&self, lon: f64, lat: f64) -> Option<f64> {
         let info = &self.info;
         let width = info.east - info.west;
@@ -565,7 +570,7 @@ impl DemStore {
             .and_then(|dem| dem.point(lon, lat))
     }
 
-    async fn active(&self) -> Option<Arc<Dem>> {
+    pub(crate) async fn active(&self) -> Option<Arc<Dem>> {
         self.current.read().await.clone()
     }
 }

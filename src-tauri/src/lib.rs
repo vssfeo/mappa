@@ -21,6 +21,7 @@ mod routing;
 mod settings;
 mod state;
 mod tiles;
+mod viewshed;
 mod wmts;
 mod xyz;
 
@@ -156,6 +157,8 @@ pub fn run() {
             crash::crash_enabled,
             georef::georef_solve,
             georef::georef_warp,
+            viewshed::los_compute,
+            viewshed::viewshed_compute,
             gnss::start_nmea_tcp,
             gnss::stop_nmea_tcp,
             gnss::start_gpsd_tcp,

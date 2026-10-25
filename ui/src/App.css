@@ -2481,6 +2481,96 @@ body.is-layer-dragging {
   gap: 4px;
 }
 
+/* ---------- radio link / viewshed ---------- */
+
+.mission-modal {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  animation: palette-in 160ms ease both;
+}
+
+.los-modal {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  animation: palette-in 160ms ease both;
+}
+
+.los-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.los-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.los-grid input {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.los-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.los-chart {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  margin-bottom: 8px;
+}
+
+.los-terrain {
+  fill: rgba(120, 140, 90, 0.35);
+}
+
+.los-ground {
+  fill: none;
+  stroke: #8a9455;
+  stroke-width: 1.5;
+}
+
+.los-fresnel {
+  fill: rgba(67, 217, 197, 0.16);
+  stroke: rgba(67, 217, 197, 0.5);
+  stroke-width: 0.8;
+}
+
+.los-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 3;
+}
+
 /* ---------- georeferencing ---------- */
 
 .georef-modal {
