@@ -22,6 +22,10 @@ QGroundControl, телеметрия MAVLink и полевой режим. Ра�
 [docs/DEMO.md](docs/DEMO.md). Файл:
 [docs/media/mappa-demo.mp4](docs/media/mappa-demo.mp4).
 
+Смотреть: [YouTube](https://youtu.be/oAHpoKXrPpE) ·
+[MP4 в релизе](https://github.com/vssfeo/mappa/releases/download/v1.5.1/mappa-demo.mp4) ·
+[субтитры EN/RU](docs/media/mappa-demo.srt).
+
 ## Документы
 
 | Файл | Что внутри |

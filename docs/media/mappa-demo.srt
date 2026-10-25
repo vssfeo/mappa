@@ -1,0 +1,107 @@
+1
+00:00:00,000 --> 00:00:03,890
+Mappa is a Linux-first workstation for offline maps.
+
+2
+00:00:04,010 --> 00:00:09,135
+It is built with Rust, Tauri and MapLibre, ships as a single binary,
+
+3
+00:00:09,255 --> 00:00:12,528
+and keeps working when the network does not.
+
+4
+00:00:14,850 --> 00:00:23,338
+Pan and zoom a GPU-rendered map, switch between satellite, topographic and street basemaps,
+
+5
+00:00:23,458 --> 00:00:27,690
+or connect your own XYZ, WMS and WMTS sources.
+
+6
+00:00:30,010 --> 00:00:36,461
+The layer stack works like a photo editor: basemaps at the bottom, your own sources,
+
+7
+00:00:36,581 --> 00:00:39,825
+vector layers and offline packs above them.
+
+8
+00:00:39,945 --> 00:00:44,050
+Drag to reorder, fade with opacity, hide with the eye.
+
+9
+00:00:46,370 --> 00:00:52,242
+For the field, download a region and pack it into one MBTiles or PMTiles file.
+
+10
+00:00:52,362 --> 00:00:57,236
+The pack contains every tile, so the map opens without a network,
+
+11
+00:00:57,356 --> 00:01:00,770
+and the same file can be shared with the team.
+
+12
+00:01:03,090 --> 00:01:07,401
+Draw lines, polygons and circles, measure distance and area,
+
+13
+00:01:07,521 --> 00:01:13,530
+and keep everything in the project as objects with names, folders and descriptions.
+
+14
+00:01:15,850 --> 00:01:22,971
+Load a DEM — SRTM, ASCII grid or a GeoTIFF — and get hillshade, contour lines,
+
+15
+00:01:23,091 --> 00:01:27,706
+terrain profiles and minimum clearance for a route.
+
+16
+00:01:30,030 --> 00:01:35,233
+For radio planning, pick two points, set the antenna heights and frequency,
+
+17
+00:01:35,353 --> 00:01:41,550
+and Mappa computes line of sight, the first Fresnel zone and a viewshed over the terrain.
+
+18
+00:01:43,870 --> 00:01:50,609
+Scanned paper maps can be georeferenced with control points: affine, Helmert,
+
+19
+00:01:50,729 --> 00:01:58,270
+polynomial or thin-plate spline, then exported as a GeoTIFF or COG that opens in QGIS.
+
+20
+00:02:00,590 --> 00:02:08,852
+Markers become a mission: takeoff, waypoints, return to launch, a geofence and a survey grid,
+
+21
+00:02:08,972 --> 00:02:12,998
+exported as a QGroundControl plan, KML or KMZ.
+
+22
+00:02:15,320 --> 00:02:23,149
+Mappa receives MAVLink v1 and v2 telemetry over UDP, verifies the CRC, shows position,
+
+23
+00:02:23,269 --> 00:02:28,880
+heading and altitude, records the track and exports it as GPX.
+
+24
+00:02:31,200 --> 00:02:33,749
+Field mode enlarges every control,
+
+25
+00:02:33,869 --> 00:02:39,480
+raises contrast and keeps the screen awake on a tablet or a small laptop.
+
+26
+00:02:41,800 --> 00:02:45,076
+Mappa is open source under Apache 2.0.
+
+27
+00:02:45,196 --> 00:02:50,080
+Build it, test it in the field, and tell us what breaks.
