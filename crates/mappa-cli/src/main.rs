@@ -1,5 +1,7 @@
 //! `mappa-cli`: download, pack and inspect the same cache as the desktop app.
 
+mod batch;
+mod qr;
 mod serve;
 
 use std::path::{Path, PathBuf};
@@ -12,6 +14,7 @@ use clap::{Args, Parser, Subcommand};
 use mappa_core::{Bbox, ProviderCatalog, TileRange};
 use mappa_net::{NetConfig, TileClient};
 use mappa_storage::{ExportSpec, SqliteCache, Tile, TileKey, export_region, export_region_pmtiles};
+use serde::Serialize;
 
 /// A failed tile message printed after the last task settles.
 type TileTask = Option<String>;
@@ -25,6 +28,9 @@ use tokio::task::JoinSet;
     about = "Офлайн-карты Mappa: загрузка, MBTiles, диагностика"
 )]
 struct Cli {
+    /// Печатать машинный JSON вместо человеческого итога.
+    #[arg(long, global = true)]
+    json: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -41,6 +47,8 @@ enum Command {
     Doctor(DoctorArgs),
     /// Показать статистику кэша.
     Stats(CacheArgs),
+    /// Выполнить пакет JSON-заданий download/pack.
+    Batch(batch::BatchArgs),
     /// Запустить локальный tile-server и REST API.
     Serve(serve::ServeArgs),
 }
@@ -127,18 +135,64 @@ struct DoctorArgs {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    match Cli::parse().command {
-        Command::Providers(args) => providers(args),
-        Command::Download(args) => download(args).await,
-        Command::Pack(args) => pack(args),
-        Command::Doctor(args) => doctor(args),
-        Command::Stats(args) => stats(args),
-        Command::Serve(args) => serve::run(args).await,
+    let cli = Cli::parse();
+    let json = cli.json;
+    match cli.command {
+        Command::Providers(args) => providers(args, json),
+        Command::Download(args) => download(args, json).await,
+        Command::Pack(args) => pack(args, json),
+        Command::Doctor(args) => doctor(args, json),
+        Command::Stats(args) => stats(args, json),
+        Command::Batch(args) => batch::run(args, json).await,
+        Command::Serve(args) => {
+            if json {
+                bail!("--json не поддерживается командой serve; используйте REST API");
+            }
+            serve::run(args).await
+        }
     }
 }
 
-fn providers(args: CatalogArgs) -> Result<()> {
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderReport {
+    id: String,
+    name: String,
+    kind: mappa_core::ProviderKind,
+    min_zoom: u8,
+    max_zoom: u8,
+    tile_size: u16,
+    format: String,
+    offline_allowed: bool,
+    attribution: String,
+}
+
+#[derive(Serialize)]
+struct ProvidersReport {
+    providers: Vec<ProviderReport>,
+}
+
+fn providers(args: CatalogArgs, json: bool) -> Result<()> {
     let catalog = load_catalog(args.providers_dir.as_deref())?;
+    if json {
+        let report = ProvidersReport {
+            providers: catalog
+                .iter()
+                .map(|provider| ProviderReport {
+                    id: provider.id.clone(),
+                    name: provider.name.clone(),
+                    kind: provider.kind,
+                    min_zoom: provider.min_zoom,
+                    max_zoom: provider.max_zoom,
+                    tile_size: provider.tile_size,
+                    format: provider.format.clone(),
+                    offline_allowed: provider.offline_allowed,
+                    attribution: provider.attribution.clone(),
+                })
+                .collect(),
+        };
+        return print_json(&report);
+    }
     println!(
         "{:<8} {:<18} {:<8} {:<9} FORMAT",
         "ID", "NAME", "ZOOM", "OFFLINE"
@@ -161,7 +215,59 @@ fn providers(args: CatalogArgs) -> Result<()> {
     Ok(())
 }
 
-async fn download(args: DownloadArgs) -> Result<()> {
+pub(crate) fn print_json<T: Serialize>(value: &T) -> Result<()> {
+    println!(
+        "{}",
+        serde_json::to_string_pretty(value).context("cannot encode JSON output")?
+    );
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DownloadReport {
+    pub provider: String,
+    pub min_zoom: u8,
+    pub max_zoom: u8,
+    pub tiles: u64,
+    pub downloaded: u64,
+    pub skipped: u64,
+    pub failed: u64,
+    pub bytes: u64,
+    pub seconds: f64,
+    pub cache: PathBuf,
+    pub dry_run: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evicted: Option<u64>,
+}
+
+async fn download(args: DownloadArgs, json: bool) -> Result<()> {
+    let report = run_download(&args, json).await?;
+    if json {
+        print_json(&report)?;
+    } else if report.dry_run {
+        println!("dry-run: тайлы не скачивались");
+    } else {
+        if let Some(evicted) = report.evicted.filter(|&evicted| evicted > 0) {
+            println!("вытеснено по лимиту кэша: {evicted}");
+        }
+        println!(
+            "готово: скачано {}, пропущено {}, ошибок {}, {} за {:.1} с",
+            report.downloaded,
+            report.skipped,
+            report.failed,
+            human_bytes(report.bytes),
+            report.seconds
+        );
+    }
+    if report.failed > 0 {
+        bail!("{} тайлов не скачались", report.failed);
+    }
+    Ok(())
+}
+
+pub(crate) async fn run_download(args: &DownloadArgs, quiet: bool) -> Result<DownloadReport> {
+    let started = Instant::now();
     let (west, south, east, north) = parse_bbox(&args.bbox)?;
     let (min_zoom, max_zoom) = parse_zoom(&args.zoom)?;
     let bbox = Bbox::new(west, south, east, north).map_err(anyhow::Error::msg)?;
@@ -194,16 +300,31 @@ async fn download(args: DownloadArgs) -> Result<()> {
         );
     }
     let cache_path = cache_path(args.cache.as_deref());
-    println!(
-        "{}: {} тайлов z{}–z{} → {}",
-        provider.name,
-        total,
-        min_zoom,
-        max_zoom,
-        cache_path.display()
-    );
+    if !quiet {
+        println!(
+            "{}: {} тайлов z{}–z{} → {}",
+            provider.name,
+            total,
+            min_zoom,
+            max_zoom,
+            cache_path.display()
+        );
+    }
     if args.dry_run {
-        return Ok(());
+        return Ok(DownloadReport {
+            provider: provider.id.clone(),
+            min_zoom,
+            max_zoom,
+            tiles: total,
+            downloaded: 0,
+            skipped: 0,
+            failed: 0,
+            bytes: 0,
+            seconds: started.elapsed().as_secs_f64(),
+            cache: cache_path,
+            dry_run: true,
+            evicted: None,
+        });
     }
 
     let cache = Arc::new(SqliteCache::open(&cache_path)?);
@@ -214,7 +335,6 @@ async fn download(args: DownloadArgs) -> Result<()> {
     })?);
     let provider = Arc::new(provider.clone());
     let permits = Arc::new(Semaphore::new(12));
-    let started = Instant::now();
     let mut processed = 0_u64;
     let mut skipped = 0_u64;
     let downloaded = Arc::new(AtomicU64::new(0));
@@ -287,15 +407,22 @@ async fn download(args: DownloadArgs) -> Result<()> {
             // accumulates millions of completed JoinHandles in memory.
             while let Some(joined) = tasks.try_join_next() {
                 match joined {
-                    Ok(Some(message)) => eprintln!("\n{message}"),
+                    Ok(Some(message)) => {
+                        if !quiet {
+                            eprintln!("\n{message}");
+                        }
+                    }
                     Ok(None) => {}
                     Err(error) => {
                         failed.fetch_add(1, Ordering::Relaxed);
-                        eprintln!("\nзадача загрузки упала: {error}");
+                        if !quiet {
+                            eprintln!("\nзадача загрузки упала: {error}");
+                        }
                     }
                 }
             }
-            if last_report.elapsed() >= Duration::from_millis(200) || processed == total {
+            if !quiet && (last_report.elapsed() >= Duration::from_millis(200) || processed == total)
+            {
                 report_progress(
                     processed,
                     total,
@@ -312,14 +439,20 @@ async fn download(args: DownloadArgs) -> Result<()> {
 
     while let Some(joined) = tasks.join_next().await {
         match joined {
-            Ok(Some(message)) => eprintln!("\n{message}"),
+            Ok(Some(message)) => {
+                if !quiet {
+                    eprintln!("\n{message}");
+                }
+            }
             Ok(None) => {}
             Err(error) => {
                 failed.fetch_add(1, Ordering::Relaxed);
-                eprintln!("\nзадача загрузки упала: {error}");
+                if !quiet {
+                    eprintln!("\nзадача загрузки упала: {error}");
+                }
             }
         }
-        if last_report.elapsed() >= Duration::from_millis(200) || tasks.is_empty() {
+        if !quiet && (last_report.elapsed() >= Duration::from_millis(200) || tasks.is_empty()) {
             report_progress(
                 processed,
                 total,
@@ -335,25 +468,68 @@ async fn download(args: DownloadArgs) -> Result<()> {
     let downloaded = downloaded.load(Ordering::Relaxed);
     let failed = failed.load(Ordering::Relaxed);
     let bytes = bytes.load(Ordering::Relaxed);
-    println!();
+    let mut evicted = None;
     if limit_bytes > 0 {
-        let evicted = cache.enforce_limit(limit_bytes)?;
-        if evicted > 0 {
-            println!("вытеснено по лимиту кэша: {evicted}");
+        let count = cache.enforce_limit(limit_bytes)?;
+        if count > 0 {
+            evicted = Some(count);
         }
     }
-    println!(
-        "готово: скачано {downloaded}, пропущено {skipped}, ошибок {failed}, {} за {:.1} с",
-        human_bytes(bytes),
-        started.elapsed().as_secs_f64()
-    );
-    if failed > 0 {
-        bail!("{failed} тайлов не скачались");
+    if !quiet {
+        println!();
+    }
+    Ok(DownloadReport {
+        provider: provider.id.clone(),
+        min_zoom,
+        max_zoom,
+        tiles: total,
+        downloaded,
+        skipped,
+        failed,
+        bytes,
+        seconds: started.elapsed().as_secs_f64(),
+        cache: cache_path,
+        dry_run: false,
+        evicted,
+    })
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PackReport {
+    pub path: PathBuf,
+    pub tiles: u64,
+    pub bytes: u64,
+    pub missing: u64,
+    pub seconds: f64,
+    pub manifest: PathBuf,
+    pub sha256: String,
+}
+
+fn pack(args: PackArgs, json: bool) -> Result<()> {
+    let report = run_pack(&args, json)?;
+    if json {
+        print_json(&report)?;
+    } else {
+        println!(
+            "{}: {} тайлов, {}, не хватает {}",
+            report.path.display(),
+            report.tiles,
+            human_bytes(report.bytes),
+            report.missing
+        );
+        println!(
+            "манифест: {} (sha256 {}, подпись Ed25519)",
+            report.manifest.display(),
+            &report.sha256[..16.min(report.sha256.len())]
+        );
+        println!("за {:.1} с", report.seconds);
     }
     Ok(())
 }
 
-fn pack(args: PackArgs) -> Result<()> {
+pub(crate) fn run_pack(args: &PackArgs, quiet: bool) -> Result<PackReport> {
+    let started = Instant::now();
     let (west, south, east, north) = parse_bbox(&args.bbox)?;
     let (min_zoom, max_zoom) = parse_zoom(&args.zoom)?;
     let bbox = Bbox::new(west, south, east, north).map_err(anyhow::Error::msg)?;
@@ -365,10 +541,11 @@ fn pack(args: PackArgs) -> Result<()> {
     let cache = SqliteCache::open(&cache_path)?;
     let name = args
         .name
+        .clone()
         .unwrap_or_else(|| format!("{} z{}–z{}", provider.name, min_zoom, max_zoom));
     let spec = ExportSpec {
         provider_id: provider.id.clone(),
-        name: name.clone(),
+        name,
         west: bbox.west(),
         south: bbox.south(),
         east: bbox.east(),
@@ -379,6 +556,7 @@ fn pack(args: PackArgs) -> Result<()> {
         format: provider.format.clone(),
         attribution: Some(provider.attribution.clone()),
         license: args.license.clone(),
+        cancel: None,
         output: args.output.clone(),
     };
     let extension = args
@@ -387,10 +565,15 @@ fn pack(args: PackArgs) -> Result<()> {
         .and_then(|value| value.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
-    let started = Instant::now();
-    let progress = |processed: u64, written: u64| {
-        if processed.is_multiple_of(200) {
-            eprint!("\rобработано {processed}, записано {written}");
+    let progress = |progress: mappa_storage::ExportProgress| {
+        if !quiet
+            && (progress.done.is_multiple_of(200)
+                || progress.phase == mappa_storage::ExportPhase::Finalizing)
+        {
+            eprint!(
+                "\r{:?}: {}/{}, записано {}",
+                progress.phase, progress.done, progress.total, progress.written_tiles
+            );
         }
     };
     let report = match extension.as_str() {
@@ -398,61 +581,131 @@ fn pack(args: PackArgs) -> Result<()> {
         "mbtiles" => export_region(&cache, &spec, progress)?,
         other => bail!("output must end in .mbtiles or .pmtiles, got {other:?}"),
     };
-    println!();
+    if !quiet {
+        println!();
+    }
     let key_path = cache_path.with_file_name("pack-signing.key");
     let manifest = mappa_storage::write_manifest(&report.path, args.license.as_deref(), &key_path)?;
-    println!(
-        "{}: {} тайлов, {}, не хватает {}",
-        report.path.display(),
-        report.tiles,
-        human_bytes(report.bytes),
-        report.missing
-    );
-    println!(
-        "манифест: {} (sha256 {}, подпись Ed25519)",
-        mappa_storage::manifest::manifest_path(&report.path).display(),
-        &manifest.sha256[..16]
-    );
-    println!("за {:.1} с", started.elapsed().as_secs_f64());
-    Ok(())
+    Ok(PackReport {
+        path: report.path,
+        tiles: report.tiles,
+        bytes: report.bytes,
+        missing: report.missing,
+        seconds: started.elapsed().as_secs_f64(),
+        manifest: mappa_storage::manifest::manifest_path(&args.output),
+        sha256: manifest.sha256,
+    })
 }
 
-fn doctor(args: DoctorArgs) -> Result<()> {
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DoctorReport {
+    cache: PathBuf,
+    file_bytes: Option<u64>,
+    tiles: u64,
+    bytes: u64,
+    hits: u64,
+    misses: u64,
+    hit_ratio: f64,
+    quick_check: String,
+    vacuum: bool,
+}
+
+fn doctor(args: DoctorArgs, json: bool) -> Result<()> {
     let path = cache_path(args.cache.as_deref());
     let cache = SqliteCache::open(&path)?;
     let stats = cache.stats()?;
-    println!("cache: {}", path.display());
-    if let Ok(metadata) = std::fs::metadata(&path) {
-        println!("file: {}", human_bytes(metadata.len()));
+    let file_bytes = std::fs::metadata(&path).ok().map(|metadata| metadata.len());
+    let quick_check = cache.quick_check()?;
+    if args.vacuum {
+        cache.vacuum()?;
+    }
+    let report = DoctorReport {
+        cache: path,
+        file_bytes,
+        tiles: stats.tiles,
+        bytes: stats.bytes,
+        hits: stats.hits,
+        misses: stats.misses,
+        hit_ratio: stats.hit_ratio(),
+        quick_check,
+        vacuum: args.vacuum,
+    };
+    if json {
+        return print_json(&report);
+    }
+    println!("cache: {}", report.cache.display());
+    if let Some(bytes) = report.file_bytes {
+        println!("file: {}", human_bytes(bytes));
     }
     println!(
         "tiles: {}, bytes: {}, hits: {}, misses: {}, hit ratio: {:.1}%",
-        stats.tiles,
-        human_bytes(stats.bytes),
-        stats.hits,
-        stats.misses,
-        stats.hit_ratio() * 100.0
+        report.tiles,
+        human_bytes(report.bytes),
+        report.hits,
+        report.misses,
+        report.hit_ratio * 100.0
     );
-    println!("quick_check: {}", cache.quick_check()?);
-    if args.vacuum {
-        cache.vacuum()?;
+    println!("quick_check: {}", report.quick_check);
+    if report.vacuum {
         println!("vacuum: ok");
     }
     Ok(())
 }
 
-fn stats(args: CacheArgs) -> Result<()> {
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderStatsReport {
+    provider_id: String,
+    tiles: u64,
+    bytes: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StatsReport {
+    cache: PathBuf,
+    tiles: u64,
+    bytes: u64,
+    hits: u64,
+    misses: u64,
+    hit_ratio: f64,
+    providers: Vec<ProviderStatsReport>,
+}
+
+fn stats(args: CacheArgs, json: bool) -> Result<()> {
     let path = cache_path(args.cache.as_deref());
     let cache = SqliteCache::open(&path)?;
     let stats = cache.stats()?;
-    println!("{}", path.display());
+    let providers = cache
+        .provider_stats()?
+        .into_iter()
+        .map(|provider| ProviderStatsReport {
+            provider_id: provider.provider_id,
+            tiles: provider.tiles,
+            bytes: provider.bytes,
+        })
+        .collect();
+    let report = StatsReport {
+        cache: path,
+        tiles: stats.tiles,
+        bytes: stats.bytes,
+        hits: stats.hits,
+        misses: stats.misses,
+        hit_ratio: stats.hit_ratio(),
+        providers,
+    };
+    if json {
+        return print_json(&report);
+    }
+    println!("{}", report.cache.display());
     println!(
         "{} тайлов, {}, hit ratio {:.1}%",
-        stats.tiles,
-        human_bytes(stats.bytes),
-        stats.hit_ratio() * 100.0
+        report.tiles,
+        human_bytes(report.bytes),
+        report.hit_ratio * 100.0
     );
-    for provider in cache.provider_stats()? {
+    for provider in report.providers {
         println!(
             "  {:<10} {:>7} тайлов  {}",
             provider.provider_id,
@@ -553,7 +806,7 @@ fn report_progress(
     );
 }
 
-fn human_bytes(bytes: u64) -> String {
+pub(crate) fn human_bytes(bytes: u64) -> String {
     const UNITS: [&str; 4] = ["Б", "КБ", "МБ", "ГБ"];
     let mut value = bytes as f64;
     let mut unit = 0;

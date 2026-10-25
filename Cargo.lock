@@ -2127,6 +2127,8 @@ dependencies = [
  "mappa-core",
  "mappa-net",
  "mappa-storage",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

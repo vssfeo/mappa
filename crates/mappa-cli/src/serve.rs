@@ -1,5 +1,6 @@
 //! Local tile server and read-only REST API for the shared cache and packs.
 
+use std::io::IsTerminal;
 use std::net::{IpAddr, UdpSocket};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -39,6 +40,12 @@ pub struct ServeArgs {
     /// Необязательный токен для API и тайлов (?token=...).
     #[arg(long)]
     pub token: Option<String>,
+    /// Не печатать QR-код для подключения в терминале.
+    #[arg(long)]
+    pub no_qr: bool,
+    /// Сохранить QR-код подключения в SVG.
+    #[arg(long, value_name = "PATH")]
+    pub qr_svg: Option<PathBuf>,
 }
 
 struct ServeState {
@@ -57,6 +64,7 @@ struct ServePack {
     path: PathBuf,
     kind: &'static str,
     format: String,
+    vector_layers: Vec<String>,
     min_zoom: u8,
     max_zoom: u8,
     bounds: Bbox,
@@ -193,8 +201,13 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     println!("  cache: {}", cache_file.display());
     println!("  packs: {}", state.packs.len());
     println!("  local: {}/", state.base_url);
+    let lan_hosts = if address.ip().is_unspecified() {
+        local_addresses()
+    } else {
+        Vec::new()
+    };
     if address.ip().is_unspecified() {
-        for ip in local_addresses() {
+        for ip in &lan_hosts {
             println!("  LAN:   http://{ip}:{}/", address.port());
         }
         if state.token.is_none() {
@@ -206,6 +219,51 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     println!("  packs: /packs/{{id}}/{{z}}/{{x}}/{{y}}");
     if state.token.is_some() {
         println!("  token: required as ?token=... or Authorization: Bearer ...");
+    }
+
+    let qr_host = if address.ip().is_unspecified() {
+        lan_hosts.first().copied()
+    } else if address.ip().is_loopback() {
+        args.qr_svg.is_some().then_some(address.ip())
+    } else {
+        Some(address.ip())
+    };
+    if let Some(host) = qr_host {
+        let qr_url = match state.token.as_deref() {
+            Some(token) => format!(
+                "http://{host}:{}/?token={}",
+                address.port(),
+                percent_encode(token)
+            ),
+            None => format!("http://{host}:{}/", address.port()),
+        };
+        match crate::qr::encode(&qr_url) {
+            Ok(code) => {
+                if let Some(path) = args.qr_svg.as_deref() {
+                    std::fs::write(path, code.svg())
+                        .with_context(|| format!("cannot write QR SVG {}", path.display()))?;
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+                            .with_context(|| {
+                                format!("cannot restrict QR SVG {}", path.display())
+                            })?;
+                    }
+                    println!("  QR SVG: {}", path.display());
+                }
+                if !args.no_qr && std::io::stdout().is_terminal() {
+                    println!(
+                        "  QR:    отсканируйте для подключения (v{}, mask {})",
+                        code.version, code.mask
+                    );
+                    println!("{}", code.terminal());
+                }
+            }
+            Err(error) => eprintln!("warning: QR code is unavailable: {error}"),
+        }
+    } else if !args.no_qr && address.ip().is_unspecified() {
+        println!("  QR:    LAN-адрес не найден; подключение по QR недоступно");
     }
 
     let connections = Arc::new(Semaphore::new(64));
@@ -243,12 +301,23 @@ async fn open_pack(index: usize, path: &std::path::Path) -> Result<ServePack> {
             let min_zoom = pack.min_zoom()?.unwrap_or(0);
             let max_zoom = pack.max_zoom()?.unwrap_or(20);
             let tiles = pack.tile_count().ok();
+            let format = normalize_pack_format(&metadata.format);
+            let vector_layers = if format == "mvt" {
+                let value = metadata
+                    .extra
+                    .get("json")
+                    .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok());
+                vector_layer_names(value.as_ref())
+            } else {
+                Vec::new()
+            };
             Ok(ServePack {
                 id,
                 name: metadata.name.clone().unwrap_or(fallback_name),
                 path: path.to_path_buf(),
                 kind: "mbtiles",
-                format: metadata.format.clone(),
+                format,
+                vector_layers,
                 min_zoom,
                 max_zoom,
                 bounds,
@@ -261,6 +330,13 @@ async fn open_pack(index: usize, path: &std::path::Path) -> Result<ServePack> {
                 .await
                 .with_context(|| format!("cannot open {}", path.display()))?;
             let info = pack.info().clone();
+            let metadata = pack
+                .metadata()
+                .await
+                .ok()
+                .flatten()
+                .and_then(|value| serde_json::from_str::<serde_json::Value>(&value).ok());
+            let vector_layers = vector_layer_names(metadata.as_ref());
             let bounds = Bbox::new(info.west, info.south, info.east, info.north)
                 .unwrap_or_else(|_| Bbox::world());
             Ok(ServePack {
@@ -269,6 +345,7 @@ async fn open_pack(index: usize, path: &std::path::Path) -> Result<ServePack> {
                 path: path.to_path_buf(),
                 kind: "pmtiles",
                 format: info.format.clone(),
+                vector_layers,
                 min_zoom: info.min_zoom,
                 max_zoom: info.max_zoom,
                 bounds,
@@ -447,7 +524,7 @@ fn authorized(state: &ServeState, query: &str, headers: &[(String, String)]) -> 
     };
     if query.split('&').any(|part| {
         let (name, value) = part.split_once('=').unwrap_or((part, ""));
-        name == "token" && value == token
+        name == "token" && percent_decode(value) == token
     }) {
         return true;
     }
@@ -457,6 +534,42 @@ fn authorized(state: &ServeState, query: &str, headers: &[(String, String)]) -> 
                 .strip_prefix("Bearer ")
                 .is_some_and(|value| value == token)
     })
+}
+
+fn percent_encode(value: &str) -> String {
+    let mut encoded = String::new();
+    for &byte in value.as_bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
+fn percent_decode(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' && index + 2 < bytes.len() {
+            let hex = |byte: u8| match byte {
+                b'0'..=b'9' => Some(byte - b'0'),
+                b'a'..=b'f' => Some(byte - b'a' + 10),
+                b'A'..=b'F' => Some(byte - b'A' + 10),
+                _ => None,
+            };
+            if let (Some(high), Some(low)) = (hex(bytes[index + 1]), hex(bytes[index + 2])) {
+                decoded.push(high * 16 + low);
+                index += 3;
+                continue;
+            }
+        }
+        decoded.push(bytes[index]);
+        index += 1;
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
 }
 
 async fn cache_tile_response(
@@ -588,12 +701,17 @@ fn packs_json(state: &ServeState) -> String {
 
 fn pack_json(pack: &ServePack, base_url: &str) -> String {
     format!(
-        "{{\"id\":\"{}\",\"name\":\"{}\",\"kind\":\"{}\",\"path\":\"{}\",\"format\":\"{}\",\"minZoom\":{},\"maxZoom\":{},\"bounds\":[{},{},{},{}],\"tiles\":{},\"tileUrl\":\"{}/packs/{}/{{z}}/{{x}}/{{y}}\"}}",
+        "{{\"id\":\"{}\",\"name\":\"{}\",\"kind\":\"{}\",\"path\":\"{}\",\"format\":\"{}\",\"vectorLayers\":[{}],\"minZoom\":{},\"maxZoom\":{},\"bounds\":[{},{},{},{}],\"tiles\":{},\"tileUrl\":\"{}/packs/{}/{{z}}/{{x}}/{{y}}\"}}",
         json_escape(&pack.id),
         json_escape(&pack.name),
         pack.kind,
         json_escape(&pack.path.display().to_string()),
         json_escape(&pack.format),
+        pack.vector_layers
+            .iter()
+            .map(|layer| format!("\"{}\"", json_escape(layer)))
+            .collect::<Vec<_>>()
+            .join(","),
         pack.min_zoom,
         pack.max_zoom,
         pack.bounds.west(),
@@ -725,10 +843,42 @@ fn allow_headers() -> Vec<(String, String)> {
     ]
 }
 
+fn normalize_pack_format(format: &str) -> String {
+    match format.trim().to_ascii_lowercase().as_str() {
+        "pbf" | "mvt" => "mvt".to_owned(),
+        other => other.to_owned(),
+    }
+}
+
+fn vector_layer_names(metadata: Option<&serde_json::Value>) -> Vec<String> {
+    let mut layers = Vec::new();
+    let Some(items) = metadata
+        .and_then(|value| value.get("vector_layers"))
+        .and_then(serde_json::Value::as_array)
+    else {
+        return layers;
+    };
+    for item in items {
+        let Some(id) = item.get("id").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        let id = id.trim();
+        if id.is_empty() || id.len() > 200 || layers.iter().any(|layer| layer == id) {
+            continue;
+        }
+        layers.push(id.to_owned());
+        if layers.len() == 128 {
+            break;
+        }
+    }
+    layers
+}
+
 fn mime_for(format: &str) -> Option<&'static str> {
     match format.trim().to_ascii_lowercase().as_str() {
         "png" => Some("image/png"),
         "jpg" | "jpeg" => Some("image/jpeg"),
+        "mvt" | "pbf" => Some("application/vnd.mapbox-vector-tile"),
         "webp" => Some("image/webp"),
         "avif" => Some("image/avif"),
         "json" => Some("application/json; charset=utf-8"),
@@ -817,6 +967,24 @@ mod tests {
     fn escapes_json_strings() {
         assert_eq!(json_escape("a\"b\\c\n"), "a\\\"b\\\\c\\n");
         assert_eq!(json_escape("\u{1}"), "\\u0001");
+    }
+
+    #[test]
+    fn token_query_is_percent_encoded() {
+        let token = "mappa lan+/?#%";
+        let encoded = percent_encode(token);
+        assert_eq!(encoded, "mappa%20lan%2B%2F%3F%23%25");
+        assert_eq!(percent_decode(&encoded), token);
+        assert_eq!(percent_decode("plain"), "plain");
+    }
+
+    #[tokio::test]
+    async fn accepts_percent_encoded_token() {
+        let mut state = state();
+        state.token = Some("mappa lan+/".to_owned());
+        let authorized =
+            handle_request(&state, "GET", "/api/status?token=mappa%20lan%2B%2F", &[]).await;
+        assert_eq!(authorized.status, 200);
     }
 
     #[tokio::test]
