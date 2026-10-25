@@ -28,6 +28,7 @@ tile-server и интеграция с роботами/полевыми уст�
 | [docs/NMEA.md](docs/NMEA.md) | NMEA 0183, gpsd: имитация и внешние потоки |
 | [docs/ROUTING.md](docs/ROUTING.md) | офлайн- и онлайн-маршруты, подсказки, изохроны и off-route alerts |
 | [docs/HANDOVER.md](docs/HANDOVER.md) | передача контекста: состояние git, что проверено, следующие шаги |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | старт, fps, память: как мерить и текущие числа |
 
 ## Позиционирование
 

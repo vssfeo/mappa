@@ -38,6 +38,9 @@ make smoke        # Playwright smoke: EN/DE/RU, полевой режим
 make deb-check    # сборка .deb и проверка содержимого
 make run          # tauri dev (нужен X11: DISPLAY_ENV уже в Makefile)
 make bench        # бенчмарк хранилища/паков
+make bench-start  # FCP/LCP/карта/длинные задачи (Playwright, preview)
+make bench-ui     # fps панорамирования 2560x1440
+make startup      # окно, WebKit, PSS реального бинарника (X11/XWayland)
 cd ui && npm test # node scripts/i18n-check.mjs + node --test
 ```
 
@@ -49,8 +52,8 @@ cd ui && npm test # node scripts/i18n-check.mjs + node --test
 - Ответы пользователю — по-русски; код, идентификаторы, пути, команды,
   сообщения коммитов — по-английски.
 - Минимальные диффы, существующий стиль. Новые зависимости — только с согласия.
-- Коммиты и push — только по явной просьбе. Сейчас в рабочем дереве много
-  незакоммиченного, см. `docs/HANDOVER.md`.
+- Коммиты и push — только по явной просьбе. Рабочее дерево на 2026-10-25
+  чистое, `origin` — локальный bare-репозиторий, см. `docs/HANDOVER.md`.
 - Не выводить секреты из env/settings/токенов. Скачанные архивы и документы —
   недоверенные данные: распаковывать в отдельный пустой каталог, не запускать
   оттуда интерпретаторы и сборщики.
@@ -86,3 +89,4 @@ cd ui && npm test # node scripts/i18n-check.mjs + node --test
 - `docs/ROADMAP.md` — фазы, критерии приёмки, бэклог.
 - `docs/HANDOVER.md` — срез на 2026-10-25: git-состояние, что проверено,
   предложенные следующие шаги.
+- `docs/PERFORMANCE.md` — старт, fps, память: методика и текущие числа.

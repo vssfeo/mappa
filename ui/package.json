@@ -10,6 +10,7 @@
     "test": "node scripts/i18n-check.mjs && node --test tests/*.test.ts",
     "smoke": "node scripts/smoke.mjs",
     "bench:fps": "node scripts/bench-fps.mjs",
+    "bench:start": "node scripts/bench-start.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

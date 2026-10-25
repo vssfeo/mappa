@@ -14,37 +14,55 @@ GeoTIFF/COG, горизонтали, профиль, min AGL), GNSS (имита�
 TCP, gpsd), офлайн- и онлайн-маршруты (OSRM/BRouter, изохроны, коридор),
 полевой режим, локализация RU/EN/DE/FR/ES.
 
-Последний функциональный блок — пять пунктов, выполненных подряд:
-векторные `.mbtiles`, прогресс/отмена экспорта, маршрутизация, полевой
-режим, локализация. Отчёт по ним уже отдан пользователю.
-
-## Git: главное
+## Git
 
 | Параметр | Значение |
 |---|---|
-| Ветка | `main`, HEAD `8f745e7 Add mappa serve tile server and REST API` |
-| Коммитов | 19 (первый — 2026-10-24, «Initial Mappa 1.0 release candidate») |
-| Remote | отсутствует |
-| Рабочее дерево | 56 изменённых + 32 неотслеживаемых файла |
+| Ветка | `main`, HEAD — коммит «Measure and speed up startup» |
+| Коммитов | 30 (первый — 2026-10-24, «Initial Mappa 1.0 release candidate») |
+| Рабочее дерево | чистое |
+| `origin` | `/home/captry/Projects AI/git-backups/mappa.git` (локальный bare) |
+| Бэкап | `/home/captry/Projects AI/git-backups/mappa-all-20261025.bundle` |
+| GitHub | не подключён: на машине нет `gh`, GitHub-токена и SSH-ключа |
 
-Незакоммиченные файлы — это не мелочь, а целые подсистемы:
-`src-tauri/src/{dem,geotiff,gnss,geocode,routing,power,inflate}.rs`,
-`crates/mappa-cli/src/{batch,qr}.rs`, `crates/mappa-core/src/inflate.rs`,
-`ui/src/{RoutePanel.tsx,routing.ts,dem.ts,nmea.ts,gpsd.ts,gnssTcp.ts,geocode.ts,
-useScreenAwake.ts,locales/}`, `ui/tests/{routing,nmea,gpsd,gnssTcp,geocode}.test.ts`,
-`docs/{BATCH,DEM,GEOCODER,NMEA,PACKS,ROUTING}.md`, `ui/scripts/i18n-check.mjs`.
+Работа двух суток (DEM, GNSS, геокодер, batch/QR, маршрутизация, полевой
+режим, локализация, экспорт и векторные MBTiles) разложена на 10 тематических
+коммитов. Всё запушено в локальный `origin`.
 
-То есть история последних ~двух суток работы существует только на диске.
-Резервной копии и remote нет.
+Подключение GitHub, когда появятся доступы:
 
-## Проверено (2026-10-25, этот прогон)
+```bash
+gh repo create mappa --private --source . --remote github
+git push -u github main
+```
+
+или вручную: создать пустой репозиторий и `git remote add github <url>`.
+`repository` в `Cargo.toml` пока `https://example.invalid/mappa` — заменить.
+
+## Проверено (2026-10-25)
 
 - `make check` — зелёный: fmt, clippy `-D warnings`, 194 Rust-теста,
   113 UI-тестов, unicode-scan, oxlint, production-сборка UI.
+- `make smoke` — SMOKE OK (EN/DE/RU, полевой режим).
+- `make bench-start`, `make bench-ui`, `make startup` — числа и методика
+  в [PERFORMANCE.md](PERFORMANCE.md).
 - Собранные артефакты: `target/release/mappa` (16,2 МБ),
-  `target/release/bundle/deb/Mappa_0.1.0_amd64.deb` (6,59 МиБ).
-- `make smoke` и `make deb-check` в этом прогоне не повторялись;
-  по отчёту предыдущей сессии — проходили (EN/DE/RU, полевой режим).
+  `target/release/bundle/deb/Mappa_0.1.0_amd64.deb` (6,59 МиБ); `.deb`
+  собран до правок производительности, перед релизом пересобрать.
+
+## Производительность
+
+| Метрика | Значение |
+|---|---|
+| Окно на экране | ~70 мс |
+| Процесс WebKit запущен | ~330 мс |
+| First contentful paint | 84 мс (было 780) |
+| Канвас карты готов | ~760 мс |
+| Панорамирование 2560×1440 | 60 fps |
+| Суммарный PSS | ~309 МиБ |
+
+Сделано: статический boot-экран в `ui/index.html` с темой из localStorage;
+харнессы `ui/scripts/bench-start.mjs` и `scripts/measure-startup.sh`.
 
 ## Что не проверено вживую
 
@@ -55,25 +73,20 @@ useScreenAwake.ts,locales/}`, `ui/tests/{routing,nmea,gpsd,gnssTcp,geocode}.test
 - Экспорт большого пака: прогресс, ETA, отмена на сотнях тысяч тайлов.
 - Интероп: MBTiles/GPX в QGIS, GPX в Garmin.
 - ARM64 на Rock Pi 4A / NanoPi M4 (в CI сборка есть, железо — нет).
+- Старт на холодном page cache и двухчасовой прогон на утечки.
 
 ## Предлагаемые следующие шаги
 
-**P0 — сохранить работу (сделать первым).**
-1. Разложить рабочее дерево на логические коммиты: DEM, NMEA/gpsd,
-   геокодер, batch+QR, маршрутизация, полевой режим, i18n, документы.
-2. Сделать бэкап: `git bundle create ~/Projects\ AI/git-backups/mappa-*.bundle --all`
-   (рядом уже лежат бандлы других проектов).
-3. Создать репозиторий на GitHub, запушить `main`, проверить
-   `.github/workflows/ci.yml` (Linux amd64 + ARM64) на реальном runner.
-   `repository` в `Cargo.toml` пока `https://example.invalid/mappa`.
+**P0 — внешний remote.** Подключить GitHub (см. выше), заменить
+`repository` в `Cargo.toml`, прогнать `.github/workflows/ci.yml`
+на реальном runner (amd64 + ARM64).
 
 **P1 — закрыть критерии 1.0 (Phase 7).**
-- Performance pass: старт ≤1,5 с, 60 fps на 1440p, профиль памяти
-  (`make bench`, `make bench-ui`, `make bench-large`).
 - Онбординг первого запуска + демо-пак (сейчас пустой экран без подсказок).
 - AppImage в дополнение к `.deb` (Flatpak — после).
 - Crash reporting opt-in и release checklist; 10 внешних тестеров.
-- Импорт кэша SAS.Planet (best-effort) — заметный магнит для аудитории.
+- Импорт кэша SAS.Planet (best-effort).
+- Пересобрать `.deb` после правок производительности.
 
 **P1 — полевая приёмка (можно параллельно).**
 - СК-42/МСК на 3–5 реальных выписках, сверить с proj4/геодезистом.
@@ -92,5 +105,5 @@ useScreenAwake.ts,locales/}`, `ui/tests/{routing,nmea,gpsd,gnssTcp,geocode}.test
 дорожный граф с профилями и голосовыми подсказками, выбор объектов и
 атрибуты внутри векторных паков, self-hosted sync для групп.
 
-Рациональный порядок: **P0 → performance pass + онбординг/демо-пак →
-полевая приёмка → mission planning и телеметрия**.
+Рациональный порядок: **внешний remote → онбординг/демо-пак → полевая
+приёмка → mission planning и телеметрия**.
