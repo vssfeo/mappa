@@ -25,6 +25,14 @@ pub struct AppSettings {
     pub cache_limit_bytes: u64,
     /// HTTP proxy URL, empty means direct connection.
     pub proxy: Option<String>,
+    /// Allow place search through Photon/Nominatim when a query is not
+    /// already answered by the local gazetteer.
+    #[serde(default = "default_geocode_online")]
+    pub geocode_online: bool,
+}
+
+fn default_geocode_online() -> bool {
+    true
 }
 
 impl Default for AppSettings {
@@ -32,6 +40,7 @@ impl Default for AppSettings {
         Self {
             cache_limit_bytes: DEFAULT_CACHE_LIMIT_BYTES,
             proxy: None,
+            geocode_online: true,
         }
     }
 }
@@ -72,6 +81,7 @@ pub async fn get_settings(state: SharedState<'_>) -> Result<AppSettings, String>
     Ok(AppSettings {
         cache_limit_bytes: state.cache_limit(),
         proxy: state.proxy.read().await.clone(),
+        geocode_online: state.geocode_online.load(Ordering::Relaxed),
     })
 }
 
@@ -92,6 +102,9 @@ pub async fn update_settings(
         .cache_limit_bytes
         .store(settings.cache_limit_bytes, Ordering::Relaxed);
     *state.proxy.write().await = settings.proxy.clone();
+    state
+        .geocode_online
+        .store(settings.geocode_online, Ordering::Relaxed);
 
     let cache = Arc::clone(&state.cache);
     let limit = settings.cache_limit_bytes;
@@ -121,6 +134,7 @@ mod tests {
         let low = AppSettings {
             cache_limit_bytes: 1,
             proxy: Some("  http://127.0.0.1:3128  ".to_owned()),
+            geocode_online: true,
         }
         .sanitized();
         assert_eq!(low.cache_limit_bytes, MIN_CACHE_LIMIT_BYTES);
@@ -129,6 +143,7 @@ mod tests {
         let high = AppSettings {
             cache_limit_bytes: u64::MAX,
             proxy: Some("   ".to_owned()),
+            geocode_online: false,
         }
         .sanitized();
         assert_eq!(high.cache_limit_bytes, MAX_CACHE_LIMIT_BYTES);
@@ -142,13 +157,22 @@ mod tests {
         let settings = AppSettings {
             cache_limit_bytes: 512 * 1024 * 1024,
             proxy: Some("http://proxy.local:8080".to_owned()),
+            geocode_online: false,
         }
         .sanitized();
         save(&path, &settings).unwrap();
         let loaded = load(&path);
         assert_eq!(loaded.cache_limit_bytes, settings.cache_limit_bytes);
         assert_eq!(loaded.proxy, settings.proxy);
+        assert!(!loaded.geocode_online);
         std::fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn old_settings_enable_online_geocoder() {
+        let settings: AppSettings =
+            serde_json::from_str(r#"{"cacheLimitBytes": 134217728, "proxy": null}"#).unwrap();
+        assert!(settings.geocode_online);
     }
 
     #[test]
