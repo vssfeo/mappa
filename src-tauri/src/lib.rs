@@ -20,6 +20,7 @@ mod power;
 mod routing;
 mod settings;
 mod state;
+mod telemetry;
 mod tiles;
 mod viewshed;
 mod wmts;
@@ -37,6 +38,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(downloads::Exports::default())
         .manage(power::ScreenAwake::default())
+        .manage(telemetry::Telemetry::default())
         .on_permission_request(|_, kind| match kind {
             tauri::webview::PermissionKind::Geolocation => {
                 tauri::webview::PermissionResponse::Allow
@@ -159,6 +161,11 @@ pub fn run() {
             georef::georef_warp,
             viewshed::los_compute,
             viewshed::viewshed_compute,
+            telemetry::start_mavlink,
+            telemetry::stop_mavlink,
+            telemetry::mavlink_status,
+            telemetry::mavlink_track,
+            telemetry::mavlink_clear,
             gnss::start_nmea_tcp,
             gnss::stop_nmea_tcp,
             gnss::start_gpsd_tcp,

@@ -48,6 +48,7 @@ import { Onboarding } from './Onboarding'
 import { GeorefPanel } from './GeorefPanel'
 import { LosPanel } from './LosPanel'
 import { MissionPanel } from './MissionPanel'
+import { TelemetryPanel } from './TelemetryPanel'
 import { Rail } from './Rail'
 import { Shortcuts } from './Shortcuts'
 import { StatusBar } from './StatusBar'
@@ -178,6 +179,7 @@ function App() {
   const [georefOpen, setGeorefOpen] = useState(false)
   const [losOpen, setLosOpen] = useState(false)
   const [missionOpen, setMissionOpen] = useState(false)
+  const [telemetryOpen, setTelemetryOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
 
   useEffect(() => {
@@ -1247,6 +1249,13 @@ function App() {
         action: () => setPanel('projects'),
       },
       {
+        id: 'telemetry',
+        label: tx('Телеметрия MAVLink', 'MAVLink telemetry'),
+        group: tx('Инструменты', 'Tools'),
+        icon: MapIcon,
+        action: () => setTelemetryOpen(true),
+      },
+      {
         id: 'mission',
         label: tx('Миссия из меток', 'Mission from markers'),
         group: tx('Инструменты', 'Tools'),
@@ -1286,6 +1295,7 @@ function App() {
       setGeorefOpen,
       setLosOpen,
       setMissionOpen,
+      setTelemetryOpen,
       setMeasureMode,
       setPanel,
       setPlacingMarker,
@@ -1430,6 +1440,18 @@ function App() {
       {georefOpen && <GeorefPanel onClose={() => setGeorefOpen(false)} />}
       {losOpen && <LosPanel onClose={() => setLosOpen(false)} />}
       {missionOpen && <MissionPanel onClose={() => setMissionOpen(false)} />}
+      {telemetryOpen && (
+        <TelemetryPanel
+          onClose={() => setTelemetryOpen(false)}
+          onCenter={(lon, lat) =>
+            map?.flyTo({
+              center: [lon, lat],
+              zoom: Math.max(map.getZoom(), 14),
+              duration: 800,
+            })
+          }
+        />
+      )}
       {!onboardingDone && (
         <Onboarding
           demoBusy={demoBusy}
