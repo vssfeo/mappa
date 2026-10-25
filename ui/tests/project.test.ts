@@ -21,6 +21,7 @@ const snapshot = (): ProjectSnapshot => ({
   },
   customLayers: { 'custom-demo': { visible: false, opacity: 0.3 } },
   packPaths: ['/home/user/maps/crimea.mbtiles', '/home/user/maps/crimea.mbtiles'],
+  demPath: '/home/user/dem/N45E034.hgt',
   markers: [
     { id: 'a', name: 'Балаклава', lon: 33.6, lat: 44.5 },
     { id: 'b', name: 'Феодосия', lon: 35.38, lat: 45.03, elevation: 42.5, description: 'порт', folder: 'Порты', icon: '⚓', iconImage: CUSTOM_ICON, color: '#4cc9f0' },
@@ -90,6 +91,7 @@ test('project round-trips through the .mappa format', () => {
   assert.equal(parsed.providerOrder.length, 7)
   assert.deepEqual(parsed.view, { center: [34.1, 44.9], zoom: 9 })
   assert.equal(parsed.packPaths.length, 1)
+  assert.equal(parsed.demPath, '/home/user/dem/N45E034.hgt')
   assert.equal(parsed.markers.length, 2)
   assert.equal(parsed.markers[1].folder, 'Порты')
   assert.equal(parsed.markers[1].icon, '⚓')
@@ -145,6 +147,7 @@ test('sanitizes untrusted fields and clamps collections', () => {
   raw.providerOrder = ['nasa', 'nasa', 'bogus']
   raw.view = { center: [500, 100], zoom: 99 }
   raw.packPaths = ['/valid.mbtiles', '', 42, '/valid.mbtiles']
+  raw.demPath = 42
   raw.markers = [
     { id: 'dup', name: 'A', lon: 34, lat: 45 },
     { id: 'dup', name: 'B', lon: 35, lat: 46 },
@@ -159,6 +162,7 @@ test('sanitizes untrusted fields and clamps collections', () => {
   assert.deepEqual(parsed.view.center, [37.6173, 55.7558])
   assert.equal(parsed.view.zoom, 24)
   assert.deepEqual(parsed.packPaths, ['/valid.mbtiles'])
+  assert.equal(parsed.demPath, '')
   assert.equal(parsed.markers.length, 2)
   assert.notEqual(parsed.markers[0].id, parsed.markers[1].id)
   assert.equal(parsed.crs, null)

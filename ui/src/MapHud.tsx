@@ -16,7 +16,7 @@ import {
   Undo2,
 } from 'lucide-react'
 import type { MeasureMode } from './store'
-import { useT } from './i18n'
+import { useT, useText } from './i18n'
 import { useAppStore } from './store'
 
 interface MapHudProps {
@@ -25,7 +25,11 @@ interface MapHudProps {
 
 export function MapHud({ map }: MapHudProps) {
   const t = useT()
+  const tx = useText()
   const showToast = useAppStore((state) => state.showToast)
+  const dem = useAppStore((state) => state.dem)
+  const dem3d = useAppStore((state) => state.dem3d)
+  const setDem3d = useAppStore((state) => state.setDem3d)
   const drawing = useAppStore((state) => state.drawing)
   const setDrawing = useAppStore((state) => state.setDrawing)
   const measureMode = useAppStore((state) => state.measureMode)
@@ -261,9 +265,27 @@ export function MapHud({ map }: MapHudProps) {
       <div className="hud-group">
         <button
           type="button"
-          className="hud-button"
-          onClick={() => showToast('3D — after 1.0')}
+          className={`hud-button${dem3d ? ' is-active' : ''}`}
+          onClick={() => {
+            if (!dem) {
+              setPanel('dem')
+              showToast(
+                tx(
+                  'Сначала импортируйте DEM в панели «Рельеф»',
+                  'Import a DEM in the Terrain panel first',
+                ),
+              )
+              return
+            }
+            setDem3d(!dem3d)
+            showToast(
+              dem3d
+                ? tx('3D-рельеф выключен', '3D terrain disabled')
+                : tx('3D-рельеф включён', '3D terrain enabled'),
+            )
+          }}
           aria-label={t('hud.3d')}
+          aria-pressed={dem3d}
           data-tooltip={t('hud.3d')}
         >
           <Box size={16} />

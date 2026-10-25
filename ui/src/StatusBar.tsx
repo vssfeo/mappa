@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useT, useText } from './i18n'
 import { providerById } from './providers'
+import { demSample, type DemSample } from './dem'
+import { useGpsStore } from './gps.ts'
+import { distanceToRoute } from './routing.ts'
 import { useAppStore } from './store'
 import { useViewStore } from './viewStore'
 import { formatBytes, formatCount } from './format'
-import { formatCoordinatePair } from './geo'
+import { formatCoordinatePair, formatDistance } from './geo'
 import {
   cacheStats,
   isNative,
@@ -21,12 +24,23 @@ export function StatusBar() {
   const coordinateFormat = useAppStore((state) => state.coordinateFormat)
   const crs = useAppStore((state) => state.crs)
   const crsLabel = useAppStore((state) => state.crsLabel)
+  const dem = useAppStore((state) => state.dem)
   const showToast = useAppStore((state) => state.showToast)
+  const features = useAppStore((state) => state.features)
+  const routeFeatureId = useAppStore((state) => state.routeFeatureId)
+  const routeCorridor = useAppStore((state) => state.routeCorridor)
+  const routeAlert = useAppStore((state) => state.routeAlert)
+  const fix = useGpsStore((state) => state.fix)
+  const wasOffRoute = useRef(false)
   const [online, setOnline] = useState(() => navigator.onLine)
   const [cache, setCache] = useState<NativeCacheStats | null>(null)
   const [projected, setProjected] = useState<{
     key: string
     point: [number, number]
+  } | null>(null)
+  const [terrain, setTerrain] = useState<{
+    id: string
+    sample: DemSample | null
   } | null>(null)
 
   useEffect(() => {
@@ -84,6 +98,26 @@ export function StatusBar() {
     }
   }, [crs, crsKey, lon, lat])
 
+  useEffect(() => {
+    if (!dem || !isNative) return
+    let alive = true
+    const timer = window.setTimeout(() => {
+      void demSample(lon, lat)
+        .then((sample) => {
+          if (alive) setTerrain({ id: dem.id, sample })
+        })
+        .catch(() => {
+          // Terrain is supplementary; coordinate readout stays usable.
+        })
+    }, 180)
+    return () => {
+      alive = false
+      window.clearTimeout(timer)
+    }
+  }, [dem, lon, lat])
+
+  const terrainSample =
+    terrain && terrain.id === dem?.id ? terrain.sample : null
   const current = projected?.key === crsKey ? projected.point : null
   const geographicOutput =
     current !== null &&
@@ -94,12 +128,51 @@ export function StatusBar() {
       ? `${current[0].toFixed(geographicOutput ? 7 : 2)}, ${current[1].toFixed(geographicOutput ? 7 : 2)}`
       : formatCoordinatePair(lon, lat, coordinateFormat)
 
+  const route = routeFeatureId
+    ? features.find(
+        (feature) =>
+          feature.id === routeFeatureId &&
+          feature.kind === 'line' &&
+          feature.coordinates.length >= 2,
+      )
+    : undefined
+  const deviation =
+    route && fix
+      ? distanceToRoute([fix.lon, fix.lat], route.coordinates)
+      : null
+  const offRoute =
+    routeAlert && deviation !== null && deviation > routeCorridor
+
+  useEffect(() => {
+    if (!routeAlert || deviation === null) {
+      wasOffRoute.current = false
+      return
+    }
+    const off = deviation > routeCorridor
+    if (off && !wasOffRoute.current) {
+      showToast(
+        tx(
+          'Отклонение от маршрута: {p0}',
+          'Off route: {p0}',
+          { p0: formatDistance(deviation) },
+        ),
+      )
+    } else if (!off && wasOffRoute.current) {
+      showToast(tx('Вернулись на маршрут', 'Back on route'))
+    }
+    wasOffRoute.current = off
+  }, [deviation, routeAlert, routeCorridor, showToast, tx])
+
   const copyCoordinates = async () => {
     try {
       await navigator.clipboard.writeText(coordinates)
       showToast(t('status.copied'))
     } catch {
-      showToast(tx(`Координаты: ${coordinates}`, `Coordinates: ${coordinates}`))
+      showToast(tx(
+                  'Координаты: {p0}',
+                  'Coordinates: {p0}',
+                  { p0: coordinates },
+                ))
     }
   }
 
@@ -122,6 +195,42 @@ export function StatusBar() {
         >
           {coordinates}
         </button>
+        {terrainSample && (
+          <span
+            className="status-muted"
+            title={tx(
+                     'Высота {p0} м · уклон {p1}° · экспозиция {p2}°',
+                     'Elevation {p0} m · slope {p1}° · aspect {p2}°',
+                     { p0: Math.round(terrainSample.elevation), p1: terrainSample.slope.toFixed(1), p2: Math.round(terrainSample.aspect) },
+                   )}
+          >
+            ▲ {formatCount(Math.round(terrainSample.elevation))} м
+          </span>
+        )}
+        {routeAlert && deviation !== null && (
+          <span
+            className={`status-route${offRoute ? ' is-off' : ''}`}
+            title={
+              route?.name
+                ? tx(
+                    'Отклонение от «{p0}»: {p1}',
+                    'Deviation from “{p0}”: {p1}',
+                    { p0: route.name, p1: formatDistance(deviation) },
+                  )
+                : tx(
+                    'Отклонение от маршрута: {p0}',
+                    'Deviation from route: {p0}',
+                    { p0: formatDistance(deviation) },
+                  )
+            }
+          >
+            <span className="status-route-dot" />
+            {offRoute
+              ? tx('отклонение', 'off route')
+              : tx('на маршруте', 'on route')}{' '}
+            {formatDistance(deviation)}
+          </span>
+        )}
       </div>
       <div className="status-center">
         <a href={provider.terms} target="_blank" rel="noreferrer">

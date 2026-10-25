@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import type { DemInfo } from '../src/dem.ts'
 import { distance, polygonArea } from '../src/geo.ts'
 import { useAppStore, type PackLayer } from '../src/store.ts'
 import type { VectorLayer } from '../src/vectorLayers.ts'
@@ -218,4 +219,75 @@ test('custom raster order follows the source list and drag actions', () => {
   assert.deepEqual(useAppStore.getState().customSourceOrder, ['c', 'a', 'b'])
   store.setCustomSources([source('b'), source('c')])
   assert.deepEqual(useAppStore.getState().customSourceOrder, ['c', 'b'])
+})
+
+test('DEM state follows the active model and clamps hillshade strength', () => {
+  const info: DemInfo = {
+    id: 'dem-test',
+    name: 'N55E037',
+    path: '/tmp/N55E037.hgt',
+    format: 'hgt',
+    west: 37,
+    south: 55,
+    east: 38,
+    north: 56,
+    ncols: 3601,
+    nrows: 3601,
+    cellSize: 1 / 3601,
+    resolutionMeters: 30,
+    minElevation: 120,
+    maxElevation: 240,
+    maxZoom: 12,
+  }
+  const store = useAppStore.getState()
+  store.setDem(info)
+  assert.equal(useAppStore.getState().dem?.id, 'dem-test')
+  assert.equal(useAppStore.getState().demPath, '/tmp/N55E037.hgt')
+  store.toggleDemVisible()
+  assert.equal(useAppStore.getState().demVisible, false)
+  store.setDem3d(true)
+  assert.equal(useAppStore.getState().dem3d, true)
+  store.setDemOpacity(2)
+  assert.equal(useAppStore.getState().demOpacity, 1)
+  store.setDemOpacity(-1)
+  assert.equal(useAppStore.getState().demOpacity, 0)
+  store.forgetDem()
+  assert.equal(useAppStore.getState().dem, null)
+  assert.equal(useAppStore.getState().demPath, '')
+  assert.equal(useAppStore.getState().dem3d, false)
+  store.toggleDemVisible()
+})
+
+test('route alert follows a line feature and clamps its corridor', () => {
+  useAppStore.setState({
+    features: [],
+    routeFeatureId: null,
+    routeAlert: false,
+    routeCorridor: 50,
+    selectedFeatureId: null,
+  })
+  const store = useAppStore.getState()
+  store.setRouteCorridor(9999)
+  assert.equal(useAppStore.getState().routeCorridor, 1000)
+  store.setRouteCorridor(1)
+  assert.equal(useAppStore.getState().routeCorridor, 5)
+  store.setRouteCorridor(75)
+  store.setRouteAlert(true)
+  store.addFeatures([
+    {
+      id: 'route-1',
+      name: 'Route',
+      kind: 'line',
+      coordinates: [
+        [37.6, 55.75],
+        [37.61, 55.75],
+      ],
+      color: '#4cc9f0',
+    },
+  ])
+  store.setRouteFeatureId('route-1')
+  assert.equal(useAppStore.getState().routeFeatureId, 'route-1')
+  store.removeFeature('route-1')
+  assert.equal(useAppStore.getState().routeFeatureId, null)
+  assert.equal(useAppStore.getState().routeAlert, false)
 })

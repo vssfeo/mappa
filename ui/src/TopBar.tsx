@@ -1,13 +1,17 @@
 import {
   ChevronDown,
   Download,
+  Globe2,
   MapPin,
+  Maximize2,
+  Minimize2,
   Moon,
   Search,
   Settings2,
   Sun,
 } from 'lucide-react'
 import { useT } from './i18n'
+import { LOCALES, LOCALE_NAMES, type Locale } from './locale.ts'
 import { PROVIDERS, type ProviderId } from './providers'
 import { useAppStore } from './store'
 
@@ -19,15 +23,19 @@ export function TopBar() {
   const setProviderId = useAppStore((state) => state.setProviderId)
   const setCommandOpen = useAppStore((state) => state.setCommandOpen)
   const setDownloadOpen = useAppStore((state) => state.setDownloadOpen)
+  const locale = useAppStore((state) => state.locale)
+  const setLocale = useAppStore((state) => state.setLocale)
   const panel = useAppStore((state) => state.panel)
   const togglePanel = useAppStore((state) => state.togglePanel)
+  const fieldMode = useAppStore((state) => state.fieldMode)
+  const toggleFieldMode = useAppStore((state) => state.toggleFieldMode)
 
   return (
     <header className="topbar">
       <div className="brand" aria-label="Mappa">
         <span className="brand-mark">M</span>
         <span className="brand-name">Mappa</span>
-        <span className="preview-pill">preview</span>
+        <span className="preview-pill">{t('brand.preview')}</span>
       </div>
 
       <button
@@ -60,6 +68,34 @@ export function TopBar() {
       </label>
 
       <div className="topbar-actions">
+        <label
+          className="provider-select language-select"
+          title={LOCALE_NAMES[locale]}
+        >
+          <Globe2 size={14} aria-hidden="true" />
+          <select
+            value={locale}
+            onChange={(event) => setLocale(event.target.value as Locale)}
+            aria-label={t('settings.language')}
+          >
+            {LOCALES.map((value) => (
+              <option key={value} value={value}>
+                {value.toUpperCase()}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={13} aria-hidden="true" />
+        </label>
+        <button
+          type="button"
+          className={`icon-button${fieldMode ? ' is-active' : ''}`}
+          onClick={toggleFieldMode}
+          aria-pressed={fieldMode}
+          aria-label={t('field.mode')}
+          title={t('field.mode')}
+        >
+          {fieldMode ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+        </button>
         <button
           type="button"
           className="icon-button"

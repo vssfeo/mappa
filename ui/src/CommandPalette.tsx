@@ -1,25 +1,42 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, CornerDownLeft, Search } from 'lucide-react'
+import { ArrowDown, ArrowUp, CornerDownLeft, Loader2, Search } from 'lucide-react'
 import type { Command } from './commands'
 import { useT, useText } from './i18n'
 import { useDialogFocus } from './useDialogFocus'
+
+export interface PlaceSearchResult {
+  commands: Command[]
+  warning?: string
+}
+
+interface RemotePlaces extends PlaceSearchResult {
+  query: string
+}
 
 interface CommandPaletteProps {
   commands: Command[]
   onClose: () => void
   /** Optional query interpreter, e.g. coordinates pasted into the field. */
   resolve?: (query: string) => Command | null
+  /** Optional asynchronous place search (geocoder). */
+  searchPlaces?: (query: string) => Promise<PlaceSearchResult>
 }
 
 export function CommandPalette({
   commands,
   onClose,
   resolve,
+  searchPlaces,
 }: CommandPaletteProps) {
   const t = useT()
   const tx = useText()
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
+  const [remote, setRemote] = useState<RemotePlaces | null>(null)
+  const [pendingQuery, setPendingQuery] = useState<string | null>(null)
+  const trimmedQuery = query.trim()
+  const activeRemote = remote?.query === trimmedQuery ? remote : null
+  const remoteBusy = pendingQuery === trimmedQuery && trimmedQuery.length >= 2
   const inputRef = useRef<HTMLInputElement | null>(null)
   const selectedRef = useRef<HTMLButtonElement | null>(null)
   const dialogRef = useRef<HTMLElement | null>(null)
@@ -29,6 +46,44 @@ export function CommandPalette({
     const trimmed = query.trim()
     return trimmed ? (resolve?.(trimmed) ?? null) : null
   }, [query, resolve])
+
+  useEffect(() => {
+    const trimmed = query.trim()
+    if (!searchPlaces || dynamic || trimmed.length < 2) return
+    let cancelled = false
+    // Give the local command filter a head start, then ask the geocoder.
+    const timer = window.setTimeout(() => {
+      if (cancelled) return
+      setPendingQuery(trimmed)
+      void searchPlaces(trimmed)
+        .then((result) => {
+          if (cancelled) return
+          setRemote({
+            query: trimmed,
+            commands: result.commands,
+            warning: result.warning,
+          })
+        })
+        .catch(() => {
+          if (cancelled) return
+          setRemote({
+            query: trimmed,
+            commands: [],
+            warning: tx('Не удалось выполнить поиск', 'Place search failed'),
+          })
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setPendingQuery((current) => (current === trimmed ? null : current))
+          }
+        })
+    }, 350)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+      setPendingQuery((current) => (current === trimmed ? null : current))
+    }
+  }, [dynamic, query, searchPlaces, tx])
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -46,8 +101,18 @@ export function CommandPalette({
               .toLowerCase()
             return haystack.includes(needle)
           })
-    return dynamic ? [dynamic, ...matches] : matches
-  }, [commands, dynamic, query])
+    const merged = [
+      ...(dynamic ? [dynamic] : []),
+      ...(activeRemote?.commands ?? []),
+      ...matches,
+    ]
+    const seen = new Set<string>()
+    return merged.filter((command) => {
+      if (seen.has(command.id)) return false
+      seen.add(command.id)
+      return true
+    })
+  }, [activeRemote, commands, dynamic, query])
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -121,15 +186,37 @@ export function CommandPalette({
           <kbd>Esc</kbd>
         </div>
 
-        <div className="cmdk-list" role="listbox" id="command-list">
+        <div
+          className="cmdk-list"
+          role="listbox"
+          id="command-list"
+          aria-busy={remoteBusy}
+        >
+          {remoteBusy && filtered.length > 0 && (
+            <div className="cmdk-status" role="status">
+              <Loader2 size={12} className="spin" aria-hidden="true" />
+              {tx('Ищем места…', 'Searching places…')}
+            </div>
+          )}
+          {!remoteBusy && activeRemote?.warning && filtered.length > 0 && (
+            <div className="cmdk-status" role="status">
+              {activeRemote.warning}
+            </div>
+          )}
+
           {filtered.length === 0 && (
             <div className="cmdk-empty" role="status">
-              <strong>{tx('Ничего не найдено', 'Nothing found')}</strong>
+              <strong>
+                {remoteBusy
+                  ? tx('Ищем места…', 'Searching places…')
+                  : tx('Ничего не найдено', 'Nothing found')}
+              </strong>
               <span>
-                {tx(
-                  'Попробуйте «Москва», «скачать» или координаты.',
-                  'Try “Moscow”, “download” or coordinates.',
-                )}
+                {activeRemote?.warning ??
+                  tx(
+                    'Попробуйте «Москва», «скачать» или координаты.',
+                    'Try “Moscow”, “download” or coordinates.',
+                  )}
               </span>
             </div>
           )}

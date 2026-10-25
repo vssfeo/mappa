@@ -11,6 +11,7 @@ interface PackInfo {
   path: string
   kind: 'mbtiles' | 'pmtiles'
   format: string
+  vectorLayers: string[]
   minZoom: number
   maxZoom: number
   west: number

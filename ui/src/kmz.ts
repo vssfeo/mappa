@@ -31,8 +31,9 @@ export async function readKmz(buffer: ArrayBuffer): Promise<string> {
   if (buffer.byteLength > MAX_ARCHIVE_BYTES) {
     fail(
       tr(
-        `KMZ больше ${MAX_ARCHIVE_BYTES / 1024 / 1024} МиБ и не будет открыт`,
-        `The KMZ is larger than ${MAX_ARCHIVE_BYTES / 1024 / 1024} MiB and will not be opened`,
+        'KMZ больше {p0} МиБ и не будет открыт',
+        'The KMZ is larger than {p0} MiB and will not be opened',
+        { p0: MAX_ARCHIVE_BYTES / 1024 / 1024 },
       ),
     )
   }
@@ -61,7 +62,11 @@ export async function readKmz(buffer: ArrayBuffer): Promise<string> {
     fail(tr('ZIP64 в KMZ не поддерживается', 'ZIP64 inside KMZ is not supported'))
   }
   if (entries > MAX_ENTRIES) {
-    fail(tr(`В KMZ больше ${MAX_ENTRIES} записей`, `The KMZ has more than ${MAX_ENTRIES} entries`))
+    fail(tr(
+           'В KMZ больше {p0} записей',
+           'The KMZ has more than {p0} entries',
+           { p0: MAX_ENTRIES },
+         ))
   }
   need(centralOffset, centralSize)
 
@@ -125,7 +130,11 @@ export async function readKmz(buffer: ArrayBuffer): Promise<string> {
   } else if (candidate.method === 8) {
     data = await inflateRaw(raw)
   } else {
-    throw new Error(tr(`Сжатие ZIP ${candidate.method} не поддерживается`, `ZIP compression ${candidate.method} is not supported`))
+    throw new Error(tr(
+                      'Сжатие ZIP {p0} не поддерживается',
+                      'ZIP compression {p0} is not supported',
+                      { p0: candidate.method },
+                    ))
   }
   if (data.byteLength > MAX_KML_BYTES) fail(tr('KML внутри KMZ слишком большой', 'The KML inside the KMZ is too large'))
 

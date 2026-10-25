@@ -23,6 +23,7 @@ import {
 } from './geo'
 import type { CustomSource } from './customSources'
 import type { CoverageTile } from './coverage'
+import type { DemInfo } from './dem'
 import type { VectorLayer } from './vectorLayers.ts'
 import { geometryVertices, type VertexPath } from './geometryEdit.ts'
 import { graticule, gridLabel } from './graticule.ts'
@@ -49,11 +50,44 @@ import type { Bounds } from './format'
 import { useViewStore } from './viewStore'
 import { useT } from './i18n.ts'
 
+const PACK_LAYER_PREFIX = 'pack-layer-'
+
+/** All MapLibre layers belonging to one pack (raster or vector). */
+function packLayerIds(map: MapLibreMap, id: string): string[] {
+  const prefix = `${PACK_LAYER_PREFIX}${id}`
+  return (map.getStyle().layers ?? [])
+    .map((layer) => layer.id)
+    .filter((layerId) => layerId === prefix || layerId.startsWith(`${prefix}-`))
+}
+
+/** Applies pack opacity to any layer type created for a pack. */
+function applyPackPaint(map: MapLibreMap, layerId: string, opacity: number) {
+  switch (map.getLayer(layerId)?.type) {
+    case 'raster':
+      map.setPaintProperty(layerId, 'raster-opacity', opacity)
+      break
+    case 'fill':
+      map.setPaintProperty(layerId, 'fill-opacity', 0.22 * opacity)
+      break
+    case 'line':
+      map.setPaintProperty(layerId, 'line-opacity', 0.9 * opacity)
+      break
+    case 'circle':
+      map.setPaintProperty(layerId, 'circle-opacity', 0.9 * opacity)
+      map.setPaintProperty(layerId, 'circle-stroke-opacity', opacity)
+      break
+  }
+}
+
 interface MapCanvasProps {
   layers: LayerState
   providerId: ProviderId
   providerOrder: ProviderId[]
   packs: PackLayer[]
+  dem: DemInfo | null
+  demVisible: boolean
+  dem3d: boolean
+  demOpacity: number
   customSources: CustomSource[]
   customSourceOrder: string[]
   customLayers: Record<string, { visible: boolean; opacity: number }>
@@ -583,6 +617,10 @@ export function MapCanvas({
   providerId,
   providerOrder,
   packs,
+  dem,
+  demVisible,
+  dem3d,
+  demOpacity,
   customSources,
   customSourceOrder,
   customLayers,
@@ -628,6 +666,8 @@ export function MapCanvas({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const packIdsRef = useRef<Set<string>>(new Set())
+  const demSourceRef = useRef<string | null>(null)
+  const dem3dRef = useRef(false)
   const vectorLayerIdsRef = useRef<Set<string>>(new Set())
   const vectorDataRef = useRef<Map<string, VectorLayer['features']>>(new Map())
   const customIdsRef = useRef<Set<string>>(new Set())
@@ -2354,41 +2394,102 @@ export function MapCanvas({
     let structuresChanged = false
     for (const id of packIdsRef.current) {
       if (current.has(id)) continue
-      const layerId = `pack-layer-${id}`
-      if (map.getLayer(layerId)) map.removeLayer(layerId)
+      for (const layerId of packLayerIds(map, id)) map.removeLayer(layerId)
       if (map.getSource(id)) map.removeSource(id)
     }
 
     for (const pack of packs) {
-      const layerId = `pack-layer-${pack.id}`
-      if (!map.getSource(pack.id)) {
-        map.addSource(pack.id, {
-          type: 'raster',
-          tiles: [`mappa://pack/${pack.id}/{z}/{x}/{y}`],
-          tileSize: 256,
-          minzoom: pack.minZoom,
-          maxzoom: pack.maxZoom,
-          bounds: [pack.west, pack.south, pack.east, pack.north],
-          ...(pack.attribution ? { attribution: pack.attribution } : {}),
-        })
-        map.addLayer({
-          id: layerId,
-          type: 'raster',
-          source: pack.id,
-          layout: { visibility: pack.visible ? 'visible' : 'none' },
-          paint: {
-            'raster-opacity': pack.opacity,
-            'raster-fade-duration': 0,
-          },
-        })
+      const prefix = `${PACK_LAYER_PREFIX}${pack.id}`
+      const vector = pack.format === 'mvt'
+      if (vector && pack.vectorLayers.length === 0) continue
+      const existing = packLayerIds(map, pack.id)
+      if (!map.getSource(pack.id) || existing.length === 0) {
+        for (const layerId of existing) map.removeLayer(layerId)
+        if (map.getSource(pack.id)) map.removeSource(pack.id)
+        if (vector) {
+          map.addSource(pack.id, {
+            type: 'vector',
+            tiles: [`mappa://pack/${pack.id}/{z}/{x}/{y}`],
+            minzoom: pack.minZoom,
+            maxzoom: pack.maxZoom,
+            bounds: [pack.west, pack.south, pack.east, pack.north],
+            ...(pack.attribution ? { attribution: pack.attribution } : {}),
+          })
+          pack.vectorLayers.forEach((sourceLayer, index) => {
+            const visibility = pack.visible ? 'visible' : 'none'
+            map.addLayer({
+              id: `${prefix}-fill-${index}`,
+              type: 'fill',
+              source: pack.id,
+              'source-layer': sourceLayer,
+              filter: ['==', ['geometry-type'], 'Polygon'],
+              layout: { visibility },
+              paint: {
+                'fill-color': '#4f8fba',
+                'fill-opacity': 0.22 * pack.opacity,
+                'fill-outline-color': '#2f6f9f',
+              },
+            })
+            map.addLayer({
+              id: `${prefix}-line-${index}`,
+              type: 'line',
+              source: pack.id,
+              'source-layer': sourceLayer,
+              layout: { visibility },
+              paint: {
+                'line-color': '#2f6f9f',
+                'line-width': 1.2,
+                'line-opacity': 0.9 * pack.opacity,
+              },
+            })
+            map.addLayer({
+              id: `${prefix}-point-${index}`,
+              type: 'circle',
+              source: pack.id,
+              'source-layer': sourceLayer,
+              filter: ['==', ['geometry-type'], 'Point'],
+              layout: { visibility },
+              paint: {
+                'circle-color': '#d97706',
+                'circle-radius': 3,
+                'circle-opacity': 0.9 * pack.opacity,
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-width': 0.8,
+                'circle-stroke-opacity': pack.opacity,
+              },
+            })
+          })
+        } else {
+          map.addSource(pack.id, {
+            type: 'raster',
+            tiles: [`mappa://pack/${pack.id}/{z}/{x}/{y}`],
+            tileSize: 256,
+            minzoom: pack.minZoom,
+            maxzoom: pack.maxZoom,
+            bounds: [pack.west, pack.south, pack.east, pack.north],
+            ...(pack.attribution ? { attribution: pack.attribution } : {}),
+          })
+          map.addLayer({
+            id: prefix,
+            type: 'raster',
+            source: pack.id,
+            layout: { visibility: pack.visible ? 'visible' : 'none' },
+            paint: {
+              'raster-opacity': pack.opacity,
+              'raster-fade-duration': 0,
+            },
+          })
+        }
         structuresChanged = true
-      } else if (map.getLayer(layerId)) {
-        map.setLayoutProperty(
-          layerId,
-          'visibility',
-          pack.visible ? 'visible' : 'none',
-        )
-        map.setPaintProperty(layerId, 'raster-opacity', pack.opacity)
+      } else {
+        for (const layerId of existing) {
+          map.setLayoutProperty(
+            layerId,
+            'visibility',
+            pack.visible ? 'visible' : 'none',
+          )
+          applyPackPaint(map, layerId, pack.opacity)
+        }
       }
     }
     // Packs are added on top of the style; keep overlays above them.
@@ -2402,12 +2503,115 @@ export function MapCanvas({
           : null
     if (vectorAnchor) {
       for (const pack of packs) {
-        const layerId = `pack-layer-${pack.id}`
-        if (map.getLayer(layerId)) map.moveLayer(layerId, vectorAnchor)
+        for (const layerId of packLayerIds(map, pack.id)) {
+          map.moveLayer(layerId, vectorAnchor)
+        }
       }
     }
     packIdsRef.current = current
   }, [packs, vectorLayers, ready])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!ready || !map) return
+    const previous = demSourceRef.current
+    const sourceId = dem ? `dem-src-${dem.id}` : null
+
+    if (previous && previous !== sourceId) {
+      map.setTerrain(null)
+      if (map.getLayer('dem-hillshade')) map.removeLayer('dem-hillshade')
+      if (map.getSource(previous)) map.removeSource(previous)
+      demSourceRef.current = null
+    }
+    if (!dem || !sourceId) return
+
+    if (!map.getSource(sourceId)) {
+      const anchor = map
+        .getStyle()
+        .layers.find((layer) =>
+          layer.id === 'coverage-fill' ||
+          layer.id === 'selection-fill' ||
+          layer.id === 'feature-fill' ||
+          layer.id === 'marker-points' ||
+          layer.id.startsWith('pack-layer-') ||
+          layer.id.startsWith('custom-layer-') ||
+          layer.id.startsWith('vector-'),
+        )?.id
+      map.addSource(sourceId, {
+        type: 'raster-dem',
+        tiles: [`mappa://dem/${dem.id}/{z}/{x}/{y}`],
+        tileSize: 256,
+        encoding: 'mapbox',
+        bounds: [dem.west, dem.south, dem.east, dem.north],
+        minzoom: 0,
+        maxzoom: dem.maxZoom,
+      })
+      map.addLayer(
+        {
+          id: 'dem-hillshade',
+          type: 'hillshade',
+          source: sourceId,
+          layout: { visibility: demVisible ? 'visible' : 'none' },
+          paint: {
+            'hillshade-illumination-direction': 315,
+            'hillshade-exaggeration': 0.15 + demOpacity * 0.55,
+            'hillshade-shadow-color': `rgba(8, 12, 18, ${(0.25 + demOpacity * 0.5).toFixed(3)})`,
+            'hillshade-highlight-color': `rgba(255, 249, 238, ${(0.15 + demOpacity * 0.35).toFixed(3)})`,
+            'hillshade-accent-color': `rgba(70, 82, 96, ${(0.1 + demOpacity * 0.4).toFixed(3)})`,
+          },
+        },
+        anchor,
+      )
+      demSourceRef.current = sourceId
+    } else if (map.getLayer('dem-hillshade')) {
+      map.setLayoutProperty(
+        'dem-hillshade',
+        'visibility',
+        demVisible ? 'visible' : 'none',
+      )
+      map.setPaintProperty(
+        'dem-hillshade',
+        'hillshade-exaggeration',
+        0.15 + demOpacity * 0.55,
+      )
+      map.setPaintProperty(
+        'dem-hillshade',
+        'hillshade-shadow-color',
+        `rgba(8, 12, 18, ${(0.25 + demOpacity * 0.5).toFixed(3)})`,
+      )
+      map.setPaintProperty(
+        'dem-hillshade',
+        'hillshade-highlight-color',
+        `rgba(255, 249, 238, ${(0.15 + demOpacity * 0.35).toFixed(3)})`,
+      )
+      map.setPaintProperty(
+        'dem-hillshade',
+        'hillshade-accent-color',
+        `rgba(70, 82, 96, ${(0.1 + demOpacity * 0.4).toFixed(3)})`,
+      )
+    }
+
+  }, [dem, demVisible, demOpacity, ready])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!ready || !map) return
+    const was3d = dem3dRef.current
+    dem3dRef.current = dem3d
+    if (!dem || !dem3d) {
+      if (map.getTerrain()) map.setTerrain(null)
+      if (was3d && !dem3d && map.getPitch() > 0) {
+        map.easeTo({ pitch: 0, duration: 400 })
+      }
+      return
+    }
+    const sourceId = `dem-src-${dem.id}`
+    if (!map.getSource(sourceId)) return
+    map.setTerrain({ source: sourceId, exaggeration: 1.3 })
+    if (map.getPitch() < 20) {
+      map.easeTo({ pitch: 55, duration: 600 })
+    }
+  }, [dem, dem3d, ready])
 
   useEffect(() => {
     const map = mapRef.current

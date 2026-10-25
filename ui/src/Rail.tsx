@@ -5,6 +5,8 @@ import {
   Layers3,
   Map,
   MapPin,
+  Mountain,
+  Route,
   Satellite,
   Settings2,
   Spline,
@@ -20,9 +22,11 @@ const items: {
 }[] = [
   { id: 'map', label: 'nav.map', icon: Map },
   { id: 'layers', label: 'nav.layers', icon: Layers3 },
+  { id: 'dem', label: 'nav.dem', icon: Mountain },
   { id: 'downloads', label: 'nav.downloads', icon: Download },
   { id: 'markers', label: 'nav.markers', icon: MapPin },
   { id: 'features', label: 'nav.features', icon: Spline },
+  { id: 'route', label: 'nav.route', icon: Route },
   { id: 'gps', label: 'nav.gps', icon: Satellite },
   { id: 'projects', label: 'nav.projects', icon: FolderOpen },
 ]

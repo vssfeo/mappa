@@ -20,6 +20,7 @@ export interface NativeCacheStats {
 export interface NativeSettings {
   cacheLimitBytes: number
   proxy: string | null
+  geocodeOnline: boolean
 }
 
 export interface NativeProvider {
@@ -36,6 +37,7 @@ export interface NativeProvider {
 
 const TILE_PREFIX = 'mappa://tiles/'
 const PACK_PREFIX = 'mappa://pack/'
+const DEM_PREFIX = 'mappa://dem/'
 
 let registered = false
 let nextRequestId = 1
@@ -75,6 +77,15 @@ export function registerNativeTileProtocol() {
       if (!packId) throw malformed(params.url)
       raw = await invoke<ArrayBuffer | Uint8Array>('read_pack_tile', {
         packId,
+        z: Number(z),
+        x: Number(x),
+        y: Number(y),
+      })
+    } else if (params.url.startsWith(DEM_PREFIX)) {
+      const [demId, z, x, y] = parseParts(params.url, DEM_PREFIX)
+      if (!demId) throw malformed(params.url)
+      raw = await invoke<ArrayBuffer | Uint8Array>('read_dem_tile', {
+        id: demId,
         z: Number(z),
         x: Number(x),
         y: Number(y),

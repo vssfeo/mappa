@@ -309,7 +309,11 @@ function parseCsv(
       return
     }
     const marker = markerFromValues(
-      name || tr(`Метка ${index + 1}`, `Marker ${index + 1}`),
+      name || tr(
+                'Метка {p0}',
+                'Marker {p0}',
+                { p0: index + 1 },
+              ),
       description,
       coordinates[0],
       coordinates[1],

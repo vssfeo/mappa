@@ -286,7 +286,11 @@ export function parseShapefile(
   const convert = (x: number, y: number): Position | null => {
     points += 1
     if (points > MAX_POINTS) {
-      throw new Error(tr(`Слишком много координат: лимит ${MAX_POINTS}`, `Too many coordinates: the limit is ${MAX_POINTS}`))
+      throw new Error(tr(
+                        'Слишком много координат: лимит {p0}',
+                        'Too many coordinates: the limit is {p0}',
+                        { p0: MAX_POINTS },
+                      ))
     }
     if (!Number.isFinite(x) || !Number.isFinite(y)) return null
     const [lon, lat] = transform(x, y)

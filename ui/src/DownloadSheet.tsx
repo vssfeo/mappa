@@ -128,8 +128,9 @@ export function DownloadSheet() {
     } catch {
       showToast(
         tx(
-          `Не удалось скопировать. Bbox: ${text}`,
-          `Could not copy. Bbox: ${text}`,
+          'Не удалось скопировать. Bbox: {p0}',
+          'Could not copy. Bbox: {p0}',
+          { p0: text },
         ),
       )
     }
@@ -155,15 +156,17 @@ export function DownloadSheet() {
       setPanel('downloads')
       showToast(
         tx(
-          `В очереди: ${formatCount(job.totalTiles)} тайлов`,
-          `Queued: ${formatCount(job.totalTiles)} tiles`,
+          'В очереди: {p0} тайлов',
+          'Queued: {p0} tiles',
+          { p0: formatCount(job.totalTiles) },
         ),
       )
     } catch (error) {
       showToast(
         tx(
-          `Не удалось поставить в очередь: ${String(error)}`,
-          `Could not queue the download: ${String(error)}`,
+          'Не удалось поставить в очередь: {p0}',
+          'Could not queue the download: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -179,7 +182,7 @@ export function DownloadSheet() {
           <h2>{t('download.title')}</h2>
         </div>
         <div className="sheet-header-actions">
-          <span className="phase-pill">Phase 2</span>
+          <span className="phase-pill">{tx('Фаза 2', 'Phase 2')}</span>
           <button
             type="button"
             className="icon-button"
@@ -208,8 +211,9 @@ export function DownloadSheet() {
               <span className="mono">
                 {fallbackIds.length > 0
                   ? tx(
-                      `${fallbackIds.length} вкл.`,
-                      `${fallbackIds.length} on`,
+                      '{p0} вкл.',
+                      '{p0} on',
+                      { p0: fallbackIds.length },
                     )
                   : t('download.primaryOnly')}
               </span>
@@ -348,13 +352,15 @@ export function DownloadSheet() {
         >
           {offlineBlocked
             ? tx(
-                `${provider.label} не разрешает офлайн-скачивание тайлов. Для офлайн-паков выберите USGS Imagery или добавьте собственный источник.`,
-                `${provider.label} does not allow offline tile downloads. For offline packs choose USGS Imagery or add a custom source.`,
+                '{p0} не разрешает офлайн-скачивание тайлов. Для офлайн-паков выберите USGS Imagery или добавьте собственный источник.',
+                '{p0} does not allow offline tile downloads. For offline packs choose USGS Imagery or add a custom source.',
+                { p0: provider.label },
               )
             : tooLarge
               ? tx(
-                  `Слишком большой район для одной задачи: ${formatCount(estimate.tiles)} тайлов при лимите ${formatCount(MAX_JOB_TILES)}. Уменьшите зумы.`,
-                  `Area is too large for one job: ${formatCount(estimate.tiles)} tiles against a ${formatCount(MAX_JOB_TILES)} tile limit. Reduce the zoom range.`,
+                  'Слишком большой район для одной задачи: {p0} тайлов при лимите {p1}. Уменьшите зумы.',
+                  'Area is too large for one job: {p0} tiles against a {p1} tile limit. Reduce the zoom range.',
+                  { p0: formatCount(estimate.tiles), p1: formatCount(MAX_JOB_TILES) },
                 )
               : tx(
                   'Тайлы пишутся в дисковый кэш и переживают перезапуск. Уже скачанные пропускаются, очередь можно ставить на паузу.',

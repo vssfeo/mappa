@@ -30,6 +30,7 @@ import {
   Layers3,
   Loader2,
   MapPin,
+  Mountain,
   Network,
   PackageOpen,
   Pause,
@@ -38,7 +39,9 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Route as RouteIcon,
   Save,
+  Search,
   Settings2,
   Spline,
   Table2,
@@ -57,6 +60,7 @@ import {
   type CustomSourceDraft,
 } from './customSources'
 import { useCoverageStore } from './coverage'
+import { closeDem, demContours, demProfile, importDem } from './dem'
 import { formatBytes, formatCount, formatDuration } from './format'
 import {
   distance,
@@ -69,6 +73,7 @@ import {
   pathLength,
   polygonArea,
   utmToLonLat,
+  type LonLat,
 } from './geo'
 import { magneticField } from './geomag'
 import { meridianConvergence, pointScaleFactor } from './geodesy'
@@ -83,8 +88,9 @@ import {
 } from './features'
 import { exportFeatureFile, importFeatureFile } from './featureTransfer'
 import { TrackChart } from './TrackChart'
-import { buildTrackProfile } from './trackProfile'
+import { buildTrackProfile, type TrackModel } from './trackProfile'
 import { GpsPanel } from './GpsPanel'
+import { RoutePanel } from './RoutePanel'
 import { importMarkerFile, exportMarkerFile } from './markerTransfer'
 import {
   newProject,
@@ -104,8 +110,10 @@ import { readMarkerIcon } from './markerIcons'
 import { sk42Epsg, sk42Zone, sk42ZoneFromY } from './sk42'
 import { useLayerDrag } from './useLayerDrag'
 import {
+  exportKey,
   useDownloadsStore,
   type DownloadJob,
+  type ExportPhase,
   type JobStatus,
 } from './downloads'
 import {
@@ -142,19 +150,25 @@ import {
 } from './vectorTransfer'
 import {
   attributeTable,
+  defaultVectorStyle,
   vectorBounds,
+  vectorLayerId,
+  type VectorFeature,
   type VectorLayer,
 } from './vectorLayers'
 import { PROVIDERS, providerById, type ProviderId } from './providers'
 import { useT, useText, type Locale, type MessageKey } from './i18n'
+import { LOCALES, LOCALE_NAMES } from './locale.ts'
 import { useDialogFocus } from './useDialogFocus'
 import { useAppStore, type Panel } from './store'
 
 const titles: Record<Exclude<Panel, null>, MessageKey> = {
   layers: 'panel.layers',
+  dem: 'panel.dem',
   downloads: 'panel.downloads',
   markers: 'panel.markers',
   features: 'panel.features',
+  route: 'panel.route',
   gps: 'panel.gps',
   projects: 'panel.projects',
   settings: 'panel.settings',
@@ -189,6 +203,22 @@ const StatusIcon = ({ status }: { status: JobStatus }) => {
   }
 }
 
+const exportPhaseLabel = (
+  phase: ExportPhase,
+  tx: (ru: string, en: string) => string,
+) => {
+  switch (phase) {
+    case 'scanning':
+      return tx('Сканирование', 'Scanning')
+    case 'writing':
+      return tx('Запись', 'Writing')
+    case 'finalizing':
+      return tx('Финализация', 'Finalizing')
+    case 'signing':
+      return tx('Подпись', 'Signing')
+  }
+}
+
 function JobCard({
   job,
   onAction,
@@ -199,9 +229,18 @@ function JobCard({
   onExport: (kind: 'mbtiles' | 'pmtiles') => Promise<void>
 }) {
   const tx = useText()
+  const exports = useDownloadsStore((state) => state.exports)
+  const cancelExport = useDownloadsStore((state) => state.cancelExport)
   const [exporting, setExporting] = useState<'mbtiles' | 'pmtiles' | null>(
     null,
   )
+  const activeExport = (['mbtiles', 'pmtiles'] as const)
+    .map((kind) => exports[exportKey(job.id, kind)])
+    .find((record) => record?.status === 'running')
+  const exportPercent =
+    activeExport && activeExport.total > 0
+      ? Math.min(100, (activeExport.done / activeExport.total) * 100)
+      : 0
   const processed = job.doneTiles + job.failedTiles
   const percent =
     job.totalTiles > 0
@@ -231,7 +270,11 @@ function JobCard({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(percent)}
-        aria-label={tx(`Прогресс ${job.name}`, `Progress ${job.name}`)}
+        aria-label={tx(
+                      'Прогресс {p0}',
+                      'Progress {p0}',
+                      { p0: job.name },
+                    )}
       >
         <span style={{ width: `${percent}%` }} />
       </div>
@@ -259,6 +302,48 @@ function JobCard({
 
       {job.error && <p className="job-error">{job.error}</p>}
 
+      {activeExport && (
+        <div className="job-export">
+          <div
+            className="job-progress"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(exportPercent)}
+            aria-label={tx('Прогресс экспорта', 'Export progress')}
+          >
+            <span style={{ width: `${exportPercent}%` }} />
+          </div>
+          <div className="job-meta">
+            <span>{exportPhaseLabel(activeExport.phase, tx)}</span>
+            <span>
+              {formatCount(activeExport.done)} /{' '}
+              {formatCount(activeExport.total)}
+            </span>
+            {activeExport.writtenBytes > 0 && (
+              <span>{formatBytes(activeExport.writtenBytes)}</span>
+            )}
+            {activeExport.etaSeconds != null &&
+              Number.isFinite(activeExport.etaSeconds) && (
+                <span>
+                  {tx('осталось', 'left')}{' '}
+                  {formatDuration(activeExport.etaSeconds)}
+                </span>
+              )}
+            <button
+              type="button"
+              className="ghost-button is-danger"
+              onClick={() =>
+                void cancelExport(activeExport.id, activeExport.kind)
+              }
+            >
+              <XCircle size={13} />
+              {tx('Отменить', 'Cancel')}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="job-actions">
         {active && (
           <button
@@ -277,7 +362,7 @@ function JobCard({
                 type="button"
                 className="ghost-button"
                 key={kind}
-                disabled={exporting !== null}
+                disabled={exporting !== null || activeExport !== undefined}
                 onClick={() => {
                   setExporting(kind)
                   void onExport(kind).finally(() => setExporting(null))
@@ -614,9 +699,10 @@ function MarkerCoordinateEditor({
             {
               label: 'E',
               hint: tx(
-                `E — восточное положение, зона ${utm.zone}${utm.hemisphere}`,
-                `E — easting, zone ${utm.zone}${utm.hemisphere}`,
-              ),
+                      'E — восточное положение, зона {p0}{p1}',
+                      'E — easting, zone {p0}{p1}',
+                      { p0: utm.zone, p1: utm.hemisphere },
+                    ),
               numeric: true,
             },
             {
@@ -844,8 +930,9 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
     } catch (error) {
       showToast(
         tx(
-          `Импорт не удался: ${String(error)}`,
-          `Import failed: ${String(error)}`,
+          'Импорт не удался: {p0}',
+          'Import failed: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -866,16 +953,18 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
       if (path) {
         showToast(
           tx(
-            `Экспортировано ${formatCount(markers.length)} меток: ${path}`,
-            `Exported ${formatCount(markers.length)} markers: ${path}`,
+            'Экспортировано {p0} меток: {p1}',
+            'Exported {p0} markers: {p1}',
+            { p0: formatCount(markers.length), p1: path },
           ),
         )
       }
     } catch (error) {
       showToast(
         tx(
-          `Экспорт не удался: ${String(error)}`,
-          `Export failed: ${String(error)}`,
+          'Экспорт не удался: {p0}',
+          'Export failed: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -904,8 +993,9 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
     } catch (error) {
       showToast(
         tx(
-          `Не удалось загрузить иконку: ${String(error)}`,
-          `Could not load the icon: ${String(error)}`,
+          'Не удалось загрузить иконку: {p0}',
+          'Could not load the icon: {p0}',
+          { p0: String(error) },
         ),
       )
     }
@@ -919,8 +1009,9 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
             {tx('Метки', 'Markers')} · {formatCount(filtered.length)}
             {filtered.length !== markers.length
               ? tx(
-                  ` из ${formatCount(markers.length)}`,
-                  ` of ${formatCount(markers.length)}`,
+                  ' из {p0}',
+                  ' of {p0}',
+                  { p0: formatCount(markers.length) },
                 )
               : ''}
           </span>
@@ -1183,9 +1274,10 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
                           updateMarker(marker.id, { name: event.target.value })
                         }
                         aria-label={tx(
-                          `Название метки ${marker.name}`,
-                          `Marker name ${marker.name}`,
-                        )}
+                                      'Название метки {p0}',
+                                      'Marker name {p0}',
+                                      { p0: marker.name },
+                                    )}
                       />
                       <span className="marker-coords">
                         {formatCoordinatePair(
@@ -1299,9 +1391,10 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
                               className={`ghost-button marker-icon-upload${marker.iconImage ? ' has-image' : ''}`}
                               onClick={() => iconInputRef.current?.click()}
                               aria-label={tx(
-                                `Загрузить свою иконку для ${marker.name}`,
-                                `Upload a custom icon for ${marker.name}`,
-                              )}
+                                            'Загрузить свою иконку для {p0}',
+                                            'Upload a custom icon for {p0}',
+                                            { p0: marker.name },
+                                          )}
                               title={tx(
                                 'Загрузить свою иконку (PNG, JPEG, WebP, GIF)',
                                 'Upload a custom icon (PNG, JPEG, WebP, GIF)',
@@ -1346,9 +1439,10 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
                         removeMarker(marker.id)
                       }}
                       aria-label={tx(
-                        `Удалить ${marker.name}`,
-                        `Delete ${marker.name}`,
-                      )}
+                                    'Удалить {p0}',
+                                    'Delete {p0}',
+                                    { p0: marker.name },
+                                  )}
                       title={tx('Удалить метку', 'Delete marker')}
                     >
                       <X size={14} />
@@ -1380,8 +1474,9 @@ function MarkersPanel({ map }: { map: MapLibreMap | null }) {
               if (
                 window.confirm(
                   tx(
-                    `Удалить все метки (${formatCount(markers.length)})?`,
-                    `Delete all markers (${formatCount(markers.length)})?`,
+                    'Удалить все метки ({p0})?',
+                    'Delete all markers ({p0})?',
+                    { p0: formatCount(markers.length) },
                   ),
                 )
               ) {
@@ -1644,8 +1739,9 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
     } catch (error) {
       showToast(
         tx(
-          `Импорт не удался: ${String(error)}`,
-          `Import failed: ${String(error)}`,
+          'Импорт не удался: {p0}',
+          'Import failed: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -1660,16 +1756,18 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
       if (path) {
         showToast(
           tx(
-            `Экспортировано ${formatCount(features.length)} объектов: ${path}`,
-            `Exported ${formatCount(features.length)} features: ${path}`,
+            'Экспортировано {p0} объектов: {p1}',
+            'Exported {p0} features: {p1}',
+            { p0: formatCount(features.length), p1: path },
           ),
         )
       }
     } catch (error) {
       showToast(
         tx(
-          `Экспорт не удался: ${String(error)}`,
-          `Export failed: ${String(error)}`,
+          'Экспорт не удался: {p0}',
+          'Export failed: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -1800,7 +1898,11 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
                 setFeatureColor(color)
                 if (selected) updateFeature(selected.id, { color })
               }}
-              aria-label={tx(`Цвет ${color}`, `Colour ${color}`)}
+              aria-label={tx(
+                            'Цвет {p0}',
+                            'Colour {p0}',
+                            { p0: color },
+                          )}
               aria-pressed={featureColor === color}
             />
           ))}
@@ -1908,9 +2010,10 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
             {selected.kind === 'polygon' &&
               ` · ${formatArea(featureArea(selected))}`}
             {tx(
-              ` · вершин ${formatCount(selected.coordinates.length)}`,
-              ` · ${formatCount(selected.coordinates.length)} vertices`,
-            )}
+               ' · вершин {p0}',
+               ' · {p0} vertices',
+               { p0: formatCount(selected.coordinates.length) },
+             )}
           </div>
           {selected.kind === 'line' && (
             <TrackPlayer
@@ -1942,7 +2045,11 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
                 className={`feature-color${selected.color === color ? ' is-active' : ''}`}
                 style={{ background: color }}
                 onClick={() => updateFeature(selected.id, { color })}
-                aria-label={tx(`Цвет ${color}`, `Colour ${color}`)}
+                aria-label={tx(
+                              'Цвет {p0}',
+                              'Colour {p0}',
+                              { p0: color },
+                            )}
                 aria-pressed={selected.color === color}
               />
             ))}
@@ -2017,6 +2124,20 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
                 key={feature.id}
                 className={`marker-row${feature.id === selectedFeatureId ? ' is-selected' : ''}`}
                 onClick={() => fitFeature(feature.id)}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    fitFeature(feature.id)
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label={tx(
+                              'Выбрать {p0}',
+                              'Select {p0}',
+                              { p0: feature.name },
+                            )}
               >
                 <span
                   className="feature-dot"
@@ -2042,9 +2163,10 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
                     removeFeature(feature.id)
                   }}
                   aria-label={tx(
-                    `Удалить ${feature.name}`,
-                    `Delete ${feature.name}`,
-                  )}
+                                'Удалить {p0}',
+                                'Delete {p0}',
+                                { p0: feature.name },
+                              )}
                   title={tx('Удалить объект', 'Delete feature')}
                 >
                   <X size={14} />
@@ -2059,8 +2181,9 @@ function FeaturesPanel({ map }: { map: MapLibreMap | null }) {
               if (
                 window.confirm(
                   tx(
-                    `Удалить все объекты (${formatCount(features.length)})?`,
-                    `Delete all features (${formatCount(features.length)})?`,
+                    'Удалить все объекты ({p0})?',
+                    'Delete all features ({p0})?',
+                    { p0: formatCount(features.length) },
                   ),
                 )
               ) {
@@ -2133,8 +2256,9 @@ function ProjectsPanel({ map }: { map: MapLibreMap | null }) {
     } catch (error) {
       showToast(
         tx(
-          `Не удалось восстановить: ${String(error)}`,
-          `Could not restore: ${String(error)}`,
+          'Не удалось восстановить: {p0}',
+          'Could not restore: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -2149,15 +2273,17 @@ function ProjectsPanel({ map }: { map: MapLibreMap | null }) {
       if (result)
         showToast(
           tx(
-            `Проект сохранён: ${result.path}`,
-            `Project saved: ${result.path}`,
+            'Проект сохранён: {p0}',
+            'Project saved: {p0}',
+            { p0: result.path },
           ),
         )
     } catch (error) {
       showToast(
         tx(
-          `Не удалось сохранить проект: ${String(error)}`,
-          `Could not save the project: ${String(error)}`,
+          'Не удалось сохранить проект: {p0}',
+          'Could not save the project: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -2173,19 +2299,22 @@ function ProjectsPanel({ map }: { map: MapLibreMap | null }) {
       showToast(
         result.missingPacks.length > 0
           ? tx(
-              `Проект открыт, не найдено паков: ${result.missingPacks.length}`,
-              `Project opened, missing packs: ${result.missingPacks.length}`,
+              'Проект открыт, не найдено паков: {p0}',
+              'Project opened, missing packs: {p0}',
+              { p0: result.missingPacks.length },
             )
           : tx(
-              `Проект открыт: ${result.project.name}`,
-              `Project opened: ${result.project.name}`,
+              'Проект открыт: {p0}',
+              'Project opened: {p0}',
+              { p0: result.project.name },
             ),
       )
     } catch (error) {
       showToast(
         tx(
-          `Не удалось открыть проект: ${String(error)}`,
-          `Could not open the project: ${String(error)}`,
+          'Не удалось открыть проект: {p0}',
+          'Could not open the project: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -2200,19 +2329,22 @@ function ProjectsPanel({ map }: { map: MapLibreMap | null }) {
       showToast(
         result.missingPacks.length > 0
           ? tx(
-              `Проект открыт, не найдено паков: ${result.missingPacks.length}`,
-              `Project opened, missing packs: ${result.missingPacks.length}`,
+              'Проект открыт, не найдено паков: {p0}',
+              'Project opened, missing packs: {p0}',
+              { p0: result.missingPacks.length },
             )
           : tx(
-              `Проект открыт: ${result.project.name}`,
-              `Project opened: ${result.project.name}`,
+              'Проект открыт: {p0}',
+              'Project opened: {p0}',
+              { p0: result.project.name },
             ),
       )
     } catch (error) {
       showToast(
         tx(
-          `Не удалось открыть проект: ${String(error)}`,
-          `Could not open the project: ${String(error)}`,
+          'Не удалось открыть проект: {p0}',
+          'Could not open the project: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -2238,8 +2370,9 @@ function ProjectsPanel({ map }: { map: MapLibreMap | null }) {
     } catch (error) {
       showToast(
         tx(
-          `Не удалось создать проект: ${String(error)}`,
-          `Could not create the project: ${String(error)}`,
+          'Не удалось создать проект: {p0}',
+          'Could not create the project: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -2254,9 +2387,10 @@ function ProjectsPanel({ map }: { map: MapLibreMap | null }) {
           <span>{tx('Текущий проект', 'Current project')}</span>
           <span className="pack-meta">
             {tx(
-              `${markers.length} меток · ${features.length} объектов · ${packs.length} паков`,
-              `${markers.length} markers · ${features.length} features · ${packs.length} packs`,
-            )}
+               '{p0} меток · {p1} объектов · {p2} паков',
+               '{p0} markers · {p1} features · {p2} packs',
+               { p0: markers.length, p1: features.length, p2: packs.length },
+             )}
           </span>
         </div>
         <div className="source-form">
@@ -2334,9 +2468,10 @@ function ProjectsPanel({ map }: { map: MapLibreMap | null }) {
               <span>
                 {new Date(autosave.project.savedAt).toLocaleString(locale)} ·{' '}
                 {tx(
-                  `${autosave.project.markers.length} меток · ${autosave.project.vectorLayers.length} слоёв`,
-                  `${autosave.project.markers.length} markers · ${autosave.project.vectorLayers.length} layers`,
-                )}
+                   '{p0} меток · {p1} слоёв',
+                   '{p0} markers · {p1} layers',
+                   { p0: autosave.project.markers.length, p1: autosave.project.vectorLayers.length },
+                 )}
               </span>
             </span>
             <button
@@ -2438,14 +2573,625 @@ function ProjectsPanel({ map }: { map: MapLibreMap | null }) {
   )
 }
 
+/** Resamples a line every `step` metres for a denser DEM profile. */
+function densifyLine(points: LonLat[], step = 30): LonLat[] {
+  if (points.length < 2) return points
+  const result: LonLat[] = [points[0]]
+  for (let index = 1; index < points.length; index += 1) {
+    const a = points[index - 1]
+    const b = points[index]
+    const length = distance(a, b)
+    const parts = Math.min(500, Math.max(1, Math.ceil(length / step)))
+    for (let part = 1; part <= parts; part += 1) {
+      if (result.length >= 5_000) return result
+      const t = part / parts
+      result.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t])
+    }
+  }
+  return result
+}
+
+function DemPanel({ map }: { map: MapLibreMap | null }) {
+  const tx = useText()
+  const dem = useAppStore((state) => state.dem)
+  const demVisible = useAppStore((state) => state.demVisible)
+  const dem3d = useAppStore((state) => state.dem3d)
+  const demOpacity = useAppStore((state) => state.demOpacity)
+  const toggleDemVisible = useAppStore((state) => state.toggleDemVisible)
+  const setDem3d = useAppStore((state) => state.setDem3d)
+  const setDemOpacity = useAppStore((state) => state.setDemOpacity)
+  const showToast = useAppStore((state) => state.showToast)
+  const features = useAppStore((state) => state.features)
+  const selectedFeatureId = useAppStore((state) => state.selectedFeatureId)
+  const vectorLayers = useAppStore((state) => state.vectorLayers)
+  const addVectorLayer = useAppStore((state) => state.addVectorLayer)
+  const removeVectorLayer = useAppStore((state) => state.removeVectorLayer)
+  const [busy, setBusy] = useState(false)
+  const [contourInterval, setContourInterval] = useState(50)
+  const [contourStep, setContourStep] = useState(4)
+  const [contourBusy, setContourBusy] = useState(false)
+  const [contourLayerId, setContourLayerId] = useState<string | null>(null)
+  const [profileBusy, setProfileBusy] = useState(false)
+  const [profileModel, setProfileModel] = useState<TrackModel | null>(null)
+  const [profileProgress, setProfileProgress] = useState(0)
+  const [profileLineId, setProfileLineId] = useState('')
+  const [profileForLine, setProfileForLine] = useState<string | null>(null)
+  const [profileStats, setProfileStats] = useState<{
+    min: number
+    max: number
+    clearance: number | null
+  } | null>(null)
+  const profileLines = features.filter(
+    (feature) => feature.kind === 'line' && feature.coordinates.length >= 2,
+  )
+  const selectedLine = profileLines.find(
+    (feature) => feature.id === selectedFeatureId,
+  )
+  const profileLine =
+    profileLines.find((feature) => feature.id === profileLineId) ??
+    selectedLine ??
+    profileLines[0]
+
+  const visibleProfile =
+    profileForLine === profileLine?.id ? profileModel : null
+  const visibleStats =
+    profileForLine === profileLine?.id ? profileStats : null
+  const contourLayer = contourLayerId
+    ? vectorLayers.find((layer) => layer.id === contourLayerId)
+    : undefined
+  const load = () => {
+    setBusy(true)
+    void importDem()
+      .then((info) => {
+        if (info) {
+          showToast(
+            tx(
+              'Рельеф загружен: {p0} · {p1} м/пиксель',
+              'Terrain loaded: {p0} · {p1} m/px',
+              { p0: info.name, p1: Math.round(info.resolutionMeters) },
+            ),
+          )
+        }
+      })
+      .catch((error: unknown) =>
+        showToast(
+          tx(
+            'Не удалось открыть рельеф: {p0}',
+            'Could not open the terrain: {p0}',
+            { p0: String(error) },
+          ),
+        ),
+      )
+      .finally(() => setBusy(false))
+  }
+
+  const fit = () => {
+    if (!dem) return
+    map?.fitBounds(
+      [
+        [dem.west, dem.south],
+        [dem.east, dem.north],
+      ],
+      { padding: 70, duration: 700 },
+    )
+  }
+
+  const buildContours = () => {
+    if (!dem) return
+    setContourBusy(true)
+    void demContours(contourInterval, contourStep)
+      .then((result) => {
+        if (result.lines.length === 0) {
+          showToast(
+            tx(
+              'Для этого интервала горизонтали не найдены',
+              'No contour lines were found at this interval',
+            ),
+          )
+          return
+        }
+        if (contourLayerId) removeVectorLayer(contourLayerId)
+        const limit = 50_000
+        const features: VectorFeature[] = result.lines
+          .slice(0, limit)
+          .map((line) => ({
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: line.coordinates,
+            },
+            properties: {
+              elevation: line.level,
+              stroke: '#b07a45',
+              'stroke-width': 1.2,
+            },
+          }))
+        const layer: VectorLayer = {
+          id: vectorLayerId(),
+          name: tx(
+                  'Горизонтали {p0} м',
+                  'Contours {p0} m',
+                  { p0: contourInterval },
+                ),
+          format: 'geojson',
+          features,
+          style: {
+            ...defaultVectorStyle(0),
+            color: '#b07a45',
+            lineWidth: 1.2,
+            fillOpacity: 0,
+          },
+          visible: true,
+          opacity: 0.9,
+          source: null,
+        }
+        addVectorLayer(layer)
+        setContourLayerId(layer.id)
+        const clipped = result.lines.length > limit
+        const counts = {
+          p0: formatCount(features.length),
+          p1: formatCount(result.points),
+        }
+        showToast(
+          clipped || result.truncated
+            ? tx(
+                'Горизонтали: {p0} линий, {p1} точек (обрезано)',
+                'Contours: {p0} lines, {p1} points (truncated)',
+                counts,
+              )
+            : tx(
+                'Горизонтали: {p0} линий, {p1} точек',
+                'Contours: {p0} lines, {p1} points',
+                counts,
+              ),
+        )
+      })
+      .catch((error: unknown) =>
+        showToast(
+          tx(
+            'Не удалось построить горизонтали: {p0}',
+            'Could not build contours: {p0}',
+            { p0: String(error) },
+          ),
+        ),
+      )
+      .finally(() => setContourBusy(false))
+  }
+
+  const clearContours = () => {
+    if (contourLayerId) removeVectorLayer(contourLayerId)
+    setContourLayerId(null)
+  }
+
+  const buildProfile = () => {
+    if (!dem || !profileLine) {
+      showToast(
+        tx(
+          'Добавьте линию в панели «Объекты»',
+          'Add a line in the Objects panel',
+        ),
+      )
+      return
+    }
+    setProfileBusy(true)
+    const dense = densifyLine(profileLine.coordinates)
+    void demProfile(dense)
+      .then(async (terrain) => {
+        const valid = terrain.filter(
+          (value): value is number => value !== null && Number.isFinite(value),
+        )
+        if (valid.length === 0) {
+          showToast(
+            tx(
+              'Под линией нет данных DEM',
+              'The line does not overlap the DEM',
+            ),
+          )
+          return
+        }
+        setProfileModel(
+          buildTrackProfile(dense, {
+            elevations: terrain,
+            times: dense.map(() => null),
+          }),
+        )
+        setProfileProgress(0)
+        let clearance: number | null = null
+        const altitudes = profileLine.profile?.elevations
+        if (altitudes?.some((value) => value !== null)) {
+          const ground = await demProfile(profileLine.coordinates)
+          const values: number[] = []
+          altitudes.forEach((altitude, index) => {
+            const terrainHeight = ground[index]
+            if (
+              altitude !== null &&
+              terrainHeight !== null &&
+              terrainHeight !== undefined
+            ) {
+              values.push(altitude - terrainHeight)
+            }
+          })
+          if (values.length > 0) clearance = Math.min(...values)
+        }
+        setProfileStats({
+          min: Math.min(...valid),
+          max: Math.max(...valid),
+          clearance,
+        })
+        setProfileForLine(profileLine.id)
+        const range = `${Math.round(Math.min(...valid))}–${Math.round(Math.max(...valid))}`
+        showToast(
+          clearance === null
+            ? tx('Профиль по DEM: {p0} м', 'DEM profile: {p0} m', { p0: range })
+            : tx(
+                'Профиль по DEM: {p0} м · мин. AGL {p1} м',
+                'DEM profile: {p0} m · min AGL {p1} m',
+                { p0: range, p1: Math.round(clearance) },
+              ),
+        )
+      })
+      .catch((error: unknown) =>
+        showToast(
+          tx(
+            'Не удалось построить профиль: {p0}',
+            'Could not build the profile: {p0}',
+            { p0: String(error) },
+          ),
+        ),
+      )
+      .finally(() => setProfileBusy(false))
+  }
+
+  return (
+    <div className="inspector-body">
+      <section className="section">
+        <div className="section-heading">
+          <span>{tx('Модель высот', 'Elevation model')}</span>
+          <button
+            type="button"
+            className="ghost-button"
+            onClick={load}
+            disabled={!isNative || busy}
+            title={
+              isNative
+                ? tx('Открыть .hgt, .asc или GeoTIFF', 'Open .hgt, .asc or GeoTIFF')
+                : tx(
+                    'Доступно в нативном приложении',
+                    'Available in the native app',
+                  )
+            }
+          >
+            {busy ? (
+              <Loader2 size={14} className="spin" />
+            ) : (
+              <Upload size={14} />
+            )}
+            {tx('Импорт', 'Import')}
+          </button>
+        </div>
+        {!dem ? (
+          <p className="pack-empty">
+            {tx(
+              'Откройте SRTM .hgt, ESRI ASCII Grid .asc или GeoTIFF/COG. Mappa построит тени рельефа, 3D-поверхность и будет показывать высоту, уклон и экспозицию под курсором.',
+              'Open an SRTM .hgt, ESRI ASCII Grid .asc or GeoTIFF/COG. Mappa will render hillshade and 3D terrain, and report elevation, slope and aspect under the cursor.',
+            )}
+          </p>
+        ) : (
+          <>
+            <div className="card provider-card">
+              <div className="card-heading">
+                <span className="card-icon">
+                  <Mountain size={15} />
+                </span>
+                <div>
+                  <span className="eyebrow">{dem.format.toUpperCase()}</span>
+                  <strong>{dem.name}</strong>
+                </div>
+                <span
+                  className="status-dot"
+                  title={tx('Активна', 'Active')}
+                />
+              </div>
+              <p>
+                {tx(
+                   '{p0} × {p1} · {p2} м/пиксель',
+                   '{p0} × {p1} · {p2} m/px',
+                   { p0: formatCount(dem.ncols), p1: formatCount(dem.nrows), p2: Math.round(dem.resolutionMeters) },
+                 )}
+              </p>
+              <div className="meta-row">
+                <span>
+                  {tx('Высоты', 'Elevation')}: {formatCount(Math.round(dem.minElevation))}–
+                  {formatCount(Math.round(dem.maxElevation))} {tx('м', 'm')}
+                </span>
+                <span>z0–z{dem.maxZoom}</span>
+              </div>
+            </div>
+
+            <div className="dem-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={fit}
+              >
+                <Globe2 size={14} />
+                {tx('Показать', 'Show')}
+              </button>
+              <button
+                type="button"
+                className="ghost-button is-danger"
+                onClick={() => {
+                  void closeDem(dem.id)
+                    .then(() =>
+                      showToast(
+                        tx(
+                          'Рельеф закрыт: {p0}',
+                          'Terrain closed: {p0}',
+                          { p0: dem.name },
+                        ),
+                      ),
+                    )
+                    .catch((error: unknown) =>
+                      showToast(
+                        tx(
+                          'Не удалось закрыть рельеф: {p0}',
+                          'Could not close the terrain: {p0}',
+                          { p0: String(error) },
+                        ),
+                      ),
+                    )
+                }}
+              >
+                <Trash2 size={14} />
+                {tx('Закрыть', 'Close')}
+              </button>
+            </div>
+
+            <label className="source-check">
+              <input
+                type="checkbox"
+                checked={demVisible}
+                onChange={toggleDemVisible}
+              />
+              {tx('Тени рельефа', 'Hillshade')}
+            </label>
+            <label className="source-check">
+              <input
+                type="checkbox"
+                checked={dem3d}
+                onChange={(event) => setDem3d(event.target.checked)}
+              />
+              {tx('3D-рельеф (наклон карты)', '3D terrain (tilt the map)')}
+            </label>
+            <div className="settings-field">
+              <span>{tx('Интенсивность теней', 'Hillshade strength')}</span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={demOpacity}
+                onChange={(event) =>
+                  setDemOpacity(Number(event.target.value))
+                }
+                aria-label={tx(
+                  'Интенсивность теней рельефа',
+                  'Hillshade strength',
+                )}
+              />
+              <span>{Math.round(demOpacity * 100)}%</span>
+            </div>
+            <p className="settings-hint">
+              {tx(
+                'Экспозиция и уклон считаются по сетке DEM; исходные данные и их лицензия остаются на вашей стороне.',
+                'Aspect and slope come from the DEM grid; the source data and its licence remain your responsibility.',
+              )}
+            </p>
+          </>
+        )}
+      </section>
+      {dem && (
+        <section className="section">
+          <div className="section-heading">
+            <span>
+              {tx('Горизонтали и профиль', 'Contours and profile')}
+            </span>
+            <Spline size={13} />
+          </div>
+          <div className="settings-field">
+            <span>{tx('Интервал', 'Interval')}</span>
+            <input
+              type="range"
+              min="10"
+              max="200"
+              step="5"
+              value={contourInterval}
+              onChange={(event) =>
+                setContourInterval(Number(event.target.value))
+              }
+              aria-label={tx(
+                'Интервал горизонталей, метры',
+                'Contour interval, metres',
+              )}
+            />
+            <span className="mono">{contourInterval} m</span>
+          </div>
+          <div className="settings-field">
+            <span>{tx('Прореживание', 'Grid step')}</span>
+            <input
+              type="range"
+              min="1"
+              max="16"
+              step="1"
+              value={contourStep}
+              onChange={(event) =>
+                setContourStep(Number(event.target.value))
+              }
+              aria-label={tx(
+                'Прореживание сетки горизонталей',
+                'Contour grid step',
+              )}
+            />
+            <span className="mono">×{contourStep}</span>
+          </div>
+          <div className="dem-actions">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={buildContours}
+              disabled={contourBusy}
+            >
+              {contourBusy ? (
+                <Loader2 size={14} className="spin" />
+              ) : (
+                <Mountain size={14} />
+              )}
+              {tx('Построить горизонтали', 'Build contours')}
+            </button>
+            {contourLayer && (
+              <button
+                type="button"
+                className="ghost-button is-danger"
+                onClick={clearContours}
+              >
+                <Trash2 size={14} />
+                {tx('Убрать', 'Remove')}
+              </button>
+            )}
+          </div>
+          <p className="settings-hint">
+            {tx(
+              'Горизонтали добавляются векторным слоем. Большое прореживание ускоряет построение, но делает линии грубее.',
+              'Contours become a vector layer. A larger grid step is faster but coarser.',
+            )}
+          </p>
+
+          {profileLines.length > 0 && (
+            <label className="marker-transfer-field">
+              <span>{tx('Линия профиля', 'Profile line')}</span>
+              <select
+                value={profileLine?.id ?? ''}
+                onChange={(event) => setProfileLineId(event.target.value)}
+              >
+                {profileLines.map((feature) => (
+                  <option key={feature.id} value={feature.id}>
+                    {feature.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={buildProfile}
+            disabled={profileBusy || !profileLine}
+          >
+            {profileBusy ? (
+              <Loader2 size={14} className="spin" />
+            ) : (
+              <Spline size={14} />
+            )}
+            {tx('Профиль по DEM', 'DEM profile')}
+          </button>
+          <p className="settings-hint">
+            {profileLine
+              ? tx(
+                  'Линия «{p0}»: профиль строится по сетке DEM, исходная геометрия не меняется.',
+                  'Line “{p0}”: the profile is sampled from the DEM; the geometry is unchanged.',
+                  { p0: profileLine.name },
+                )
+              : tx(
+                  'Добавьте линию в «Объектах», чтобы построить профиль высот по DEM.',
+                  'Add a line in Objects to build an elevation profile from the DEM.',
+                )}
+          </p>
+          {visibleStats && (
+            <div className="gps-metrics">
+              <div>
+                <span>{tx('Рельеф min', 'Terrain min')}</span>
+                <strong>
+                  {formatCount(Math.round(visibleStats.min))} m
+                </strong>
+              </div>
+              <div>
+                <span>{tx('Рельеф max', 'Terrain max')}</span>
+                <strong>
+                  {formatCount(Math.round(visibleStats.max))} m
+                </strong>
+              </div>
+              {visibleStats.clearance !== null && (
+                <div>
+                  <span>{tx('Мин. AGL', 'Min AGL')}</span>
+                  <strong>
+                    {formatCount(Math.round(visibleStats.clearance))} m
+                  </strong>
+                </div>
+              )}
+            </div>
+          )}
+          {visibleProfile && (
+            <TrackChart
+              model={visibleProfile}
+              progress={profileProgress}
+              onSeek={setProfileProgress}
+            />
+          )}
+        </section>
+      )}
+      <section className="section">
+        <div className="section-heading">
+          <span>{tx('Форматы и данные', 'Formats and data')}</span>
+          <Database size={13} />
+        </div>
+        <p className="settings-hint">
+          {tx(
+            'Поддерживаются SRTM .hgt (3601² или 1201²), ESRI ASCII Grid .asc и однослойные GeoTIFF/COG .tif/.tiff в WGS84 (без сжатия, DEFLATE или PackBits). LZW и BigTIFF нужно пересохранить. Файл читается локально и не отправляется в сеть.',
+            'SRTM .hgt (3601² or 1201²), ESRI ASCII Grid .asc and single-band GeoTIFF/COG .tif/.tiff in WGS84 (uncompressed, DEFLATE or PackBits) are supported. Re-save LZW and BigTIFF files first. The file is read locally and never sent to the network.',
+          )}
+        </p>
+      </section>
+    </div>
+  )
+}
+
 function SettingsPanel() {
   const t = useT()
   const tx = useText()
   const locale = useAppStore((state) => state.locale)
   const setLocale = useAppStore((state) => state.setLocale)
+  const fieldMode = useAppStore((state) => state.fieldMode)
+  const toggleFieldMode = useAppStore((state) => state.toggleFieldMode)
+  const fieldUiScale = useAppStore((state) => state.fieldUiScale)
+  const setFieldUiScale = useAppStore((state) => state.setFieldUiScale)
+  const fieldHighContrast = useAppStore(
+    (state) => state.fieldHighContrast,
+  )
+  const setFieldHighContrast = useAppStore(
+    (state) => state.setFieldHighContrast,
+  )
+  const fieldReduceMotion = useAppStore(
+    (state) => state.fieldReduceMotion,
+  )
+  const setFieldReduceMotion = useAppStore(
+    (state) => state.setFieldReduceMotion,
+  )
+  const keepScreenAwake = useAppStore((state) => state.keepScreenAwake)
+  const setKeepScreenAwake = useAppStore(
+    (state) => state.setKeepScreenAwake,
+  )
+  const gpsPowerMode = useAppStore((state) => state.gpsPowerMode)
+  const setGpsPowerMode = useAppStore((state) => state.setGpsPowerMode)
   const showToast = useAppStore((state) => state.showToast)
   const packLicense = useAppStore((state) => state.packLicense)
   const setPackLicense = useAppStore((state) => state.setPackLicense)
+  const routingEngine = useAppStore((state) => state.routingEngine)
+  const setRoutingEngine = useAppStore((state) => state.setRoutingEngine)
+  const routingUrl = useAppStore((state) => state.routingUrl)
+  const setRoutingUrl = useAppStore((state) => state.setRoutingUrl)
+  const routingProfile = useAppStore((state) => state.routingProfile)
+  const setRoutingProfile = useAppStore((state) => state.setRoutingProfile)
   const crs = useAppStore((state) => state.crs)
   const crsLabel = useAppStore((state) => state.crsLabel)
   const setCrs = useAppStore((state) => state.setCrs)
@@ -2454,6 +3200,7 @@ function SettingsPanel() {
   const [file, setFile] = useState<string | null>(null)
   const [limitMb, setLimitMb] = useState(2048)
   const [proxy, setProxy] = useState('')
+  const [geocodeOnline, setGeocodeOnline] = useState(true)
   const [busy, setBusy] = useState(false)
   const [presets, setPresets] = useState<CrsPreset[]>([])
   const [crsChoice, setCrsChoice] = useState('wgs84')
@@ -2523,16 +3270,18 @@ function SettingsPanel() {
         setCrs({ epsg }, preset?.label ?? `EPSG:${epsg}`)
         showToast(
           tx(
-            `Координаты: ${preset?.label ?? `EPSG:${epsg}`}`,
-            `Coordinates: ${preset?.label ?? `EPSG:${epsg}`}`,
+            'Координаты: {p0}',
+            'Coordinates: {p0}',
+            { p0: preset?.label ?? `EPSG:${epsg}` },
           ),
         )
       }
     } catch (error) {
       showToast(
         tx(
-          `Не удалось применить СК: ${String(error)}`,
-          `Could not apply the coordinate system: ${String(error)}`,
+          'Не удалось применить СК: {p0}',
+          'Could not apply the coordinate system: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -2562,15 +3311,17 @@ function SettingsPanel() {
       }
       showToast(
         tx(
-          `Круговой контроль «${label}»: максимум ${worst.toFixed(3)} м`,
-          `Round-trip check “${label}”: worst case ${worst.toFixed(3)} m`,
+          'Круговой контроль «{p0}»: максимум {p1} м',
+          'Round-trip check “{p0}”: worst case {p1} m',
+          { p0: label, p1: worst.toFixed(3) },
         ),
       )
     } catch (error) {
       showToast(
         tx(
-          `Контроль СК не пройден: ${String(error)}`,
-          `Coordinate system check failed: ${String(error)}`,
+          'Контроль СК не пройден: {p0}',
+          'Coordinate system check failed: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -2591,6 +3342,7 @@ function SettingsPanel() {
     if (current) {
       setLimitMb(Math.round(current.cacheLimitBytes / MIB))
       setProxy(current.proxy ?? '')
+      setGeocodeOnline(current.geocodeOnline)
     }
   }, [])
 
@@ -2613,11 +3365,105 @@ function SettingsPanel() {
           onChange={(event) => setLocale(event.target.value as Locale)}
           aria-label={t('settings.language')}
         >
-          <option value="ru">Русский</option>
-          <option value="en">English</option>
+          {LOCALES.map((value) => (
+            <option key={value} value={value}>
+              {LOCALE_NAMES[value]}
+            </option>
+          ))}
         </select>
       </div>
       <p className="settings-hint">{t('settings.languageHint')}</p>
+    </section>
+  )
+
+  const fieldSection = (
+    <section className="section">
+      <div className="section-heading">
+        <span>{tx('Полевой режим', 'Field mode')}</span>
+        <Mountain size={13} />
+      </div>
+      <label className="settings-check">
+        <input
+          type="checkbox"
+          checked={fieldMode}
+          onChange={() => toggleFieldMode()}
+        />
+        <span>{tx('Крупные кнопки и минимум панелей', 'Large controls, fewer panels')}</span>
+      </label>
+      <div className="settings-field">
+        <span>{tx('Масштаб интерфейса', 'Interface scale')}</span>
+        <select
+          className="settings-input"
+          value={fieldUiScale}
+          onChange={(event) =>
+            setFieldUiScale(Number(event.target.value))
+          }
+          aria-label={tx('Масштаб интерфейса', 'Interface scale')}
+        >
+          <option value={100}>100%</option>
+          <option value={115}>115%</option>
+          <option value={130}>130%</option>
+        </select>
+      </div>
+      <label className="settings-check">
+        <input
+          type="checkbox"
+          checked={fieldHighContrast}
+          onChange={(event) =>
+            setFieldHighContrast(event.target.checked)
+          }
+        />
+        <span>{tx('Высокий контраст', 'High contrast')}</span>
+      </label>
+      <label className="settings-check">
+        <input
+          type="checkbox"
+          checked={fieldReduceMotion}
+          onChange={(event) =>
+            setFieldReduceMotion(event.target.checked)
+          }
+        />
+        <span>{tx('Меньше анимаций', 'Reduce motion')}</span>
+      </label>
+      <label className="settings-check">
+        <input
+          type="checkbox"
+          checked={keepScreenAwake}
+          onChange={(event) =>
+            setKeepScreenAwake(event.target.checked)
+          }
+        />
+        <span>{tx('Не гасить экран в полевом режиме', 'Keep the screen awake in field mode')}</span>
+      </label>
+      <div className="settings-field">
+        <span>{tx('Экономия батареи', 'Battery saving')}</span>
+        <select
+          className="settings-input"
+          value={gpsPowerMode}
+          onChange={(event) =>
+            setGpsPowerMode(
+              event.target.value as 'precise' | 'balanced' | 'saver',
+            )
+          }
+          aria-label={tx('Режим энергосбережения GPS', 'GPS power mode')}
+        >
+          <option value="precise">
+            {tx('Точный GPS', 'Precise GPS')}
+          </option>
+          <option value="balanced">
+            {tx('Сбалансированный', 'Balanced')}
+          </option>
+          <option value="saver">
+            {tx('Экономия', 'Saver')}
+          </option>
+        </select>
+      </div>
+      <p className="settings-hint">
+        {tx(
+          'Точный режим обновляет GPS каждый раз, экономия — реже и с меньшей точностью. Внешний NMEA/gpsd продолжает писать трек при погашенном экране; системный GNSS может приостановиться.',
+          'Precise updates GPS on every fix; saver samples less often with lower accuracy. External NMEA/gpsd keeps recording while the screen is off; system GNSS may pause.',
+        )}
+      </p>
     </section>
   )
 
@@ -2625,6 +3471,7 @@ function SettingsPanel() {
     return (
       <div className="inspector-body">
         {languageSection}
+        {fieldSection}
         <section className="empty-state">
           <span className="empty-icon">
             <Settings2 size={24} />
@@ -2646,6 +3493,7 @@ function SettingsPanel() {
   const settings: NativeSettings = {
     cacheLimitBytes: Math.round(limitMb * MIB),
     proxy: proxy.trim() || null,
+    geocodeOnline,
   }
 
   const save = async () => {
@@ -2661,13 +3509,15 @@ function SettingsPanel() {
       const applied = await updateSettings(settings)
       setLimitMb(Math.round(applied.cacheLimitBytes / MIB))
       setProxy(applied.proxy ?? '')
+      setGeocodeOnline(applied.geocodeOnline)
       showToast(tx('Настройки сохранены', 'Settings saved'))
       await refresh()
     } catch (error) {
       showToast(
         tx(
-          `Не удалось сохранить: ${String(error)}`,
-          `Could not save: ${String(error)}`,
+          'Не удалось сохранить: {p0}',
+          'Could not save: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -2682,20 +3532,23 @@ function SettingsPanel() {
       showToast(
         report.corrupt === 0
           ? tx(
-              `Кэш целостен: проверено ${formatCount(report.checked)} тайлов`,
-              `Cache is intact: checked ${formatCount(report.checked)} tiles`,
+              'Кэш целостен: проверено {p0} тайлов',
+              'Cache is intact: checked {p0} tiles',
+              { p0: formatCount(report.checked) },
             )
           : tx(
-              `Удалено ${formatCount(report.removed)} битых тайлов из ${formatCount(report.checked)} (${formatBytes(report.bytes)})`,
-              `Removed ${formatCount(report.removed)} damaged tiles out of ${formatCount(report.checked)} (${formatBytes(report.bytes)})`,
+              'Удалено {p0} битых тайлов из {p1} ({p2})',
+              'Removed {p0} damaged tiles out of {p1} ({p2})',
+              { p0: formatCount(report.removed), p1: formatCount(report.checked), p2: formatBytes(report.bytes) },
             ),
       )
       await refresh()
     } catch (error) {
       showToast(
         tx(
-          `Проверка кэша не удалась: ${String(error)}`,
-          `Cache check failed: ${String(error)}`,
+          'Проверка кэша не удалась: {p0}',
+          'Cache check failed: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -2719,16 +3572,18 @@ function SettingsPanel() {
       const removed = await clearCache()
       showToast(
         tx(
-          `Кэш очищен: ${formatCount(removed)} тайлов`,
-          `Cache cleared: ${formatCount(removed)} tiles`,
+          'Кэш очищен: {p0} тайлов',
+          'Cache cleared: {p0} tiles',
+          { p0: formatCount(removed) },
         ),
       )
       await refresh()
     } catch (error) {
       showToast(
         tx(
-          `Не удалось очистить: ${String(error)}`,
-          `Could not clear the cache: ${String(error)}`,
+          'Не удалось очистить: {p0}',
+          'Could not clear the cache: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -2748,8 +3603,9 @@ function SettingsPanel() {
             <strong>
               {cache
                 ? tx(
-                    `${formatBytes(cache.bytes)} · ${formatCount(cache.tiles)} тайлов`,
-                    `${formatBytes(cache.bytes)} · ${formatCount(cache.tiles)} tiles`,
+                    '{p0} · {p1} тайлов',
+                    '{p0} · {p1} tiles',
+                    { p0: formatBytes(cache.bytes), p1: formatCount(cache.tiles) },
                   )
                 : 'SQLite WAL'}
             </strong>
@@ -2772,9 +3628,10 @@ function SettingsPanel() {
         {cache && (
           <p>
             {tx(
-              `Попадания ${formatCount(cache.hits)} · промахи ${formatCount(cache.misses)}. Старые тайлы вытесняются автоматически, когда кэш превышает лимит.`,
-              `Hits ${formatCount(cache.hits)} · misses ${formatCount(cache.misses)}. Old tiles are evicted automatically when the cache exceeds its limit.`,
-            )}
+               'Попадания {p0} · промахи {p1}. Старые тайлы вытесняются автоматически, когда кэш превышает лимит.',
+               'Hits {p0} · misses {p1}. Old tiles are evicted automatically when the cache exceeds its limit.',
+               { p0: formatCount(cache.hits), p1: formatCount(cache.misses) },
+             )}
           </p>
         )}
       </section>
@@ -2812,6 +3669,7 @@ function SettingsPanel() {
       )}
 
       {languageSection}
+      {fieldSection}
 
       <section className="section">
         <div className="section-heading">
@@ -2867,6 +3725,82 @@ function SettingsPanel() {
           {tx(
             'Поддерживаются http и https. Пустое поле — прямое подключение. Новый прокси применяется к следующим запросам без перезапуска.',
             'HTTP and HTTPS are supported. An empty field means a direct connection. A new proxy applies to subsequent requests without a restart.',
+          )}
+        </p>
+      </section>
+
+      <section className="section">
+        <div className="section-heading">
+          <span>{tx('Маршрутизация', 'Routing')}</span>
+          <RouteIcon size={13} />
+        </div>
+        <div className="settings-field">
+          <span>{tx('Движок', 'Engine')}</span>
+          <select
+            className="settings-input"
+            value={routingEngine}
+            onChange={(event) =>
+              setRoutingEngine(
+                event.target.value as 'offline' | 'osrm' | 'brouter',
+              )
+            }
+            aria-label={tx('Движок маршрутизации', 'Routing engine')}
+          >
+            <option value="offline">
+              {tx('Офлайн по линиям', 'Offline lines')}
+            </option>
+            <option value="osrm">OSRM</option>
+            <option value="brouter">BRouter</option>
+          </select>
+        </div>
+        <div className="settings-field">
+          <input
+            type="url"
+            className="settings-input"
+            placeholder="https://router.project-osrm.org"
+            value={routingUrl}
+            onChange={(event) => setRoutingUrl(event.target.value)}
+            aria-label={tx('Адрес сервера маршрутов', 'Routing server URL')}
+          />
+        </div>
+        <div className="settings-field">
+          <span>{tx('Профиль', 'Profile')}</span>
+          <input
+            className="settings-input"
+            value={routingProfile}
+            onChange={(event) => setRoutingProfile(event.target.value)}
+            aria-label={tx('Профиль маршрута', 'Routing profile')}
+          />
+        </div>
+        <p className="settings-hint">
+          {tx(
+            'Пустой адрес использует публичный OSRM или BRouter. Запросы идут через прокси выше; профили: driving/bike/foot для OSRM, car-eco/trekking/fastbike для BRouter.',
+            'An empty URL uses the public OSRM or BRouter server. Requests use the proxy above; profiles: driving/bike/foot for OSRM, car-eco/trekking/fastbike for BRouter.',
+          )}
+        </p>
+      </section>
+
+      <section className="section">
+        <div className="section-heading">
+          <span>{tx('Геокодер', 'Geocoder')}</span>
+          <Search size={13} />
+        </div>
+        <div className="settings-field">
+          <label className="settings-check">
+            <input
+              type="checkbox"
+              checked={geocodeOnline}
+              onChange={(event) => setGeocodeOnline(event.target.checked)}
+            />
+            <span>
+              {tx('Разрешить онлайн-поиск', 'Allow online search')}
+            </span>
+          </label>
+        </div>
+        <p className="settings-hint">
+          {tx(
+            'Сначала ищет по локальному кэшу и geocode.json, затем — Photon/Nominatim. Найденные места сохраняются и работают офлайн. Выключите, если сеть недоступна или нужен только локальный индекс.',
+            'Searches the local cache and geocode.json first, then Photon/Nominatim. Found places are cached and work offline. Disable it for a network-free or local-only index.',
           )}
         </p>
       </section>
@@ -3011,12 +3945,17 @@ function SettingsPanel() {
           onClick={() => {
             setLogBusy(true)
             void openLogDirectory()
-              .then((path) => showToast(tx(`Журнал: ${path}`, `Log: ${path}`)))
+              .then((path) => showToast(tx(
+                                          'Журнал: {p0}',
+                                          'Log: {p0}',
+                                          { p0: path },
+                                        )))
               .catch((error: unknown) =>
                 showToast(
                   tx(
-                    `Не удалось открыть журнал: ${String(error)}`,
-                    `Could not open the log: ${String(error)}`,
+                    'Не удалось открыть журнал: {p0}',
+                    'Could not open the log: {p0}',
+                    { p0: String(error) },
                   ),
                 ),
               )
@@ -3234,12 +4173,14 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
       !window.confirm(
         action === 'cancel'
           ? tx(
-              `Отменить «${job.name}»? Скачанные тайлы останутся в кэше.`,
-              `Cancel “${job.name}”? Downloaded tiles will remain in the cache.`,
+              'Отменить «{p0}»? Скачанные тайлы останутся в кэше.',
+              'Cancel “{p0}”? Downloaded tiles will remain in the cache.',
+              { p0: job.name },
             )
           : tx(
-              `Удалить «${job.name}» из очереди? Тайлы останутся в кэше.`,
-              `Remove “${job.name}” from the queue? Tiles will remain in the cache.`,
+              'Удалить «{p0}» из очереди? Тайлы останутся в кэше.',
+              'Remove “{p0}” from the queue? Tiles will remain in the cache.',
+              { p0: job.name },
             ),
       )
     ) {
@@ -3251,7 +4192,11 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
       else if (action === 'cancel') await cancel(job.id)
       else await remove(job.id)
     } catch (error) {
-      showToast(tx(`Не удалось: ${String(error)}`, `Failed: ${String(error)}`))
+      showToast(tx(
+                  'Не удалось: {p0}',
+                  'Failed: {p0}',
+                  { p0: String(error) },
+                ))
     }
   }
 
@@ -3297,24 +4242,27 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
         applyWmtsLayer(document.layers[0])
         showToast(
           tx(
-            `Слой добавлен: ${document.layers[0].title}`,
-            `Layer added: ${document.layers[0].title}`,
+            'Слой добавлен: {p0}',
+            'Layer added: {p0}',
+            { p0: document.layers[0].title },
           ),
         )
       } else {
         setWmtsLayers(document.layers)
         showToast(
           tx(
-            `Найдено слоёв: ${document.layers.length}. Выберите нужный.`,
-            `Layers found: ${document.layers.length}. Choose one.`,
+            'Найдено слоёв: {p0}. Выберите нужный.',
+            'Layers found: {p0}. Choose one.',
+            { p0: document.layers.length },
           ),
         )
       }
     } catch (error) {
       showToast(
         tx(
-          `Не удалось прочитать GetCapabilities: ${String(error)}`,
-          `Could not read GetCapabilities: ${String(error)}`,
+          'Не удалось прочитать GetCapabilities: {p0}',
+          'Could not read GetCapabilities: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -3381,8 +4329,9 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
     if (badHeader) {
       showToast(
         tx(
-          `Заголовок должен быть в виде «Имя: значение»: ${badHeader}`,
-          `A header must use “Name: value”: ${badHeader}`,
+          'Заголовок должен быть в виде «Имя: значение»: {p0}',
+          'A header must use “Name: value”: {p0}',
+          { p0: badHeader },
         ),
       )
       return
@@ -3459,8 +4408,9 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
     } catch (error) {
       showToast(
         tx(
-          `Не удалось сохранить источник: ${String(error)}`,
-          `Could not save the source: ${String(error)}`,
+          'Не удалось сохранить источник: {p0}',
+          'Could not save the source: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -3530,8 +4480,9 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
     } catch (error) {
       showToast(
         tx(
-          `Экспорт не удался: ${String(error)}`,
-          `Export failed: ${String(error)}`,
+          'Экспорт не удался: {p0}',
+          'Export failed: {p0}',
+          { p0: String(error) },
         ),
       )
     } finally {
@@ -3572,8 +4523,9 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
     } catch (error) {
       showToast(
         tx(
-          `Не удалось импортировать слой: ${String(error)}`,
-          `Could not import the layer: ${String(error)}`,
+          'Не удалось импортировать слой: {p0}',
+          'Could not import the layer: {p0}',
+          { p0: String(error) },
         ),
       )
     }
@@ -3609,8 +4561,9 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
     } catch (error) {
       showToast(
         tx(
-          `Не удалось импортировать XYZ: ${String(error)}`,
-          `Could not import XYZ: ${String(error)}`,
+          'Не удалось импортировать XYZ: {p0}',
+          'Could not import XYZ: {p0}',
+          { p0: String(error) },
         ),
       )
     }
@@ -3620,12 +4573,17 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
     try {
       const path = await exportVectorLayerKmz(layer)
       if (path)
-        showToast(tx(`Слой сохранён: ${path}`, `Layer saved: ${path}`))
+        showToast(tx(
+                    'Слой сохранён: {p0}',
+                    'Layer saved: {p0}',
+                    { p0: path },
+                  ))
     } catch (error) {
       showToast(
         tx(
-          `Не удалось экспортировать слой: ${String(error)}`,
-          `Could not export the layer: ${String(error)}`,
+          'Не удалось экспортировать слой: {p0}',
+          'Could not export the layer: {p0}',
+          { p0: String(error) },
         ),
       )
     }
@@ -3634,7 +4592,11 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const removeVector = (layer: VectorLayer) => {
     if (
       !window.confirm(
-        tx(`Удалить слой «${layer.name}»?`, `Delete layer “${layer.name}”?`),
+        tx(
+          'Удалить слой «{p0}»?',
+          'Delete layer “{p0}”?',
+          { p0: layer.name },
+        ),
       )
     )
       return
@@ -3645,19 +4607,28 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const removeSource = async (id: string, name: string) => {
     if (
       !window.confirm(
-        tx(`Удалить источник «${name}»?`, `Delete source “${name}”?`),
+        tx(
+          'Удалить источник «{p0}»?',
+          'Delete source “{p0}”?',
+          { p0: name },
+        ),
       )
     )
       return
     try {
       await deleteCustomSource(id)
       await refreshSources()
-      showToast(tx(`Источник удалён: ${name}`, `Source deleted: ${name}`))
+      showToast(tx(
+                  'Источник удалён: {p0}',
+                  'Source deleted: {p0}',
+                  { p0: name },
+                ))
     } catch (error) {
       showToast(
         tx(
-          `Не удалось удалить источник: ${String(error)}`,
-          `Could not delete the source: ${String(error)}`,
+          'Не удалось удалить источник: {p0}',
+          'Could not delete the source: {p0}',
+          { p0: String(error) },
         ),
       )
     }
@@ -3684,7 +4655,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
       <aside className="inspector" aria-label={t(titles[panel])}>
       <div className="inspector-header">
         <div>
-          <span className="eyebrow">Mappa workspace</span>
+          <span className="eyebrow">{tx('Рабочая область Mappa', 'Mappa workspace')}</span>
           <h2>{t(titles[panel])}</h2>
         </div>
         <button
@@ -3722,7 +4693,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                 {provider.attribution}
                 <ExternalLink size={11} />
               </a>
-              <span>{tx(`до z${provider.maxZoom}`, `up to z${provider.maxZoom}`)}</span>
+              <span>{`${tx('до z', 'up to z')}${provider.maxZoom}`}</span>
             </div>
           </section>
 
@@ -3823,8 +4794,8 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                       onClick={() => toggleLayer(item.id)}
                       aria-label={
                         state.visible
-                          ? tx(`Скрыть ${item.label}`, `Hide ${item.label}`)
-                          : tx(`Показать ${item.label}`, `Show ${item.label}`)
+                          ? `${tx('Скрыть', 'Hide')} ${item.label}`
+                          : `${tx('Показать', 'Show')} ${item.label}`
                       }
                       aria-pressed={state.visible}
                     >
@@ -3848,10 +4819,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                               moveProvider(item.id, -1)
                             }
                           }}
-                          aria-label={tx(
-                            `Перетащить слой ${item.label}`,
-                            `Drag layer ${item.label}`,
-                          )}
+                          aria-label={`${tx('Перетащить слой', 'Drag layer')} ${item.label}`}
                           title={tx(
                             'Перетащите или используйте ↑/↓',
                             'Drag or use ↑/↓',
@@ -3875,9 +4843,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                           )
                         }
                         aria-label={tx(
-                          `Прозрачность ${item.label}`,
-                          `Opacity of ${item.label}`,
-                        )}
+                                      'Прозрачность {p0}',
+                                      'Opacity of {p0}',
+                                      { p0: item.label },
+                                    )}
                       />
                     </div>
                     <span className="layer-opacity">
@@ -3947,8 +4916,9 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                   )}
                 {coverageError &&
                   tx(
-                    ` Ошибка: ${coverageError}`,
-                    ` Error: ${coverageError}`,
+                    ' Ошибка: {p0}',
+                    ' Error: {p0}',
+                    { p0: coverageError },
                   )}
               </p>
             )}
@@ -4389,11 +5359,8 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                         onClick={() => toggleCustomLayer(source.id)}
                         aria-label={
                           layer.visible
-                            ? tx(`Скрыть ${source.name}`, `Hide ${source.name}`)
-                            : tx(
-                                `Показать ${source.name}`,
-                                `Show ${source.name}`,
-                              )
+                            ? `${tx('Скрыть', 'Hide')} ${source.name}`
+                            : `${tx('Показать', 'Show')} ${source.name}`
                         }
                         aria-pressed={layer.visible}
                       >
@@ -4421,10 +5388,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                                 moveCustomSource(source.id, -1)
                               }
                             }}
-                            aria-label={tx(
-                              `Перетащить слой ${source.name}`,
-                              `Drag layer ${source.name}`,
-                            )}
+                            aria-label={`${tx('Перетащить слой', 'Drag layer')} ${source.name}`}
                             title={tx(
                               'Перетащите или используйте ↑/↓',
                               'Drag or use ↑/↓',
@@ -4457,9 +5421,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                             )
                           }
                           aria-label={tx(
-                            `Прозрачность ${source.name}`,
-                            `Opacity of ${source.name}`,
-                          )}
+                                        'Прозрачность {p0}',
+                                        'Opacity of {p0}',
+                                        { p0: source.name },
+                                      )}
                         />
                       </div>
                       <span className="layer-opacity">
@@ -4470,9 +5435,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                         className="icon-button pack-close"
                         onClick={() => editSource(source)}
                         aria-label={tx(
-                          `Изменить ${source.name}`,
-                          `Edit ${source.name}`,
-                        )}
+                                      'Изменить {p0}',
+                                      'Edit {p0}',
+                                      { p0: source.name },
+                                    )}
                         title={tx('Изменить источник', 'Edit source')}
                       >
                         <PenLine size={14} />
@@ -4482,9 +5448,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                         className="icon-button pack-close"
                         onClick={() => void removeSource(source.id, source.name)}
                         aria-label={tx(
-                          `Удалить ${source.name}`,
-                          `Delete ${source.name}`,
-                        )}
+                                      'Удалить {p0}',
+                                      'Delete {p0}',
+                                      { p0: source.name },
+                                    )}
                         title={tx('Удалить источник', 'Delete source')}
                       >
                         <X size={14} />
@@ -4563,8 +5530,8 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                       onClick={() => toggleVectorLayer(layer.id)}
                       aria-label={
                         layer.visible
-                          ? tx(`Скрыть ${layer.name}`, `Hide ${layer.name}`)
-                          : tx(`Показать ${layer.name}`, `Show ${layer.name}`)
+                          ? `${tx('Скрыть', 'Hide')} ${layer.name}`
+                          : `${tx('Показать', 'Show')} ${layer.name}`
                       }
                       aria-pressed={layer.visible}
                     >
@@ -4583,10 +5550,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                             vectorDrag.start(event, layer.id)
                           }
                           onClick={(event) => event.stopPropagation()}
-                          aria-label={tx(
-                            `Перетащить слой ${layer.name}`,
-                            `Drag layer ${layer.name}`,
-                          )}
+                          aria-label={`${tx('Перетащить слой', 'Drag layer')} ${layer.name}`}
                           title={tx(
                             'Перетащить, чтобы изменить порядок',
                             'Drag to change the order',
@@ -4611,9 +5575,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                               })
                             }
                             aria-label={tx(
-                              `Цвет ${layer.name}`,
-                              `Colour of ${layer.name}`,
-                            )}
+                                          'Цвет {p0}',
+                                          'Colour of {p0}',
+                                          { p0: layer.name },
+                                        )}
                           />
                         </label>
                         <label title={tx('Толщина линии, px', 'Line width, px')}>
@@ -4632,9 +5597,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                               })
                             }
                             aria-label={tx(
-                              `Толщина линии ${layer.name}`,
-                              `Line width of ${layer.name}`,
-                            )}
+                                          'Толщина линии {p0}',
+                                          'Line width of {p0}',
+                                          { p0: layer.name },
+                                        )}
                           />
                         </label>
                         <label title={tx('Заливка полигонов', 'Polygon fill')}>
@@ -4653,9 +5619,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                               })
                             }
                             aria-label={tx(
-                              `Заливка ${layer.name}`,
-                              `Fill of ${layer.name}`,
-                            )}
+                                          'Заливка {p0}',
+                                          'Fill of {p0}',
+                                          { p0: layer.name },
+                                        )}
                           />
                         </label>
                       </div>
@@ -4672,9 +5639,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                           )
                         }
                         aria-label={tx(
-                          `Прозрачность ${layer.name}`,
-                          `Opacity of ${layer.name}`,
-                        )}
+                                      'Прозрачность {p0}',
+                                      'Opacity of {p0}',
+                                      { p0: layer.name },
+                                    )}
                       />
                     </div>
                     <span className="layer-opacity">
@@ -4686,9 +5654,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                         onClick={() => moveVectorLayer(layer.id, 1)}
                         disabled={index === vectorLayers.length - 1}
                         aria-label={tx(
-                          `Поднять ${layer.name} выше`,
-                          `Raise ${layer.name}`,
-                        )}
+                                      'Поднять {p0} выше',
+                                      'Raise {p0}',
+                                      { p0: layer.name },
+                                    )}
                         title={tx('Выше на карте', 'Raise on the map')}
                       >
                         <ChevronUp size={11} />
@@ -4698,9 +5667,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                         onClick={() => moveVectorLayer(layer.id, -1)}
                         disabled={index === 0}
                         aria-label={tx(
-                          `Опустить ${layer.name} ниже`,
-                          `Lower ${layer.name}`,
-                        )}
+                                      'Опустить {p0} ниже',
+                                      'Lower {p0}',
+                                      { p0: layer.name },
+                                    )}
                         title={tx('Ниже на карте', 'Lower on the map')}
                       >
                         <ChevronDown size={11} />
@@ -4711,9 +5681,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                       className="icon-button pack-close"
                       onClick={() => void exportVector(layer)}
                       aria-label={tx(
-                        `Экспортировать ${layer.name} в KMZ`,
-                        `Export ${layer.name} to KMZ`,
-                      )}
+                                    'Экспортировать {p0} в KMZ',
+                                    'Export {p0} to KMZ',
+                                    { p0: layer.name },
+                                  )}
                       title={tx('Экспорт в KMZ', 'Export to KMZ')}
                     >
                       <FileDown size={14} />
@@ -4727,15 +5698,17 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                         setPanel('features')
                         showToast(
                           tx(
-                            `Режим правки: выберите объект слоя «${layer.name}»`,
-                            `Edit mode: choose a feature in layer “${layer.name}”`,
+                            'Режим правки: выберите объект слоя «{p0}»',
+                            'Edit mode: choose a feature in layer “{p0}”',
+                            { p0: layer.name },
                           ),
                         )
                       }}
                       aria-label={tx(
-                        `Редактировать ${layer.name}`,
-                        `Edit ${layer.name}`,
-                      )}
+                                    'Редактировать {p0}',
+                                    'Edit {p0}',
+                                    { p0: layer.name },
+                                  )}
                       title={tx('Редактировать геометрию', 'Edit geometry')}
                     >
                       <PenLine size={14} />
@@ -4748,9 +5721,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                         setAttributeLayerId(layer.id)
                       }}
                       aria-label={tx(
-                        `Атрибуты ${layer.name}`,
-                        `Attributes of ${layer.name}`,
-                      )}
+                                    'Атрибуты {p0}',
+                                    'Attributes of {p0}',
+                                    { p0: layer.name },
+                                  )}
                       title={tx('Таблица атрибутов', 'Attribute table')}
                     >
                       <Table2 size={14} />
@@ -4768,10 +5742,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                           })
                         }
                       }}
-                      aria-label={tx(
-                        `Показать ${layer.name}`,
-                        `Show ${layer.name}`,
-                      )}
+                      aria-label={`${tx('Показать', 'Show')} ${layer.name}`}
                       title={tx('Показать на карте', 'Show on the map')}
                     >
                       <Globe2 size={14} />
@@ -4781,9 +5752,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                       className="icon-button pack-close"
                       onClick={() => removeVector(layer)}
                       aria-label={tx(
-                        `Удалить ${layer.name}`,
-                        `Delete ${layer.name}`,
-                      )}
+                                    'Удалить {p0}',
+                                    'Delete {p0}',
+                                    { p0: layer.name },
+                                  )}
                       title={tx('Удалить слой', 'Delete layer')}
                     >
                       <X size={14} />
@@ -4826,16 +5798,18 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                       if (pack)
                         showToast(
                           tx(
-                            `Пак открыт: ${pack.name}`,
-                            `Pack opened: ${pack.name}`,
+                            'Пак открыт: {p0}',
+                            'Pack opened: {p0}',
+                            { p0: pack.name },
                           ),
                         )
                     })
                     .catch((error: unknown) =>
                       showToast(
                         tx(
-                          `Не удалось открыть пак: ${String(error)}`,
-                          `Could not open the pack: ${String(error)}`,
+                          'Не удалось открыть пак: {p0}',
+                          'Could not open the pack: {p0}',
+                          { p0: String(error) },
                         ),
                       ),
                     )
@@ -4844,8 +5818,8 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                 title={
                   isNative
                     ? tx(
-                        'Открыть MBTiles или PMTiles',
-                        'Open MBTiles or PMTiles',
+                        'Открыть MBTiles или PMTiles (растр/вектор)',
+                        'Open MBTiles or PMTiles (raster/vector)',
                       )
                     : tx(
                         'Доступно в нативном приложении',
@@ -4882,8 +5856,8 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
             {packs.length === 0 ? (
               <p className="pack-empty">
                 {tx(
-                  'Подключите готовый .mbtiles или .pmtiles и покажите его поверх карты. Пак читается напрямую, без распаковки.',
-                  'Open an existing .mbtiles or .pmtiles and show it over the map. The pack is read directly, without unpacking.',
+                  'Подключите растровый .mbtiles/.pmtiles или векторный .pmtiles и покажите его поверх карты. Пак читается напрямую, без распаковки.',
+                  'Open a raster .mbtiles/.pmtiles or a vector .pmtiles and show it over the map. The pack is read directly, without unpacking.',
                 )}
               </p>
             ) : (
@@ -4908,8 +5882,8 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                       onClick={() => togglePack(pack.id)}
                       aria-label={
                         pack.visible
-                          ? tx(`Скрыть ${pack.name}`, `Hide ${pack.name}`)
-                          : tx(`Показать ${pack.name}`, `Show ${pack.name}`)
+                          ? `${tx('Скрыть', 'Hide')} ${pack.name}`
+                          : `${tx('Показать', 'Show')} ${pack.name}`
                       }
                       aria-pressed={pack.visible}
                     >
@@ -4955,9 +5929,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                           }
                           onClick={(event) => event.stopPropagation()}
                           aria-label={tx(
-                            `Перетащить пак ${pack.name}`,
-                            `Drag pack ${pack.name}`,
-                          )}
+                                        'Перетащить пак {p0}',
+                                        'Drag pack {p0}',
+                                        { p0: pack.name },
+                                      )}
                           title={tx(
                             'Перетащить, чтобы изменить порядок',
                             'Drag to change the order',
@@ -4974,8 +5949,16 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                         z{pack.minZoom}–z{pack.maxZoom}
                         {pack.tiles
                           ? tx(
-                              ` · ${formatCount(pack.tiles)} тайлов`,
-                              ` · ${formatCount(pack.tiles)} tiles`,
+                              ' · {p0} тайлов',
+                              ' · {p0} tiles',
+                              { p0: formatCount(pack.tiles) },
+                            )
+                          : ''}
+                        {pack.vectorLayers.length > 0
+                          ? tx(
+                              ' · {p0} слоёв',
+                              ' · {p0} layers',
+                              { p0: formatCount(pack.vectorLayers.length) },
                             )
                           : ''}
                       </div>
@@ -4990,9 +5973,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                           setPackOpacity(pack.id, Number(event.target.value))
                         }
                         aria-label={tx(
-                          `Прозрачность ${pack.name}`,
-                          `Opacity of ${pack.name}`,
-                        )}
+                                      'Прозрачность {p0}',
+                                      'Opacity of {p0}',
+                                      { p0: pack.name },
+                                    )}
                       />
                     </div>
                     <span className="layer-opacity">
@@ -5004,9 +5988,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                         onClick={() => movePack(pack.id, 1)}
                         disabled={index === packs.length - 1}
                         aria-label={tx(
-                          `Поднять ${pack.name} выше`,
-                          `Raise ${pack.name}`,
-                        )}
+                                      'Поднять {p0} выше',
+                                      'Raise {p0}',
+                                      { p0: pack.name },
+                                    )}
                         title={tx('Выше на карте', 'Raise on the map')}
                       >
                         <ChevronUp size={11} />
@@ -5016,9 +6001,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                         onClick={() => movePack(pack.id, -1)}
                         disabled={index === 0}
                         aria-label={tx(
-                          `Опустить ${pack.name} ниже`,
-                          `Lower ${pack.name}`,
-                        )}
+                                      'Опустить {p0} ниже',
+                                      'Lower {p0}',
+                                      { p0: pack.name },
+                                    )}
                         title={tx('Ниже на карте', 'Lower on the map')}
                       >
                         <ChevronDown size={11} />
@@ -5032,24 +6018,27 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                           .then(() =>
                             showToast(
                               tx(
-                                `Пак закрыт: ${pack.name}`,
-                                `Pack closed: ${pack.name}`,
+                                'Пак закрыт: {p0}',
+                                'Pack closed: {p0}',
+                                { p0: pack.name },
                               ),
                             ),
                           )
                           .catch((error: unknown) =>
                             showToast(
                               tx(
-                                `Не удалось закрыть: ${String(error)}`,
-                                `Could not close: ${String(error)}`,
+                                'Не удалось закрыть: {p0}',
+                                'Could not close: {p0}',
+                                { p0: String(error) },
                               ),
                             ),
                           )
                       }}
                       aria-label={tx(
-                        `Закрыть ${pack.name}`,
-                        `Close ${pack.name}`,
-                      )}
+                                    'Закрыть {p0}',
+                                    'Close {p0}',
+                                    { p0: pack.name },
+                                  )}
                       title={tx('Закрыть пак', 'Close pack')}
                     >
                       <X size={14} />
@@ -5072,8 +6061,9 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                   {isNative
                     ? cache
                       ? tx(
-                          `${formatCount(cache.tiles)} тайлов`,
-                          `${formatCount(cache.tiles)} tiles`,
+                          '{p0} тайлов',
+                          '{p0} tiles',
+                          { p0: formatCount(cache.tiles) },
                         )
                       : 'SQLite WAL'
                     : tx('Только браузер', 'Browser only')}
@@ -5087,8 +6077,9 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
               {isNative
                 ? cache
                   ? tx(
-                      `${formatBytes(cache.bytes)} на диске · попадания ${formatCount(cache.hits)} · промахи ${formatCount(cache.misses)}.`,
-                      `${formatBytes(cache.bytes)} on disk · hits ${formatCount(cache.hits)} · misses ${formatCount(cache.misses)}.`,
+                      '{p0} на диске · попадания {p1} · промахи {p2}.',
+                      '{p0} on disk · hits {p1} · misses {p2}.',
+                      { p0: formatBytes(cache.bytes), p1: formatCount(cache.hits), p2: formatCount(cache.misses) },
                     )
                   : tx(
                       'Дисковый кэш включён, статистика загружается.',
@@ -5136,9 +6127,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
               <div className="downloads-toolbar">
                 <span>
                   {tx(
-                    `${formatCount(jobs.length)} задач · ${formatCount(jobs.filter((job) => job.status === 'running').length)} активных`,
-                    `${formatCount(jobs.length)} jobs · ${formatCount(jobs.filter((job) => job.status === 'running').length)} active`,
-                  )}
+                     '{p0} задач · {p1} активных',
+                     '{p0} jobs · {p1} active',
+                     { p0: formatCount(jobs.length), p1: formatCount(jobs.filter((job) => job.status === 'running').length) },
+                   )}
                 </span>
                 {finished > 0 && (
                   <button
@@ -5146,7 +6138,11 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                     className="ghost-button"
                     onClick={() => {
                       void clearFinished().catch((error: unknown) =>
-                        showToast(tx(`Не удалось: ${String(error)}`, `Failed: ${String(error)}`)),
+                        showToast(tx(
+                                    'Не удалось: {p0}',
+                                    'Failed: {p0}',
+                                    { p0: String(error) },
+                                  )),
                       )
                     }}
                   >
@@ -5182,10 +6178,13 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                         )
                       } catch (error) {
                         showToast(
-                          tx(
-                            `Экспорт не удался: ${String(error)}`,
-                            `Export failed: ${String(error)}`,
-                          ),
+                          String(error).includes('export cancelled')
+                            ? tx('Экспорт отменён', 'Export cancelled')
+                            : tx(
+                                'Экспорт не удался: {p0}',
+                                'Export failed: {p0}',
+                                { p0: String(error) },
+                              ),
                         )
                       }
                     }}
@@ -5207,9 +6206,13 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
 
       {panel === 'settings' && <SettingsPanel />}
 
+      {panel === 'dem' && <DemPanel map={map} />}
+
       {panel === 'markers' && <MarkersPanel map={map} />}
 
       {panel === 'features' && <FeaturesPanel map={map} />}
+
+      {panel === 'route' && <RoutePanel map={map} />}
 
       {panel === 'gps' && <GpsPanel map={map} />}
 
@@ -5230,9 +6233,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
             role="dialog"
             aria-modal="true"
             aria-label={tx(
-              `Атрибуты ${attributeLayer.name}`,
-              `Attributes of ${attributeLayer.name}`,
-            )}
+                          'Атрибуты {p0}',
+                          'Attributes of {p0}',
+                          { p0: attributeLayer.name },
+                        )}
             tabIndex={-1}
           >
             <div className="attribute-header">
@@ -5244,9 +6248,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
               </div>
               <span className="source-hint">
                 {tx(
-                  `${formatCount(attributes.total)} объектов`,
-                  `${formatCount(attributes.total)} features`,
-                )}
+                   '{p0} объектов',
+                   '{p0} features',
+                   { p0: formatCount(attributes.total) },
+                 )}
               </span>
               <button
                 type="button"
@@ -5301,9 +6306,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
             <div className="attribute-footer">
               <span>
                 {tx(
-                  `Показано ${formatCount(attributeRows.length)}`,
-                  `Showing ${formatCount(attributeRows.length)}`,
-                )}
+                   'Показано {p0}',
+                   'Showing {p0}',
+                   { p0: formatCount(attributeRows.length) },
+                 )}
                 {attributes.truncated &&
                   tx(
                     ' · таблица обрезана до 500 строк',
@@ -5372,9 +6378,10 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
             <div className="attribute-footer">
               <span>
                 {tx(
-                  `${formatCount(gpkgPicker.layers.length)} слоёв`,
-                  `${formatCount(gpkgPicker.layers.length)} layers`,
-                )}
+                   '{p0} слоёв',
+                   '{p0} layers',
+                   { p0: formatCount(gpkgPicker.layers.length) },
+                 )}
               </span>
               <button
                 type="button"

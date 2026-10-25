@@ -62,6 +62,9 @@ export const estimateDownload = (
 const numberFormats = {
   ru: new Intl.NumberFormat('ru-RU'),
   en: new Intl.NumberFormat('en-US'),
+  de: new Intl.NumberFormat('de-DE'),
+  fr: new Intl.NumberFormat('fr-FR'),
+  es: new Intl.NumberFormat('es-ES'),
 }
 
 export const formatCount = (value: number) =>

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Geometry } from 'geojson'
 import type { CustomSource } from './customSources'
+import type { DemInfo } from './dem.ts'
 import type { Bounds } from './format'
 import type { CrsSpec } from './native'
 import {
@@ -13,7 +14,7 @@ import {
   type MapFeature,
 } from './features.ts'
 import { circlePolygon, type LonLat } from './geo.ts'
-import { setActiveLocale, tr, type Locale } from './locale.ts'
+import { isLocale, setActiveLocale, tr, type Locale } from './locale.ts'
 import type { CoordinateFormat, MapMarker } from './markers'
 import { PROVIDERS, type ProviderId } from './providers.ts'
 import type { VectorLayer, VectorStyle } from './vectorLayers.ts'
@@ -81,11 +82,15 @@ const reorderPackPaths = (
 }
 
 export type Theme = 'dark' | 'light'
+export type RoutingEngine = 'offline' | 'osrm' | 'brouter'
+export type GpsPowerMode = 'precise' | 'balanced' | 'saver'
 export type Panel =
   | 'layers'
+  | 'dem'
   | 'downloads'
   | 'markers'
   | 'features'
+  | 'route'
   | 'gps'
   | 'projects'
   | 'settings'
@@ -114,6 +119,7 @@ export interface PackLayer {
   path: string
   kind: 'mbtiles' | 'pmtiles'
   format: string
+  vectorLayers: string[]
   minZoom: number
   maxZoom: number
   west: number
@@ -213,6 +219,17 @@ interface AppState {
   togglePack: (id: string) => void
   setPackOpacity: (id: string, opacity: number) => void
 
+  dem: DemInfo | null
+  demPath: string
+  demVisible: boolean
+  dem3d: boolean
+  demOpacity: number
+  setDem: (dem: DemInfo | null) => void
+  forgetDem: () => void
+  toggleDemVisible: () => void
+  setDem3d: (enabled: boolean) => void
+  setDemOpacity: (opacity: number) => void
+
   selection: Bounds | null
   selectionPolygon: LonLat[] | null
   setSelection: (selection: Bounds | null) => void
@@ -232,6 +249,13 @@ interface AppState {
   draftPoints: LonLat[]
   selectedFeatureId: string | null
   featureColor: string
+  /** Line feature followed by off-route alerts. */
+  routeFeatureId: string | null
+  routeCorridor: number
+  routeAlert: boolean
+  setRouteFeatureId: (id: string | null) => void
+  setRouteCorridor: (metres: number) => void
+  setRouteAlert: (enabled: boolean) => void
   setFeatureMode: (mode: FeatureMode) => void
   setFeatureColor: (color: string) => void
   addDraftPoint: (point: LonLat) => void
@@ -282,6 +306,23 @@ interface AppState {
 
   fieldMode: boolean
   toggleFieldMode: () => void
+  fieldUiScale: number
+  setFieldUiScale: (scale: number) => void
+  fieldHighContrast: boolean
+  setFieldHighContrast: (enabled: boolean) => void
+  fieldReduceMotion: boolean
+  setFieldReduceMotion: (enabled: boolean) => void
+  keepScreenAwake: boolean
+  setKeepScreenAwake: (enabled: boolean) => void
+  gpsPowerMode: GpsPowerMode
+  setGpsPowerMode: (mode: GpsPowerMode) => void
+
+  routingEngine: RoutingEngine
+  setRoutingEngine: (engine: RoutingEngine) => void
+  routingUrl: string
+  setRoutingUrl: (url: string) => void
+  routingProfile: string
+  setRoutingProfile: (profile: string) => void
 
   snapping: boolean
   toggleSnapping: () => void
@@ -307,6 +348,10 @@ const PERSISTED_KEYS = [
   'providerId',
   'providerOrder',
   'packPaths',
+  'demPath',
+  'demVisible',
+  'dem3d',
+  'demOpacity',
   'markers',
   'features',
   'featureColor',
@@ -335,6 +380,10 @@ const persistedSlice = (state: AppState) => ({
   providerId: state.providerId,
   providerOrder: state.providerOrder,
   packPaths: state.packPaths,
+  demPath: state.demPath,
+  demVisible: state.demVisible,
+  dem3d: state.dem3d,
+  demOpacity: state.demOpacity,
   markers: state.markers,
   features: state.features,
   featureColor: state.featureColor,
@@ -348,6 +397,15 @@ const persistedSlice = (state: AppState) => ({
   packLicense: state.packLicense,
   mapGrid: state.mapGrid,
   autosaveEnabled: state.autosaveEnabled,
+  fieldMode: state.fieldMode,
+  fieldUiScale: state.fieldUiScale,
+  fieldHighContrast: state.fieldHighContrast,
+  fieldReduceMotion: state.fieldReduceMotion,
+  keepScreenAwake: state.keepScreenAwake,
+  gpsPowerMode: state.gpsPowerMode,
+  routingEngine: state.routingEngine,
+  routingUrl: state.routingUrl,
+  routingProfile: state.routingProfile,
 })
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null
@@ -840,6 +898,28 @@ export const useAppStore = create<AppState>()(
         ),
       })),
 
+    dem: null,
+    demPath: '',
+    demVisible: true,
+    dem3d: false,
+    demOpacity: 0.55,
+    setDem: (dem) =>
+      set({
+        dem,
+        demPath: dem?.path ?? '',
+      }),
+    forgetDem: () =>
+      set({
+        dem: null,
+        demPath: '',
+        dem3d: false,
+      }),
+    toggleDemVisible: () =>
+      set((state) => ({ demVisible: !state.demVisible })),
+    setDem3d: (dem3d) => set({ dem3d }),
+    setDemOpacity: (demOpacity) =>
+      set({ demOpacity: Math.min(1, Math.max(0, demOpacity)) }),
+
     selection: null,
     selectionPolygon: null,
     setSelection: (selection) => set({ selection, selectionPolygon: null }),
@@ -878,6 +958,15 @@ export const useAppStore = create<AppState>()(
     draftPoints: [],
     selectedFeatureId: null,
     featureColor: FEATURE_COLORS[0],
+    routeFeatureId: null,
+    routeCorridor: 50,
+    routeAlert: false,
+    setRouteFeatureId: (routeFeatureId) => set({ routeFeatureId }),
+    setRouteCorridor: (metres) =>
+      set({
+        routeCorridor: Math.min(1_000, Math.max(5, Math.round(metres))),
+      }),
+    setRouteAlert: (routeAlert) => set({ routeAlert }),
     setFeatureMode: (featureMode) =>
       set((state) => ({
         featureMode,
@@ -924,10 +1013,22 @@ export const useAppStore = create<AppState>()(
         const feature: MapFeature = {
           id: featureId(),
           name: circle
-            ? tr(`Круг ${ordinal}`, `Circle ${ordinal}`)
+            ? tr(
+                'Круг {p0}',
+                'Circle {p0}',
+                { p0: ordinal },
+              )
             : kind === 'line'
-              ? tr(`Линия ${ordinal}`, `Line ${ordinal}`)
-              : tr(`Полигон ${ordinal}`, `Polygon ${ordinal}`),
+              ? tr(
+                  'Линия {p0}',
+                  'Line {p0}',
+                  { p0: ordinal },
+                )
+              : tr(
+                  'Полигон {p0}',
+                  'Polygon {p0}',
+                  { p0: ordinal },
+                ),
           kind,
           coordinates: points,
           color: state.featureColor,
@@ -1001,6 +1102,9 @@ export const useAppStore = create<AppState>()(
         features: state.features.filter((feature) => feature.id !== id),
         selectedFeatureId:
           state.selectedFeatureId === id ? null : state.selectedFeatureId,
+        routeFeatureId:
+          state.routeFeatureId === id ? null : state.routeFeatureId,
+        routeAlert: state.routeFeatureId === id ? false : state.routeAlert,
       })),
     addFeatures: (incoming) =>
       set((state) => ({
@@ -1012,6 +1116,8 @@ export const useAppStore = create<AppState>()(
         ...recordHistory(state, 'features:clear'),
         features: [],
         selectedFeatureId: null,
+        routeFeatureId: null,
+        routeAlert: false,
         draftPoints: [],
         featureMode: 'off' as const,
       })),
@@ -1104,6 +1210,36 @@ export const useAppStore = create<AppState>()(
 
     fieldMode: false,
     toggleFieldMode: () => set((state) => ({ fieldMode: !state.fieldMode })),
+    fieldUiScale: 115,
+    setFieldUiScale: (fieldUiScale) =>
+      set({
+        fieldUiScale: [100, 115, 130].includes(fieldUiScale)
+          ? fieldUiScale
+          : 115,
+      }),
+    fieldHighContrast: true,
+    setFieldHighContrast: (fieldHighContrast) =>
+      set({ fieldHighContrast }),
+    fieldReduceMotion: true,
+    setFieldReduceMotion: (fieldReduceMotion) =>
+      set({ fieldReduceMotion }),
+    keepScreenAwake: true,
+    setKeepScreenAwake: (keepScreenAwake) => set({ keepScreenAwake }),
+    gpsPowerMode: 'balanced',
+    setGpsPowerMode: (gpsPowerMode) => set({ gpsPowerMode }),
+
+    routingEngine: 'offline',
+    setRoutingEngine: (routingEngine) => set({ routingEngine }),
+    routingUrl: '',
+    setRoutingUrl: (routingUrl) =>
+      set({ routingUrl: routingUrl.trim().slice(0, 500) }),
+    routingProfile: 'driving',
+    setRoutingProfile: (routingProfile) =>
+      set({
+        routingProfile:
+          routingProfile.trim().replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) ||
+          'driving',
+      }),
 
     snapping: true,
     toggleSnapping: () => set((state) => ({ snapping: !state.snapping })),
@@ -1168,6 +1304,26 @@ const restorePersisted = () => {
         .slice(0, 8)
     }
     if (typeof patch.snapping !== 'boolean') delete patch.snapping
+    if (
+      typeof patch.demPath !== 'string' ||
+      patch.demPath.length === 0 ||
+      patch.demPath.length > 4096
+    ) {
+      delete patch.demPath
+      delete patch.demVisible
+      delete patch.dem3d
+      delete patch.demOpacity
+    }
+    if (typeof patch.demVisible !== 'boolean') delete patch.demVisible
+    if (typeof patch.dem3d !== 'boolean') delete patch.dem3d
+    if (
+      typeof patch.demOpacity !== 'number' ||
+      !Number.isFinite(patch.demOpacity)
+    ) {
+      delete patch.demOpacity
+    } else {
+      patch.demOpacity = Math.min(1, Math.max(0, patch.demOpacity))
+    }
     if (!Array.isArray(patch.customSourceOrder)) {
       delete patch.customSourceOrder
     } else {
@@ -1180,8 +1336,37 @@ const restorePersisted = () => {
         ),
       ].slice(0, 256)
     }
-    if (patch.locale !== 'ru' && patch.locale !== 'en') delete patch.locale
+    if (!isLocale(patch.locale)) delete patch.locale
     else setActiveLocale(patch.locale as Locale)
+    if (typeof patch.fieldMode !== 'boolean') delete patch.fieldMode
+    if (![100, 115, 130].includes(Number(patch.fieldUiScale))) {
+      delete patch.fieldUiScale
+    }
+    for (const key of [
+      'fieldHighContrast',
+      'fieldReduceMotion',
+      'keepScreenAwake',
+    ] as const) {
+      if (typeof patch[key] !== 'boolean') delete patch[key]
+    }
+    if (!['precise', 'balanced', 'saver'].includes(String(patch.gpsPowerMode))) {
+      delete patch.gpsPowerMode
+    }
+    if (!['offline', 'osrm', 'brouter'].includes(String(patch.routingEngine))) {
+      delete patch.routingEngine
+    }
+    if (
+      typeof patch.routingUrl !== 'string' ||
+      patch.routingUrl.length > 500
+    ) {
+      delete patch.routingUrl
+    }
+    if (
+      typeof patch.routingProfile !== 'string' ||
+      !/^[A-Za-z0-9_-]{1,40}$/.test(patch.routingProfile)
+    ) {
+      delete patch.routingProfile
+    }
     const providerId = PROVIDERS.some(
       (provider) => provider.id === patch.providerId,
     )

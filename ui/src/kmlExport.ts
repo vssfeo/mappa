@@ -91,7 +91,11 @@ export function vectorLayerToKml(layer: VectorLayer): string {
       const name =
         typeof properties.name === 'string' && properties.name.trim()
           ? properties.name.trim()
-          : tr(`Объект ${index + 1}`, `Feature ${index + 1}`)
+          : tr(
+              'Объект {p0}',
+              'Feature {p0}',
+              { p0: index + 1 },
+            )
       const description =
         typeof properties.description === 'string'
           ? `<description>${escapeXml(properties.description.slice(0, 2000))}</description>`

@@ -114,8 +114,9 @@ const point = (value: unknown, budget: Budget): Position | null => {
   if (budget.points > MAX_VECTOR_POINTS) {
     throw new Error(
       tr(
-        `Слишком много координат: лимит ${MAX_VECTOR_POINTS.toLocaleString('ru-RU')}`,
-        `Too many coordinates: the limit is ${MAX_VECTOR_POINTS.toLocaleString('en-US')}`,
+        'Слишком много координат: лимит {p0}',
+        'Too many coordinates: the limit is {p0}',
+        { p0: MAX_VECTOR_POINTS.toLocaleString() },
       ),
     )
   }
@@ -693,7 +694,11 @@ function parseGpx(text: string): VectorImport {
         .filter((item): item is GpxVertex => item !== null)
       const suffix =
         segments.length > 1
-          ? tr(` · сегмент ${index + 1}`, ` · segment ${index + 1}`)
+          ? tr(
+              ' · сегмент {p0}',
+              ' · segment {p0}',
+              { p0: index + 1 },
+            )
           : ''
       push(
         vertices.length >= 2
@@ -791,7 +796,11 @@ export function sanitizeVectorLayer(
   const name =
     typeof record.name === 'string' && record.name.trim()
       ? record.name.trim().replace(/\p{Cc}/gu, ' ').slice(0, 120)
-      : tr(`Слой ${index + 1}`, `Layer ${index + 1}`)
+      : tr(
+          'Слой {p0}',
+          'Layer {p0}',
+          { p0: index + 1 },
+        )
   const id =
     typeof record.id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(record.id)
       ? record.id

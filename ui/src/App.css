@@ -147,6 +147,13 @@
   pointer-events: none;
 }
 
+.language-select select {
+  max-width: 42px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
 .topbar-actions {
   display: flex;
   align-items: center;
@@ -485,6 +492,57 @@
 .gps-actions .ghost-button {
   height: 28px;
   padding: 0 9px;
+}
+
+.gps-source {
+  margin-top: 10px;
+}
+
+.gps-source > span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.gps-source-label {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.gps-source select {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.gps-source input[type='range'] {
+  min-width: 0;
+}
+
+.gps-nmea-meta {
+  margin: 7px 0 0;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+.nmea-log {
+  max-height: 96px;
+  margin: 10px 0 0;
+  padding: 7px 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .gps-marker {
@@ -1145,6 +1203,17 @@ body.is-layer-dragging {
   cursor: pointer;
 }
 
+.dem-actions {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+
+.dem-actions button {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
 .layer-opacity {
   color: var(--faint);
   font-family: var(--font-mono);
@@ -1305,6 +1374,107 @@ body.is-layer-dragging {
   width: auto;
 }
 
+.route-point {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.route-point > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.route-point .settings-input {
+  width: 100%;
+}
+
+.route-point-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -4px 0 10px;
+}
+
+.route-result {
+  margin-top: 12px;
+}
+
+.route-steps {
+  max-height: 260px;
+  margin: 10px 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  border-block: 1px solid var(--border);
+}
+
+.route-steps li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 1px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.route-steps li:last-child {
+  border-bottom: 0;
+}
+
+.route-steps small {
+  flex: none;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.route-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 9px;
+  border: 1px solid color-mix(in srgb, var(--success) 35%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--success) 8%, transparent);
+  color: var(--success);
+  font-size: 11px;
+}
+
+.route-status strong {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.route-status.is-off {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+}
+
+.status-route {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--success);
+}
+
+.status-route.is-off {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.status-route-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 .pack-empty {
   margin: 2px 8px;
   color: var(--muted);
@@ -1338,6 +1508,21 @@ body.is-layer-dragging {
   display: flex;
   gap: 10px;
   align-items: center;
+}
+
+.settings-check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.settings-check input {
+  margin-top: 1px;
+  accent-color: var(--accent);
 }
 
 .settings-field input[type='range'] {
@@ -1815,6 +2000,16 @@ body.is-layer-dragging {
   line-height: 1.4;
 }
 
+.job-export {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.job-export .job-meta {
+  align-items: center;
+}
+
 .job-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2244,6 +2439,15 @@ body.is-layer-dragging {
   white-space: nowrap;
 }
 
+.cmdk-status {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 7px 10px;
+  color: var(--faint);
+  font-size: 10.5px;
+}
+
 .cmdk-empty {
   display: flex;
   flex-direction: column;
@@ -2385,37 +2589,92 @@ body.is-layer-dragging {
 /* ---------- field mode ---------- */
 
 .app.field-mode {
-  grid-template-rows: 64px minmax(0, 1fr) 34px;
+  grid-template-rows: calc(58px * var(--field-scale, 1)) minmax(0, 1fr)
+    calc(30px * var(--field-scale, 1));
 }
 
+/* Panels stay reachable: choosing GPS, markers or settings opens an overlay
+   instead of being permanently hidden in the field. */
 .field-mode .inspector {
-  display: none;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  width: min(calc(360px * var(--field-scale, 1)), 92vw);
+  box-shadow: var(--shadow);
+  z-index: 24;
 }
 
 .field-mode .rail {
-  flex-basis: 62px;
+  flex-basis: calc(56px * var(--field-scale, 1));
 }
 
 .field-mode .rail-button {
-  width: 46px;
-  height: 46px;
+  width: calc(42px * var(--field-scale, 1));
+  height: calc(42px * var(--field-scale, 1));
+}
+
+.field-mode .rail-button svg,
+.field-mode .hud-button svg {
+  width: calc(18px * var(--field-scale, 1));
+  height: calc(18px * var(--field-scale, 1));
 }
 
 .field-mode .topbar {
-  padding: 0 16px;
+  padding: 0 calc(16px * var(--field-scale, 1));
+  font-size: calc(13px * var(--field-scale, 1));
 }
 
 .field-mode .brand-name {
-  font-size: 17px;
+  font-size: calc(17px * var(--field-scale, 1));
 }
 
 .field-mode .statusbar {
-  font-size: 12px;
+  font-size: calc(11px * var(--field-scale, 1));
 }
 
 .field-mode .hud-button {
-  width: 42px;
-  height: 42px;
+  width: calc(44px * var(--field-scale, 1));
+  height: calc(44px * var(--field-scale, 1));
+}
+
+.field-mode .primary-button,
+.field-mode .secondary-button,
+.field-mode .ghost-button {
+  min-height: calc(34px * var(--field-scale, 1));
+  font-size: calc(12px * var(--field-scale, 1));
+}
+
+.field-mode .settings-input {
+  min-height: calc(32px * var(--field-scale, 1));
+}
+
+/* ---------- accessibility preferences ---------- */
+
+.app[data-contrast='high'] {
+  --border: #647486;
+  --border-strong: #8292a4;
+  --text: #f8fbff;
+  --muted: #c8d2dd;
+  --faint: #aeb9c6;
+}
+
+.app[data-theme='light'][data-contrast='high'] {
+  --border: #6b6252;
+  --border-strong: #4b4438;
+  --text: #05070a;
+  --muted: #30363d;
+  --faint: #3d444c;
+}
+
+.app[data-motion='reduce'] *,
+.app[data-motion='reduce'] *::before,
+.app[data-motion='reduce'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+  transition-duration: 0.01ms !important;
 }
 
 /* ---------- motion ---------- */

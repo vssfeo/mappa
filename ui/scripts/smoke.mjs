@@ -606,6 +606,13 @@ try {
     }
     await page
       .locator('.inspector select[aria-label="Interface language"]')
+      .selectOption('de')
+    await page.waitForTimeout(250)
+    if ((await page.locator('.inspector h2').innerText()) !== 'Einstellungen') {
+      fail('German interface did not apply')
+    }
+    await page
+      .locator('.inspector select[aria-label="Oberflächensprache"]')
       .selectOption('ru')
     await page.waitForTimeout(250)
     if ((await page.locator('.inspector h2').innerText()) !== 'Настройки') {
@@ -613,12 +620,132 @@ try {
     }
   }
   await page.keyboard.press('Escape')
+  await page.waitForTimeout(200)
+
+  const fieldButton = page.locator(
+    '.topbar button[aria-label="Полевой режим"]',
+  )
+  if ((await fieldButton.count()) === 0) {
+    fail('field mode button is missing')
+  } else {
+    await fieldButton.click()
+    await page.waitForTimeout(250)
+    const fieldState = await page.evaluate(() => {
+      const app = document.querySelector('.app')
+      return {
+        className: app?.className ?? '',
+        contrast: app?.getAttribute('data-contrast'),
+        motion: app?.getAttribute('data-motion'),
+        scale: app?.getAttribute('style') ?? '',
+      }
+    })
+    if (
+      !fieldState.className.includes('field-mode') ||
+      fieldState.contrast !== 'high' ||
+      fieldState.motion !== 'reduce' ||
+      !fieldState.scale.includes('--field-scale')
+    ) {
+      fail(`field mode did not apply (${JSON.stringify(fieldState)})`)
+    }
+    await fieldButton.click()
+    await page.waitForTimeout(200)
+  }
+
+  await page.evaluate(() => (document.activeElement)?.blur())
+  await page.keyboard.press('l')
+  await page.waitForTimeout(250)
+  const routeCanvas = await canvas.boundingBox()
+  for (const [x, y] of [
+    [360, 420],
+    [680, 420],
+  ]) {
+    await page.mouse.click(routeCanvas.x + x, routeCanvas.y + y)
+    await page.waitForTimeout(250)
+  }
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(600)
+  const drawnRoute = await page.evaluate(() => {
+    const raw = localStorage.getItem('mappa-ui')
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    const features = parsed?.state?.features
+    if (!Array.isArray(features)) return null
+    const line = [...features]
+      .reverse()
+      .find(
+        (feature) =>
+          feature?.kind === 'line' &&
+          Array.isArray(feature.coordinates) &&
+          feature.coordinates.length >= 2,
+      )
+    if (!line) return null
+    const first = line.coordinates[0]
+    const last = line.coordinates[line.coordinates.length - 1]
+    return {
+      start: `${first[1]}, ${first[0]}`,
+      end: `${last[1]}, ${last[0]}`,
+    }
+  })
+  if (!drawnRoute) {
+    fail('route test line was not added to the workspace')
+  }
+
+  await page.locator('.rail button[title="Маршрут"]').click()
+  await page.waitForTimeout(250)
+  if ((await page.locator('.inspector h2').innerText()) !== 'Маршрут') {
+    fail('route panel did not open')
+  }
+  if ((await page.locator('.route-point input').count()) !== 2) {
+    fail('route start/finish inputs are missing')
+  }
+  await page.locator('.route-point input').nth(0).fill(drawnRoute.start)
+  await page.locator('.route-point input').nth(1).fill(drawnRoute.end)
+  await page.getByRole('button', { name: 'Построить маршрут' }).click()
+  await page.waitForTimeout(500)
+  if ((await page.locator('.route-result').count()) === 0) {
+    const routeError = await page
+      .locator('.gps-error')
+      .first()
+      .innerText()
+      .catch(() => 'no error text')
+    fail(`offline route was not built (${routeError})`)
+  }
+  await page.locator('.rail button[title="Маршрут"]').click()
+  await page.waitForTimeout(200)
 
   await page.locator('.rail button[title="GPS"]').click()
   await page.waitForTimeout(300)
   if ((await page.locator('.inspector h2').innerText()) !== 'GPS / GNSS') {
     fail('GPS panel did not open')
   }
+  await page.locator('.gps-source select').selectOption('nmea')
+  await page.waitForTimeout(250)
+  await page.getByRole('button', { name: 'Начать запись' }).click()
+  await page.waitForTimeout(2600)
+  if ((await page.locator('.gps-marker').count()) === 0) {
+    fail('NMEA simulation marker is missing')
+  }
+  const nmea = await page.locator('.nmea-log').innerText()
+  if (!nmea.includes('$GPGGA') || !nmea.includes('$GPRMC')) {
+    fail('NMEA log does not contain GGA/RMC')
+  }
+  const simulated = Number.parseInt(
+    (
+      await page
+        .locator('.gps-metrics.is-recording > div:first-child strong')
+        .innerText()
+    ).replace(/\D/g, ''),
+    10,
+  )
+  if (!(simulated >= 2)) {
+    fail(`NMEA simulation collected ${simulated} points`)
+  }
+  await page.getByRole('button', { name: 'Сбросить' }).click()
+  await page.waitForTimeout(200)
+  await page.getByRole('button', { name: 'Остановить приём' }).click()
+  await page.waitForTimeout(200)
+  await page.locator('.gps-source select').selectOption('browser')
+  await page.waitForTimeout(250)
   await page.getByRole('button', { name: 'Начать запись' }).click()
   await page.waitForTimeout(1200)
   if ((await page.locator('.gps-marker').count()) === 0) {

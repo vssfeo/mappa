@@ -8,6 +8,7 @@ import {
   readTextFile,
   writeTextFile,
 } from './native'
+import { closeDem, openDemPath } from './dem'
 import { closePack, openPackPath } from './packs'
 import { serialize } from './serial'
 import {
@@ -55,6 +56,7 @@ const snapshot = (name: string) => {
     layers: state.layers,
     customLayers: state.customLayers,
     packPaths: state.packPaths,
+    demPath: state.demPath,
     markers: state.markers,
     features: state.features,
     vectorLayers: state.vectorLayers,
@@ -245,6 +247,15 @@ export async function applyProject(
   map: MapLibreMap | null,
 ): Promise<string[]> {
   return serialize(async () => {
+    const currentDem = useAppStore.getState().dem
+    if (currentDem) {
+      try {
+        await closeDem(currentDem.id)
+      } catch (error) {
+        console.warn('cannot close DEM', currentDem.path, error)
+      }
+    }
+    useAppStore.getState().forgetDem()
     for (const pack of [...useAppStore.getState().packs]) {
       try {
         await closePack(pack.id)
@@ -265,12 +276,17 @@ export async function applyProject(
       crs: project.crs,
       crsLabel: project.crsLabel,
       packPaths: [],
+      dem: null,
+      demPath: '',
+      dem3d: false,
       packs: [],
       selection: null,
       selectionPolygon: null,
       selectedFeatureId: null,
       selectedVector: null,
       selectedMarkerId: null,
+      routeFeatureId: null,
+      routeAlert: false,
       featureMode: 'off',
       draftPoints: [],
       drawing: false,
@@ -290,6 +306,14 @@ export async function applyProject(
       } catch (error) {
         console.warn('cannot open project pack', packPath, error)
         missingPacks.push(packPath)
+      }
+    }
+    if (project.demPath) {
+      try {
+        await openDemPath(project.demPath)
+      } catch (error) {
+        console.warn('cannot open project DEM', project.demPath, error)
+        useAppStore.getState().forgetDem()
       }
     }
     useViewStore.getState().setMapView({

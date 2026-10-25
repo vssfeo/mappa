@@ -155,6 +155,9 @@ export function polygonPerimeter(points: LonLat[]): number {
 const numberFormats = {
   ru: new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }),
   en: new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }),
+  de: new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }),
+  fr: new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }),
+  es: new Intl.NumberFormat('es-ES', { maximumFractionDigits: 2 }),
 }
 
 const numberFormat = () => numberFormats[getLocale()]

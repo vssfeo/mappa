@@ -53,6 +53,7 @@ export interface MappaProject {
   layers: Record<ProviderId, ProjectLayerState>
   customLayers: Record<string, ProjectLayerState>
   packPaths: string[]
+  demPath: string
   markers: MapMarker[]
   features: { type: 'FeatureCollection'; features: unknown[] }
   vectorLayers: VectorLayer[]
@@ -76,6 +77,7 @@ export interface ProjectSnapshot {
   layers: Record<string, ProjectLayerState>
   customLayers: Record<string, ProjectLayerState>
   packPaths: string[]
+  demPath?: string
   markers: MapMarker[]
   features: MapFeature[]
   vectorLayers: VectorLayer[]
@@ -297,6 +299,20 @@ const projectPacks = (value: unknown): string[] => {
   return paths
 }
 
+const projectDemPath = (value: unknown): string => {
+  if (typeof value !== 'string') return ''
+  const path = value.trim()
+  if (
+    path.length === 0 ||
+    path.length > 4_096 ||
+    path.includes('\u0000') ||
+    path.includes('\n')
+  ) {
+    return ''
+  }
+  return path
+}
+
 const projectProviderOrder = (value: unknown): ProviderId[] => {
   const known = new Set(PROVIDERS.map((provider) => provider.id))
   const seen = new Set<ProviderId>()
@@ -332,6 +348,7 @@ export function buildProject(
     layers: projectLayers(snapshot.layers, active),
     customLayers: layerMap(snapshot.customLayers, true),
     packPaths: projectPacks(snapshot.packPaths),
+    demPath: projectDemPath(snapshot.demPath),
     markers: projectMarkers(snapshot.markers),
     features: JSON.parse(featuresToGeoJSON(snapshot.features)),
     vectorLayers: projectVectorLayers(snapshot.vectorLayers),
@@ -384,6 +401,7 @@ export function parseProject(text: string): ParsedProject {
     layers: projectLayers(record.layers, providerId),
     customLayers: layerMap(record.customLayers, true),
     packPaths: projectPacks(record.packPaths),
+    demPath: projectDemPath(record.demPath),
     markers: projectMarkers(record.markers),
     features: JSON.parse(featuresToGeoJSON(features)),
     vectorLayers: projectVectorLayers(record.vectorLayers),
@@ -412,6 +430,7 @@ export function defaultProject(name = tr('Мой проект', 'My project')): 
     layers: projectLayers(undefined, providerId),
     customLayers: {},
     packPaths: [],
+    demPath: '',
     markers: [],
     features: { type: 'FeatureCollection', features: [] },
     vectorLayers: [],

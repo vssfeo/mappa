@@ -10,13 +10,20 @@ import {
   Save,
   Satellite,
   Trash2,
+  Waves,
   XCircle,
 } from 'lucide-react'
 import { FEATURE_COLORS } from './features.ts'
 import { formatCount, formatDuration } from './format.ts'
 import { formatCoordinatePair, formatDistance } from './geo.ts'
-import { gpsTrackFeature, useGpsStore, type GpsError } from './gps.ts'
+import {
+  gpsTrackFeature,
+  useGpsStore,
+  type GpsError,
+  type GpsSource,
+} from './gps.ts'
 import { useText } from './i18n.ts'
+import { isNativeGnss } from './gnssTcp.ts'
 import { useAppStore } from './store.ts'
 import { buildTrackProfile } from './trackProfile.ts'
 
@@ -54,6 +61,16 @@ const errorLabel = (
         'Не удалось запустить geolocation API.',
         'Could not start the geolocation API.',
       )
+    case 'nmea':
+      return tx(
+        'Не удалось открыть NMEA-поток. Проверьте адрес, порт и источник.',
+        'Could not open the NMEA stream. Check the address, port and source.',
+      )
+    case 'gpsd':
+      return tx(
+        'Не удалось открыть gpsd. Проверьте, что демон запущен и доступен host:port.',
+        'Could not open gpsd. Check that the daemon is running and host:port is reachable.',
+      )
   }
 }
 
@@ -63,6 +80,7 @@ export function GpsPanel({ map }: { map: MapLibreMap | null }) {
   const coordinateFormat = useAppStore((state) => state.coordinateFormat)
   const showToast = useAppStore((state) => state.showToast)
   const supported = useGpsStore((state) => state.supported)
+  const source = useGpsStore((state) => state.source)
   const status = useGpsStore((state) => state.status)
   const error = useGpsStore((state) => state.error)
   const fix = useGpsStore((state) => state.fix)
@@ -78,7 +96,57 @@ export function GpsPanel({ map }: { map: MapLibreMap | null }) {
   const resumeRecording = useGpsStore((state) => state.resumeRecording)
   const resetRecording = useGpsStore((state) => state.resetRecording)
   const setFollow = useGpsStore((state) => state.setFollow)
+  const setSource = useGpsStore((state) => state.setSource)
+  const simulationSpeed = useGpsStore((state) => state.simulationSpeed)
+  const setSimulationSpeed = useGpsStore(
+    (state) => state.setSimulationSpeed,
+  )
+  const setSimulationStart = useGpsStore(
+    (state) => state.setSimulationStart,
+  )
+  const nmeaHost = useGpsStore((state) => state.nmeaHost)
+  const nmeaPort = useGpsStore((state) => state.nmeaPort)
+  const gpsdHost = useGpsStore((state) => state.gpsdHost)
+  const gpsdPort = useGpsStore((state) => state.gpsdPort)
+  const streamStatus = useGpsStore((state) => state.streamStatus)
+  const streamError = useGpsStore((state) => state.streamError)
+  const setNmeaEndpoint = useGpsStore((state) => state.setNmeaEndpoint)
+  const setGpsdEndpoint = useGpsStore((state) => state.setGpsdEndpoint)
+  const nmeaLog = useGpsStore((state) => state.nmeaLog)
   const [clock, setClock] = useState(() => Date.now())
+  const external = source === 'nmea-tcp' || source === 'gpsd'
+  const nmeaSource =
+    source === 'nmea' || source === 'nmea-tcp' || source === 'gpsd'
+  const endpointHost = source === 'gpsd' ? gpsdHost : nmeaHost
+  const endpointPort = source === 'gpsd' ? gpsdPort : nmeaPort
+  const available =
+    source === 'nmea' ||
+    (external && endpointHost.trim().length > 0) ||
+    supported
+
+  const rememberMapCenter = () => {
+    if (source !== 'nmea' || !map) return
+    const center = map.getCenter()
+    setSimulationStart([center.lng, center.lat])
+  }
+
+  const startWatchHere = () => {
+    if (!fix) rememberMapCenter()
+    startWatch()
+  }
+
+  const startRecordingHere = () => {
+    if (!fix) rememberMapCenter()
+    startRecording()
+  }
+
+  const changeSource = (next: GpsSource) => {
+    if (next === 'nmea' && map) {
+      const center = map.getCenter()
+      setSimulationStart([center.lng, center.lat])
+    }
+    setSource(next)
+  }
 
   useEffect(() => {
     if (!recording || paused) return
@@ -113,7 +181,11 @@ export function GpsPanel({ map }: { map: MapLibreMap | null }) {
     )
     const feature = gpsTrackFeature(
       samples,
-      tx(`GPS-трек ${time}`, `GPS track ${time}`),
+      tx(
+        'GPS-трек {p0}',
+        'GPS track {p0}',
+        { p0: time },
+      ),
       FEATURE_COLORS[1],
     )
     if (!feature) {
@@ -131,8 +203,9 @@ export function GpsPanel({ map }: { map: MapLibreMap | null }) {
     state.setPanel('features')
     state.showToast(
       tx(
-        `GPS-трек сохранён: ${formatCount(samples.length)} точек`,
-        `GPS track saved: ${formatCount(samples.length)} points`,
+        'GPS-трек сохранён: {p0} точек',
+        'GPS track saved: {p0} points',
+        { p0: formatCount(samples.length) },
       ),
     )
     resetRecording()
@@ -151,13 +224,36 @@ export function GpsPanel({ map }: { map: MapLibreMap | null }) {
               {tx('Текущая позиция', 'Current position')}
             </span>
             <strong>
-              {!supported
+              {source === 'browser' && !supported
                 ? tx('Геолокация недоступна', 'Geolocation unavailable')
                 : status === 'locating'
-                  ? tx('Поиск позиции…', 'Finding position…')
+                  ? source === 'nmea'
+                    ? tx('Запуск NMEA…', 'Starting NMEA…')
+                    : source === 'nmea-tcp'
+                      ? streamStatus === 'connected'
+                        ? tx(
+                            'NMEA TCP: ожидание данных',
+                            'NMEA TCP: waiting for data',
+                          )
+                        : tx('Подключение к NMEA…', 'Connecting to NMEA…')
+                      : source === 'gpsd'
+                        ? streamStatus === 'connected'
+                          ? tx('gpsd: ожидание данных', 'gpsd: waiting for data')
+                          : tx('Подключение к gpsd…', 'Connecting to gpsd…')
+                        : tx('Поиск позиции…', 'Finding position…')
                   : fix
-                    ? tx('GNSS активен', 'GNSS active')
-                    : tx('Ожидание сигнала', 'Waiting for a fix')}
+                    ? source === 'nmea'
+                      ? tx('NMEA-имитация активна', 'NMEA simulation active')
+                      : source === 'nmea-tcp'
+                        ? tx('NMEA TCP активен', 'NMEA TCP active')
+                        : source === 'gpsd'
+                          ? tx('gpsd активен', 'gpsd active')
+                          : tx('GNSS активен', 'GNSS active')
+                    : external && status === 'error'
+                      ? source === 'gpsd'
+                        ? tx('Ошибка gpsd', 'gpsd error')
+                        : tx('Ошибка NMEA TCP', 'NMEA TCP error')
+                      : tx('Ожидание сигнала', 'Waiting for a fix')}
             </strong>
           </div>
           <span
@@ -165,6 +261,141 @@ export function GpsPanel({ map }: { map: MapLibreMap | null }) {
             title={fix ? tx('Есть позиция', 'Position available') : undefined}
           />
         </div>
+
+        <div className="settings-field gps-source">
+          <span className="gps-source-label">
+            <Waves size={12} />
+            {tx('Источник', 'Source')}
+          </span>
+          <select
+            className="settings-input"
+            value={source}
+            onChange={(event) =>
+              changeSource(event.target.value as GpsSource)
+            }
+            disabled={recording}
+            aria-label={tx('Источник GNSS', 'GNSS source')}
+          >
+            <option value="browser">
+              {tx('Системный GNSS', 'System GNSS')}
+            </option>
+            <option value="nmea">{tx('NMEA-имитация', 'NMEA simulation')}</option>
+            <option value="nmea-tcp">{tx('NMEA TCP', 'NMEA TCP')}</option>
+            <option value="gpsd">{tx('gpsd (JSON)', 'gpsd (JSON)')}</option>
+          </select>
+        </div>
+
+        {source === 'nmea' && (
+          <>
+            <div className="settings-field gps-source">
+              <span>{tx('Скорость', 'Speed')}</span>
+              <input
+                type="range"
+                min="0"
+                max="30"
+                step="0.5"
+                value={simulationSpeed}
+                onChange={(event) =>
+                  setSimulationSpeed(Number(event.target.value))
+                }
+                aria-label={tx(
+                  'Скорость NMEA-имитации',
+                  'NMEA simulation speed',
+                )}
+              />
+              <span className="mono">
+                {simulationSpeed.toFixed(1)} {tx('м/с', 'm/s')}
+              </span>
+            </div>
+            <p className="settings-hint">
+              {tx(
+                'GGA, RMC, VTG и GSA раз в секунду по кругу радиусом 600 м от центра карты. Трек и запись работают так же, как с приёмником.',
+                'GGA, RMC, VTG and GSA every second around a 600 m circle from the map centre. Recording and tracks behave exactly as with a receiver.',
+              )}
+            </p>
+          </>
+        )}
+
+        {external && (
+          <>
+            <div className="settings-field gps-source">
+              <span>{tx('Сервер', 'Host')}</span>
+              <input
+                className="settings-input"
+                value={endpointHost}
+                placeholder="127.0.0.1"
+                onChange={(event) => {
+                  if (source === 'gpsd') {
+                    setGpsdEndpoint(event.target.value, gpsdPort)
+                  } else {
+                    setNmeaEndpoint(event.target.value, nmeaPort)
+                  }
+                }}
+                disabled={recording}
+                aria-label={tx('Адрес GNSS-сервера', 'GNSS server host')}
+              />
+            </div>
+            <div className="settings-field gps-source">
+              <span>{tx('Порт', 'Port')}</span>
+              <input
+                className="settings-input"
+                type="number"
+                min="1"
+                max="65535"
+                value={endpointPort}
+                onChange={(event) => {
+                  if (source === 'gpsd') {
+                    setGpsdEndpoint(gpsdHost, Number(event.target.value))
+                  } else {
+                    setNmeaEndpoint(nmeaHost, Number(event.target.value))
+                  }
+                }}
+                disabled={recording}
+                aria-label={tx('Порт GNSS-сервера', 'GNSS server port')}
+              />
+            </div>
+            <p className="settings-hint">
+              {source === 'gpsd'
+                ? tx(
+                    'Подключение к gpsd по JSON-протоколу (TPV/SKY), обычно порт 2947. Демон сам работает с приёмником.',
+                    'Connects to gpsd over its JSON protocol (TPV/SKY), usually port 2947. The daemon owns the receiver.',
+                  )
+                : tx(
+                    'Подключение к источнику NMEA 0183 по TCP с автопереподключением. Приёмник можно отдать в сеть через socat или serial-to-TCP мост.',
+                    'Connects to an NMEA 0183 source over TCP and reconnects automatically. Expose a receiver with socat or a serial-to-TCP bridge.',
+                  )}
+            </p>
+            {streamStatus !== 'idle' && (
+              <p className="settings-hint">
+                {streamStatus === 'connected'
+                  ? tx(
+                      'TCP подключён: {p0}:{p1}',
+                      'TCP connected: {p0}:{p1}',
+                      { p0: endpointHost, p1: endpointPort },
+                    )
+                  : streamStatus === 'connecting'
+                    ? tx('Подключение…', 'Connecting…')
+                    : tx(
+                        'Нет соединения, повтор через 3 с.',
+                        'No connection, retrying in 3 s.',
+                      )}
+              </p>
+            )}
+            {streamError && (
+              <p className="gps-error" role="status">
+                {streamError}
+              </p>
+            )}
+            {!isNativeGnss() && (
+              <p className="settings-hint">
+                {tx(
+                  'TCP-поток доступен только в настольном приложении.',
+                  'The TCP stream is available only in the desktop app.',
+                )}
+              </p>
+            )}
+          </>
+        )}
 
         {error && (
           <p className="gps-error" role="alert">
@@ -199,13 +430,41 @@ export function GpsPanel({ map }: { map: MapLibreMap | null }) {
                 <strong>{headingLabel(fix.heading)}</strong>
               </div>
             </div>
+            {nmeaSource && (
+              <p className="gps-nmea-meta">
+                {source === 'gpsd'
+                  ? 'gpsd'
+                  : source === 'nmea-tcp'
+                    ? 'NMEA TCP'
+                    : 'NMEA'}{' '}
+                · {fix.satellites ?? '—'} {tx('спутников', 'satellites')} ·
+                HDOP {fix.hdop === null || fix.hdop === undefined
+                  ? '—'
+                  : fix.hdop.toFixed(1)}
+              </p>
+            )}
           </>
         ) : (
           <p className="settings-hint">
-            {tx(
-              'Разрешите доступ к геолокации и включите GNSS. Позиция появится на карте автоматически.',
-              'Allow location access and enable GNSS. The position will appear on the map automatically.',
-            )}
+            {source === 'nmea'
+              ? tx(
+                  'Нажмите «Найти меня» или «Начать запись» — имитатор начнёт выдавать NMEA-строки.',
+                  'Press “Find me” or “Start recording” to start the NMEA simulator.',
+                )
+              : source === 'nmea-tcp'
+                ? tx(
+                    'Нажмите «Найти меня» или «Начать запись» — приложение подключится к TCP-источнику.',
+                    'Press “Find me” or “Start recording” to connect to the TCP source.',
+                  )
+                : source === 'gpsd'
+                  ? tx(
+                      'Нажмите «Найти меня» или «Начать запись» — приложение подключится к gpsd и запросит JSON-отчёты TPV/SKY.',
+                      'Press “Find me” or “Start recording” to connect to gpsd and request TPV/SKY JSON reports.',
+                    )
+                  : tx(
+                      'Разрешите доступ к геолокации и включите GNSS. Позиция появится на карте автоматически.',
+                      'Allow location access and enable GNSS. The position will appear on the map automatically.',
+                    )}
           </p>
         )}
 
@@ -215,8 +474,8 @@ export function GpsPanel({ map }: { map: MapLibreMap | null }) {
               <button
                 type="button"
                 className="primary-button"
-                onClick={startRecording}
-                disabled={!supported}
+                onClick={startRecordingHere}
+                disabled={!available}
               >
                 <CircleDot size={14} />
                 {tx('Начать запись', 'Start recording')}
@@ -234,8 +493,8 @@ export function GpsPanel({ map }: { map: MapLibreMap | null }) {
                 <button
                   type="button"
                   className="ghost-button"
-                  onClick={startWatch}
-                  disabled={!supported}
+                  onClick={startWatchHere}
+                  disabled={!available}
                 >
                   <LocateFixed size={14} />
                   {tx('Найти меня', 'Find me')}
@@ -306,11 +565,23 @@ export function GpsPanel({ map }: { map: MapLibreMap | null }) {
             {tx('Центрировать', 'Center on map')}
           </button>
         )}
-        {!supported && (
+        {nmeaSource && nmeaLog.length > 0 && (
+          <pre
+            className="nmea-log"
+            aria-label={
+              source === 'gpsd'
+                ? tx('Поток gpsd', 'gpsd stream')
+                : tx('Поток NMEA', 'NMEA stream')
+            }
+          >
+            {nmeaLog.join('\n')}
+          </pre>
+        )}
+        {source === 'browser' && !supported && (
           <p className="settings-hint">
             {tx(
-              'В этой сборке WebView системная геолокация недоступна. Для внешнего GNSS на Linux нужен приёмник и gpsd.',
-              'System location is unavailable in this WebView build. External GNSS on Linux needs a receiver and gpsd.',
+              'В этой сборке WebView системная геолокация недоступна. Выберите NMEA-имитацию, NMEA TCP или gpsd.',
+              'System location is unavailable in this WebView build. Choose the NMEA simulation, NMEA TCP or gpsd.',
             )}
           </p>
         )}

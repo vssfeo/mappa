@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import {
   Circle,
@@ -25,13 +32,15 @@ import {
   SunMoon,
   XCircle,
 } from 'lucide-react'
-import { CommandPalette } from './CommandPalette'
+import { CommandPalette, type PlaceSearchResult } from './CommandPalette'
+import { geocodeSearch } from './geocode'
 import { CompareMap } from './CompareMap'
 import { GpsLayer } from './GpsLayer'
 import { useCoverageStore } from './coverage'
 import { useT, useText } from './i18n'
 import { DownloadSheet } from './DownloadSheet'
 import { useDownloadsStore } from './downloads'
+import { useScreenAwake } from './useScreenAwake.ts'
 import { Inspector } from './Inspector'
 import { MapCanvas } from './MapCanvas'
 import { MapHud } from './MapHud'
@@ -44,6 +53,7 @@ import type { Command } from './commands'
 import { listCustomSources } from './customSources'
 import { transformPoints } from './native'
 import { importPack, restorePacks } from './packs'
+import { restoreDem } from './dem'
 import {
   newProject,
   openProjectFile,
@@ -79,6 +89,10 @@ function App() {
   const providerOrder = useAppStore((state) => state.providerOrder)
   const customSourceOrder = useAppStore((state) => state.customSourceOrder)
   const packs = useAppStore((state) => state.packs)
+  const dem = useAppStore((state) => state.dem)
+  const demVisible = useAppStore((state) => state.demVisible)
+  const dem3d = useAppStore((state) => state.dem3d)
+  const demOpacity = useAppStore((state) => state.demOpacity)
   const customSources = useAppStore((state) => state.customSources)
   const customLayers = useAppStore((state) => state.customLayers)
   const t = useT()
@@ -86,6 +100,11 @@ function App() {
   const locale = useAppStore((state) => state.locale)
   const panel = useAppStore((state) => state.panel)
   const fieldMode = useAppStore((state) => state.fieldMode)
+  const fieldUiScale = useAppStore((state) => state.fieldUiScale)
+  const fieldHighContrast = useAppStore((state) => state.fieldHighContrast)
+  const fieldReduceMotion = useAppStore((state) => state.fieldReduceMotion)
+  const keepScreenAwake = useAppStore((state) => state.keepScreenAwake)
+  useScreenAwake(fieldMode && keepScreenAwake)
   const selection = useAppStore((state) => state.selection)
   const drawing = useAppStore((state) => state.drawing)
   const measureMode = useAppStore((state) => state.measureMode)
@@ -163,6 +182,7 @@ function App() {
   useEffect(() => {
     void useDownloadsStore.getState().init()
     void restorePacks()
+    void restoreDem()
     void listCustomSources().then((sources) =>
       useAppStore.getState().setCustomSources(sources),
     )
@@ -214,16 +234,18 @@ function App() {
             if (result)
               showToast(
                 tx(
-                  `Проект сохранён: ${result.path}`,
-                  `Project saved: ${result.path}`,
+                  'Проект сохранён: {p0}',
+                  'Project saved: {p0}',
+                  { p0: result.path },
                 ),
               )
           })
           .catch((error: unknown) =>
             showToast(
               tx(
-                `Не удалось сохранить проект: ${String(error)}`,
-                `Could not save the project: ${String(error)}`,
+                'Не удалось сохранить проект: {p0}',
+                'Could not save the project: {p0}',
+                { p0: String(error) },
               ),
             ),
           )
@@ -238,20 +260,23 @@ function App() {
             showToast(
               result.missingPacks.length > 0
                 ? tx(
-                    `Проект открыт, не найдено паков: ${result.missingPacks.length}`,
-                    `Project opened, missing packs: ${result.missingPacks.length}`,
+                    'Проект открыт, не найдено паков: {p0}',
+                    'Project opened, missing packs: {p0}',
+                    { p0: result.missingPacks.length },
                   )
                 : tx(
-                    `Проект открыт: ${result.project.name}`,
-                    `Project opened: ${result.project.name}`,
+                    'Проект открыт: {p0}',
+                    'Project opened: {p0}',
+                    { p0: result.project.name },
                   ),
             )
           })
           .catch((error: unknown) =>
             showToast(
               tx(
-                `Не удалось открыть проект: ${String(error)}`,
-                `Could not open the project: ${String(error)}`,
+                'Не удалось открыть проект: {p0}',
+                'Could not open the project: {p0}',
+                { p0: String(error) },
               ),
             ),
           )
@@ -508,10 +533,7 @@ function App() {
       if (now - lastMapError.current < 15_000) return
       lastMapError.current = now
       showToast(
-        tx(
-          `Подложка: ${message.slice(0, 180)}`,
-          `Basemap: ${message.slice(0, 180)}`,
-        ),
+        `${tx('Подложка', 'Basemap')}: ${message.slice(0, 180)}`,
       )
     },
     [showToast, tx],
@@ -522,9 +544,10 @@ function App() {
     state.addMarker({
       id: markerId(),
       name: tx(
-        `Метка ${state.markers.length + 1}`,
-        `Marker ${state.markers.length + 1}`,
-      ),
+              'Метка {p0}',
+              'Marker {p0}',
+              { p0: state.markers.length + 1 },
+            ),
       lon: point[0],
       lat: point[1],
     })
@@ -572,9 +595,10 @@ function App() {
           return {
             id: 'goto-crs',
             label: tx(
-              `Перейти: ${x}, ${y} · ${crsLabel || 'CRS'}`,
-              `Go to: ${x}, ${y} · ${crsLabel || 'CRS'}`,
-            ),
+                     'Перейти: {p0}, {p1} · {p2}',
+                     'Go to: {p0}, {p1} · {p2}',
+                     { p0: x, p1: y, p2: crsLabel || 'CRS' },
+                   ),
             group: tx('Координаты', 'Coordinates'),
             hint: 'Enter',
             keywords: ['goto', 'координаты', 'crs', 'epsg'],
@@ -607,8 +631,9 @@ function App() {
                 .catch((error: unknown) =>
                   showToast(
                     tx(
-                      `Не удалось перейти: ${String(error)}`,
-                      `Could not navigate: ${String(error)}`,
+                      'Не удалось перейти: {p0}',
+                      'Could not navigate: {p0}',
+                      { p0: String(error) },
                     ),
                   ),
                 )
@@ -623,9 +648,10 @@ function App() {
       return {
         id: 'goto-coordinates',
         label: tx(
-          `Перейти: ${formatCoordinatePair(lon, lat, coordinateFormat)}`,
-          `Go to: ${formatCoordinatePair(lon, lat, coordinateFormat)}`,
-        ),
+                 'Перейти: {p0}',
+                 'Go to: {p0}',
+                 { p0: formatCoordinatePair(lon, lat, coordinateFormat) },
+               ),
         group: tx('Координаты', 'Coordinates'),
         hint: 'Enter',
         keywords: ['goto', 'координаты'],
@@ -643,6 +669,54 @@ function App() {
     [coordinateFormat, crs, crsLabel, map, showToast, tx],
   )
 
+  const searchPlaces = useCallback(
+    async (query: string): Promise<PlaceSearchResult> => {
+      const response = await geocodeSearch(query, locale)
+      const commands = response.places.map<Command>((place) => ({
+        id: `geocode-${place.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`,
+        label: place.label || place.name,
+        group: tx('Места · OSM', 'Places · OSM'),
+        keywords: [
+          'geocode',
+          'место',
+          place.name,
+          place.kind ?? '',
+          place.source,
+        ],
+        icon: MapPin,
+        action: () => {
+          if (!map) return
+          map.flyTo({
+            center: [place.lon, place.lat],
+            zoom: Math.max(map.getZoom(), 13),
+            duration: 900,
+          })
+          showToast(
+            tx(
+              'Переход: {p0}',
+              'Go to: {p0}',
+              { p0: place.label },
+            ),
+          )
+        },
+      }))
+      const warning =
+        response.warning === 'online_unavailable'
+          ? tx(
+              'Онлайн-геокодер недоступен — показаны локальные результаты',
+              'Online geocoder is unavailable — showing local results',
+            )
+          : response.warning === 'native_only'
+            ? tx(
+                'Поиск мест доступен в приложении Mappa',
+                'Place search is available in the Mappa app',
+              )
+            : undefined
+      return { commands, warning }
+    },
+    [locale, map, showToast, tx],
+  )
+
   const saveMeasurement = () => {
     const state = useAppStore.getState()
     const mode = state.measureMode
@@ -656,8 +730,16 @@ function App() {
       id: featureId(),
       name:
         kind === 'line'
-          ? tx(`Маршрут ${ordinal}`, `Route ${ordinal}`)
-          : tx(`Полигон ${ordinal}`, `Polygon ${ordinal}`),
+          ? tx(
+              'Маршрут {p0}',
+              'Route {p0}',
+              { p0: ordinal },
+            )
+          : tx(
+              'Полигон {p0}',
+              'Polygon {p0}',
+              { p0: ordinal },
+            ),
       kind,
       coordinates: [...points],
       color: state.featureColor,
@@ -760,13 +842,18 @@ function App() {
             .then((pack) => {
               if (!pack) return
               setPanel('layers')
-              showToast(tx(`Пак открыт: ${pack.name}`, `Pack opened: ${pack.name}`))
+              showToast(tx(
+                          'Пак открыт: {p0}',
+                          'Pack opened: {p0}',
+                          { p0: pack.name },
+                        ))
             })
             .catch((error: unknown) =>
               showToast(
                 tx(
-                  `Не удалось открыть пак: ${String(error)}`,
-                  `Could not open the pack: ${String(error)}`,
+                  'Не удалось открыть пак: {p0}',
+                  'Could not open the pack: {p0}',
+                  { p0: String(error) },
                 ),
               ),
             )
@@ -785,16 +872,18 @@ function App() {
               if (result)
                 showToast(
                   tx(
-                    `Проект сохранён: ${result.path}`,
-                    `Project saved: ${result.path}`,
+                    'Проект сохранён: {p0}',
+                    'Project saved: {p0}',
+                    { p0: result.path },
                   ),
                 )
             })
             .catch((error: unknown) =>
               showToast(
                 tx(
-                  `Не удалось сохранить проект: ${String(error)}`,
-                  `Could not save the project: ${String(error)}`,
+                  'Не удалось сохранить проект: {p0}',
+                  'Could not save the project: {p0}',
+                  { p0: String(error) },
                 ),
               ),
             )
@@ -814,16 +903,18 @@ function App() {
               setPanel('projects')
               showToast(
                 tx(
-                  `Проект открыт: ${result.project.name}`,
-                  `Project opened: ${result.project.name}`,
+                  'Проект открыт: {p0}',
+                  'Project opened: {p0}',
+                  { p0: result.project.name },
                 ),
               )
             })
             .catch((error: unknown) =>
               showToast(
                 tx(
-                  `Не удалось открыть проект: ${String(error)}`,
-                  `Could not open the project: ${String(error)}`,
+                  'Не удалось открыть проект: {p0}',
+                  'Could not open the project: {p0}',
+                  { p0: String(error) },
                 ),
               ),
             )
@@ -854,8 +945,9 @@ function App() {
             .catch((error: unknown) =>
               showToast(
                 tx(
-                  `Не удалось создать проект: ${String(error)}`,
-                  `Could not create the project: ${String(error)}`,
+                  'Не удалось создать проект: {p0}',
+                  'Could not create the project: {p0}',
+                  { p0: String(error) },
                 ),
               ),
             )
@@ -870,7 +962,11 @@ function App() {
       },
       ...PROVIDERS.map<Command>((provider) => ({
         id: `provider-${provider.id}`,
-        label: tx(`Подложка: ${provider.label}`, `Basemap: ${provider.label}`),
+        label: tx(
+                 'Подложка: {p0}',
+                 'Basemap: {p0}',
+                 { p0: provider.label },
+               ),
         group: tx('Подложка', 'Basemap'),
         keywords: ['карта', 'слой', provider.short],
         icon: MapIcon,
@@ -1130,7 +1226,13 @@ function App() {
   )
 
   return (
-    <div className={`app${fieldMode ? ' field-mode' : ''}`} data-theme={theme}>
+    <div
+      className={`app${fieldMode ? ' field-mode' : ''}`}
+      data-theme={theme}
+      data-contrast={fieldHighContrast ? 'high' : 'normal'}
+      data-motion={fieldReduceMotion ? 'reduce' : 'full'}
+      style={{ '--field-scale': String(fieldUiScale / 100) } as CSSProperties}
+    >
       <a className="skip-link" href="#map-stage">
         {t('a11y.skip')}
       </a>
@@ -1148,6 +1250,10 @@ function App() {
             providerId={providerId}
             providerOrder={providerOrder}
             packs={packs}
+            dem={dem}
+            demVisible={demVisible}
+            dem3d={dem3d}
+            demOpacity={demOpacity}
             customSources={customSources}
             customSourceOrder={customSourceOrder}
             customLayers={customLayers}
@@ -1240,6 +1346,7 @@ function App() {
         <CommandPalette
           commands={commands}
           resolve={resolveCommand}
+          searchPlaces={searchPlaces}
           onClose={() => setCommandOpen(false)}
         />
       )}

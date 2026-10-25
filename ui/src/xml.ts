@@ -112,11 +112,19 @@ class Reader {
 
   private element(depth: number): XmlNode {
     if (depth > MAX_DEPTH) {
-      throw new Error(tr(`Вложенность XML больше ${MAX_DEPTH} уровней`, `XML nesting exceeds ${MAX_DEPTH} levels`))
+      throw new Error(tr(
+                        'Вложенность XML больше {p0} уровней',
+                        'XML nesting exceeds {p0} levels',
+                        { p0: MAX_DEPTH },
+                      ))
     }
     this.nodes += 1
     if (this.nodes > MAX_NODES) {
-      throw new Error(tr(`В XML больше ${MAX_NODES} элементов`, `XML has more than ${MAX_NODES} elements`))
+      throw new Error(tr(
+                        'В XML больше {p0} элементов',
+                        'XML has more than {p0} elements',
+                        { p0: MAX_NODES },
+                      ))
     }
     if (this.input[this.pos] !== '<') throw new Error(tr('Ожидался тег XML', 'An XML tag was expected'))
     this.pos += 1
