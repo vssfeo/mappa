@@ -135,6 +135,7 @@
   Esri World Imagery, NASA Blue Marble),
   тёмная/светлая темы.
 - Командная палитра `Ctrl+K`, шпаргалка `?`.
+- Демо-видео 65 с с английской озвучкой: `docs/media/mappa-demo.mp4`.
 - Телеметрия MAVLink v1/v2 по UDP: `GLOBAL_POSITION_INT` и
   `HEARTBEAT`, CRC, позиция/курс/высота, трек, экспорт GPX, перенос
   трека на карту; только приём.

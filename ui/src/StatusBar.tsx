@@ -70,7 +70,7 @@ export function StatusBar() {
   }, [])
 
   const provider = providerById(providerId)
-  const [lat, lon] = cursor ?? mapView.center
+  const [lon, lat] = cursor ?? mapView.center
 
   const crsKey = crs
     ? crs.epsg

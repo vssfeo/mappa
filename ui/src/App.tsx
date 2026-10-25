@@ -250,6 +250,20 @@ function App() {
         setCommandOpen(!commandOpen)
         return
       }
+      if (mod && event.altKey && event.code.startsWith('Digit')) {
+        const tool = event.code.slice(5)
+        const open = {
+          '1': setGeorefOpen,
+          '2': setLosOpen,
+          '3': setMissionOpen,
+          '4': setTelemetryOpen,
+        }[tool]
+        if (open) {
+          event.preventDefault()
+          open(true)
+          return
+        }
+      }
       if (mod && letter === 'j') {
         event.preventDefault()
         setPanel('downloads')
