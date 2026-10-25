@@ -60,7 +60,7 @@
 - Общий кэш с приложением (`~/.cache/dev.mappa.desktop/tiles.sqlite3`).
 - `download`: bbox/zoom, оценка, `--dry-run`, лимит 2 млн тайлов,
   прогресс, rate limit, legal-гейт `offline_allowed`; 12 параллельных
-  загрузок с общим token bucket (2438 тайлов Крыма за 218 с).
+  загрузок с общим token bucket (2438 тайлов района за 218 с).
 - `pack`: MBTiles или PMTiles по расширению выходного файла, метаданные
   bbox/zooms/attribution, транскодинг смешанных PNG/JPEG.
 - `doctor`: статистика, `quick_check`, `vacuum`.
@@ -138,8 +138,8 @@
 - Первый запуск: тур на три шага (возможности, демо-пак, клавиши),
   «Пропустить» и `Esc`; повторно открывается из настроек. Флаг
   `onboardingDone` живёт в `localStorage`.
-- Демо-пак: синтетические тайлы z10–13 южного берега Крыма
-  (119 тайлов, ~1,3 МБ) встроены в бинарник; команда `demo_pack`
+- Демо-пак: синтетические тайлы z10–12 западного побережья Ирландии
+  (71 тайл, ~1,1 МБ) встроены в бинарник; команда `demo_pack`
   пишет файл в app data и открывает его как обычный MBTiles.
   Генератор — `scripts/make_demo_pack.py`, повторная сборка — `make demo-pack`.
 - Поиск мест в палитре: локальный `geocode.json` и кэш результатов,
@@ -424,37 +424,6 @@ npm run dev -- --host 127.0.0.1 --port 4173
 
 ---
 
-## Тестовый офлайн-пак Крыма
-
-Собран из OpenTopoMap (единственный источник, который в этой сети отдаёт
-настоящие тайлы; OSM блокирует по IP, CARTO возвращает заглушку).
-
-- `~/Downloads/mappa-crimea.mbtiles` — 2435 тайлов z1–z12, 24 МиБ.
-- `~/Downloads/mappa-crimea.pmtiles` — то же в PMTiles v3 (Hilbert).
-- Bounds: `32.0,44.3,36.7,46.3`; формат PNG; атрибуция OpenTopoMap/OSM.
-- 3 краевых тайла в источнике отдают HTML-ошибку (дырки в паках).
-- Кэш-источник: `/tmp/mappa-crimea-topo.sqlite3`; YAML для CLI:
-  `/tmp/mappa-test-providers/topo-test.yaml` (`offline_allowed: true`).
-- Пак уже прописан в `packPaths`, приложение восстановит слой при запуске.
-  Или: панель «Слои» → «Импорт пака» → выбрать `.mbtiles`/`.pmtiles`.
-- Только для локальной проверки; при распространении нужна атрибуция
-  OpenTopoMap и OSM (ODbL/CC-BY-SA).
-
-Генерация повторима:
-
-```bash
-cargo run -q -p mappa-cli -- download \
-  --providers-dir /tmp/mappa-test-providers --provider topo-test \
-  --bbox 32.0,44.3,36.7,46.3 --zoom 1-12 \
-  --cache /tmp/mappa-crimea-topo.sqlite3
-cargo run -q -p mappa-cli -- pack \
-  --providers-dir /tmp/mappa-test-providers --provider topo-test \
-  --bbox 32.0,44.3,36.7,46.3 --zoom 1-12 \
-  --cache /tmp/mappa-crimea-topo.sqlite3 \
-  --output ~/Downloads/mappa-crimea.mbtiles
-```
-
----
 
 ## Готовность 1.0
 

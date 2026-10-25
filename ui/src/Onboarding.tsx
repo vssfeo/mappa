@@ -75,8 +75,8 @@ export function Onboarding({
       <h2>{tx('Попробуйте демо-пак', 'Try the demo pack')}</h2>
       <p className="onboarding-lead">
         {tx(
-          'Небольшая синтетическая карта южного берега Крыма встроена в приложение. На ней видно паки, рельеф, маршруты и профиль высот — без скачивания.',
-          'A small synthetic map of the Crimean south coast is built into the app. It shows packs, terrain, routes and the elevation profile without downloading anything.',
+          'Небольшая синтетическая карта западного побережья Ирландии встроена в приложение. На ней видно паки, рельеф, маршруты и профиль высот — без скачивания.',
+          'A small synthetic map of the west coast of Ireland is built into the app. It shows packs, terrain, routes and the elevation profile without downloading anything.',
         )}
       </p>
       <div className="onboarding-actions">

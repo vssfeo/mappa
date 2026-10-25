@@ -69,13 +69,32 @@ manifest = {
 print(f"{len(files)} artifacts, {sum(f['bytes'] for f in files) / 1048576:.2f} MiB")
 PY
 
-if [[ -n ${MAPPA_GPG_KEY:-} ]]; then
-  echo "== signing with $MAPPA_GPG_KEY"
-  gpg --batch --yes --local-user "$MAPPA_GPG_KEY" --armor --detach-sign \
-    --output "$out/SHA256SUMS.asc" "$out/SHA256SUMS"
-elif gpg --list-secret-keys --with-colons 2>/dev/null | grep -q '^sec'; then
-  echo "== signing with the default GPG key"
-  gpg --batch --yes --armor --detach-sign --output "$out/SHA256SUMS.asc" "$out/SHA256SUMS"
+sign_checksums() {
+  local args=(--batch --yes --armor --detach-sign --output "$out/SHA256SUMS.asc" "$out/SHA256SUMS")
+  if [[ -n ${MAPPA_GPG_KEY:-} ]]; then
+    args+=(--local-user "$MAPPA_GPG_KEY")
+  fi
+  if [[ -n ${MAPPA_GPG_PASSPHRASE:-} ]]; then
+    gpg --pinentry-mode loopback --passphrase "$MAPPA_GPG_PASSPHRASE" "${args[@]}"
+  else
+    gpg "${args[@]}"
+  fi
+}
+
+if [[ -n ${MAPPA_GPG_KEY:-} ]] || gpg --list-secret-keys --with-colons 2>/dev/null | grep -q '^sec'; then
+  echo "== signing checksums"
+  if sign_checksums; then
+    echo "signed $out/SHA256SUMS.asc"
+  else
+    cat >&2 <<'TXT'
+error: signing failed. The key is passphrase-protected and no pinentry is
+available in this shell. Either sign manually:
+  cd dist/release && gpg --armor --detach-sign SHA256SUMS
+or pass the passphrase for this run only:
+  MAPPA_GPG_PASSPHRASE=... scripts/release.sh --skip-check
+TXT
+    exit 1
+  fi
 else
   cat <<'TXT'
 warning: no GPG secret key found, checksums are not signed.

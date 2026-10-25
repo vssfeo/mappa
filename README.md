@@ -1,5 +1,8 @@
 # Mappa
 
+[![Linux CI](https://github.com/vssfeo/mappa/actions/workflows/ci.yml/badge.svg)](https://github.com/vssfeo/mappa/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/vssfeo/mappa?display_name=tag)](https://github.com/vssfeo/mappa/releases)
+
 **Рабочее название:** Mappa  
 **Статус:** 1.0 release candidate — офлайн-карты, паки, полевая геодезия  
 **Дата:** 2026-10-25
@@ -74,7 +77,7 @@ SAS.Planet — это про «скачать район и посмотреть
   экспорт PNG/GeoTIFF/COG/PDF/KMZ, недавние проекты, автосохранение,
   живая очередь со скоростью и ETA, настройки, статус-бар,
   тур первого запуска и встроенный демо-пак (синтетическая карта
-  южного берега Крыма, z10–13).
+  западного побережья Ирландии, z10–12).
 - CLI: `providers`, `download`, `pack`, `doctor`, `stats`, `batch`,
   `serve`; JSON-вывод, batch JSON jobs и идемпотентные паки.
 - Интерфейс RU/EN/DE/FR/ES, клавиатурная навигация и focus trap в диалогах.
@@ -94,7 +97,9 @@ Yahoo Maps закрыт. Легальный источник с ключом д�
 
 ## Установка
 
-Готовые артефакты — в `dist/release/` (см. [docs/RELEASE.md](docs/RELEASE.md)):
+Готовые артефакты — в `dist/release/` или в
+[GitHub Releases](https://github.com/vssfeo/mappa/releases) (см.
+[docs/RELEASE.md](docs/RELEASE.md)):
 
 ```bash
 sudo dpkg -i dist/release/Mappa_1.0.0_amd64.deb
@@ -198,13 +203,6 @@ cd ui && npm run dev -- --host 127.0.0.1 --port 4173
   линии/полигоны, векторные слои, открытые паки и CRS; каждые 12 секунд
   пишется recovery-копия, которую можно восстановить из панели «Проекты».
 
-## Тестовый офлайн-пак
-
-В `~/Downloads` лежат `mappa-crimea.mbtiles` и `mappa-crimea.pmtiles`
-(Крым, z1–z12, OpenTopoMap, 24 МиБ) — для проверки слоёв и офлайна.
-Пак уже добавлен в приложение; открыть заново можно в панели «Слои» →
-«Импорт пака». Подробности и команды пересборки — в
-[docs/STATUS.md](docs/STATUS.md).
 
 ## CLI
 

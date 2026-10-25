@@ -320,7 +320,7 @@ mod tests {
         std::fs::create_dir_all(tile.parent().unwrap()).unwrap();
         std::fs::write(&tile, png()).unwrap();
         let output = dir.join("import.mbtiles");
-        let report = import_folder(&dir, &output, Some("Crimea"), Some("ODbL")).unwrap();
+        let report = import_folder(&dir, &output, Some("Demo"), Some("ODbL")).unwrap();
         assert_eq!(report.tiles, 1);
         assert_eq!(report.min_zoom, 10);
         assert_eq!(report.max_zoom, 10);

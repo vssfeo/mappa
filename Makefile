@@ -20,7 +20,8 @@ release:
 deb-check: deb
 	@deb="$$(find target/release/bundle/deb -name '*.deb' -print -quit)"; \
 	test -n "$$deb"; \
-	dpkg-deb -c "$$deb" | grep -Eq ' \./usr/bin/mappa$$'; \
+	dpkg-deb -c "$$deb" >/tmp/mappa-deb.list; \
+	grep -Eq '(^| )\.?/?usr/bin/mappa$$' /tmp/mappa-deb.list || { cat /tmp/mappa-deb.list; exit 1; }; \
 	dpkg-deb -f "$$deb" Package Version Architecture Depends; \
 	file target/release/mappa
 

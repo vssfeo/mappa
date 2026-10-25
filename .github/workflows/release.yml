@@ -79,9 +79,19 @@ jobs:
 
       - name: Sign checksums
         if: env.MAPPA_GPG_PRIVATE_KEY != ''
+        env:
+          MAPPA_GPG_PASSPHRASE: ${{ secrets.MAPPA_GPG_PASSPHRASE }}
         run: |
           printf '%s' "$MAPPA_GPG_PRIVATE_KEY" | gpg --batch --import
-          gpg --batch --yes --armor --detach-sign --output dist/release/SHA256SUMS.asc dist/release/SHA256SUMS
+          if [ -n "${MAPPA_GPG_PASSPHRASE:-}" ]; then
+            gpg --batch --yes --pinentry-mode loopback \
+              --passphrase "$MAPPA_GPG_PASSPHRASE" \
+              --armor --detach-sign --output dist/release/SHA256SUMS.asc \
+              dist/release/SHA256SUMS
+          else
+            gpg --batch --yes --armor --detach-sign \
+              --output dist/release/SHA256SUMS.asc dist/release/SHA256SUMS
+          fi
 
       - name: Create the GitHub release
         env:

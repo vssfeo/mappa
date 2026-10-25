@@ -2,7 +2,7 @@ export const de: Record<string, string> = {
   ' · table truncated to 500 rows': '· Tabelle auf 500 Zeilen gekürzt',
   ' Showing the first 50,000 tiles.': 'Die ersten 50.000 Kacheln werden angezeigt.',
   'A short tour of what the app can do, plus the demo pack.': 'Ein kurzer Rundgang durch die Funktionen der App, inklusive Demo-Paket.',
-  'A small synthetic map of the Crimean south coast is built into the app. It shows packs, terrain, routes and the elevation profile without downloading anything.': 'Eine kleine synthetische Karte der Südküste der Krim ist in die App eingebaut. Sie zeigt Pakete, Gelände, Routen und das Höhenprofil — ohne Download.',
+  'A small synthetic map of the west coast of Ireland is built into the app. It shows packs, terrain, routes and the elevation profile without downloading anything.': 'Eine kleine synthetische Karte der Westküste Irlands ist in die App eingebaut. Sie zeigt Pakete, Gelände, Routen und das Höhenprofil — ohne Download.',
   'About': 'Über',
   'all keyboard shortcuts': 'alle Tastenkürzel',
   'Back': 'Zurück',

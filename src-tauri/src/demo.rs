@@ -65,12 +65,12 @@ mod tests {
         let pack = mappa_storage::Mbtiles::open(&path).unwrap();
         assert_eq!(pack.metadata().format, "png");
         assert_eq!(pack.min_zoom().unwrap(), Some(10));
-        assert_eq!(pack.max_zoom().unwrap(), Some(13));
-        assert!(pack.tile_count().unwrap() > 100);
+        assert_eq!(pack.max_zoom().unwrap(), Some(12));
+        assert!(pack.tile_count().unwrap() > 60);
         let tile = pack
-            .get_tile(10, 608, 369)
+            .get_tile(10, 483, 333)
             .unwrap()
-            .expect("tile 10/608/369");
+            .expect("tile 10/483/333");
         assert_eq!(&tile[..8], b"\x89PNG\r\n\x1a\n");
         std::fs::remove_dir_all(&directory).ok();
     }

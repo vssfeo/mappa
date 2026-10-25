@@ -24,7 +24,7 @@ TCP, gpsd), офлайн- и онлайн-маршруты (OSRM/BRouter, изо
 | Рабочее дерево | чистое |
 | `origin` | `/home/captry/Projects AI/git-backups/mappa.git` (локальный bare) |
 | Бэкап | `/home/captry/Projects AI/git-backups/mappa-all-20261025.bundle` |
-| GitHub | `github` → `https://github.com/vssfeo/mappa.git`, репозиторий ещё не создан; аккаунт может держать только публичные репозитории |
+| GitHub | `github` → `git@github.com:vssfeo/mappa.git`, публичный, запушены `main` и `v1.0.0`; SSH-ключ `~/.ssh/mappa_github` (SHA256:92v6P3MSuarMj7igpoFegbaHuZVkvhlOXreNz6O1GLM) |
 
 Публикация (подробно — [RELEASE.md](RELEASE.md) §«Публикация и зеркала»):
 создать пустой публичный репозиторий `mappa`, затем
@@ -37,15 +37,15 @@ git push github v1.0.0      # запускает release.yml
 GitHub — зеркало, а не единственная копия: канонические источники —
 локальный bare и bundle. Нужны зеркала на Codeberg/GitVerse. Токен —
 только в credential helper. `repository` в `Cargo.toml` пока
-`https://example.invalid/mappa` — заменить на публичный URL.
+`https://github.com/vssfeo/mappa`.
 
 ## Онбординг и демо-пак
 
 - Тур на три шага (`ui/src/Onboarding.tsx`): возможности, демо-пак, клавиши.
   Закрывается «Пропустить», `Esc`, крестиком; флаг `onboardingDone` в
   `localStorage`. Повторно — «Настройки» → «Показать обучение заново».
-- Демо-пак синтетический: 119 тайлов z10–13 южного берега Крыма,
-  ~1,3 МБ, лицензионно чистый. Архив `assets/demo/demo.mbtiles` встроен
+- Демо-пак синтетический: 71 тайл z10–12 западного побережья Ирландии,
+  ~1,1 МБ, лицензионно чистый. Архив `assets/demo/demo.mbtiles` встроен
   в бинарник (`include_bytes!`), команда `demo_pack` материализует его в
   `~/.local/share/dev.mappa.desktop/` и возвращает путь.
 - Перерисовать: `make demo-pack` (`scripts/make_demo_pack.py`, только Pillow).
@@ -108,9 +108,9 @@ GitHub — зеркало, а не единственная копия: кано
 [ROADMAP.md §17](ROADMAP.md); оценки и позиционирование —
 [COMPETITORS.md §3](COMPETITORS.md).
 
-**P0 — внешний remote.** Подключить GitHub (см. выше), заменить
-`repository` в `Cargo.toml`, прогнать `.github/workflows/ci.yml`
-на реальном runner (amd64 + ARM64).
+**P0 — внешний remote.** Сделано: публичный GitHub, `main` и `v1.0.0`
+запушены, CI и Release запущены; осталось дождаться зелёного прогона и
+поднять зеркало Codeberg/GitVerse.
 
 **P1 — закрыть критерии 1.0 (Phase 7).**
 - AppImage в дополнение к `.deb` (Flatpak — после).

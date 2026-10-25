@@ -1,6 +1,6 @@
 # Релиз
 
-**Версия:** 1.0.0  
+**Версия:** 1.0.1  
 **Дата:** 2026-10-25
 
 ## Где живёт версия
@@ -26,8 +26,8 @@ scripts/release.sh --skip-check   # если check уже прогоняли
 
 | Файл | Что это |
 |---|---|
-| `Mappa_1.0.0_amd64.deb` | Debian-пакет, бинарник в `/usr/bin/mappa` |
-| `Mappa_1.0.0_amd64.AppImage` | Один файл, без установки |
+| `Mappa_1.0.1_amd64.deb` | Debian-пакет, бинарник в `/usr/bin/mappa` |
+| `Mappa_1.0.1_amd64.AppImage` | Один файл, без установки |
 | `SHA256SUMS` | Контрольные суммы |
 | `SHA256SUMS.asc` | Отсоединённая GPG-подпись (если есть ключ) |
 | `manifest.json` | Версия, коммит, дата, размеры и хеши |
@@ -63,10 +63,10 @@ cd dist/release
 sha256sum -c SHA256SUMS
 gpg --verify SHA256SUMS.asc SHA256SUMS
 
-sudo dpkg -i Mappa_1.0.0_amd64.deb
+sudo dpkg -i Mappa_1.0.1_amd64.deb
 mappa
 # или без установки:
-./Mappa_1.0.0_amd64.AppImage --appimage-extract-and-run
+./Mappa_1.0.1_amd64.AppImage --appimage-extract-and-run
 ```
 
 AppImage требует FUSE 2; без него используйте
@@ -97,7 +97,7 @@ AppImage самодостаточный: внутри WebKitGTK, JavaScriptCore 
 ```bash
 git remote add github https://github.com/vssfeo/mappa.git
 git push -u github main
-git push github v1.0.0        # запускает release.yml
+git push github v1.0.1        # запускает release.yml
 ```
 
 Токен нужен с правом `contents: write` на этот репозиторий; хранить его
@@ -122,8 +122,8 @@ git push --all <remote> && git push --tags <remote>
 ## Тег и публикация
 
 ```bash
-git tag -a v1.0.0 -m "Mappa 1.0.0"
-git push origin main v1.0.0
+git tag -a v1.0.1 -m "Mappa 1.0.1"
+git push origin main v1.0.1
 ```
 
 После подключения GitHub тег запускает
@@ -134,21 +134,20 @@ git push origin main v1.0.0
 Без remote релиз остаётся локальным: артефакты в `dist/release/`
 и тег в локальном `origin`.
 
-## Чек-лист 1.0.0
+## Чек-лист 1.0.1
 
 - [x] `make check` — 198 Rust-тестов, 113 UI-тестов, clippy, fmt.
 - [x] `make smoke` — EN/DE/RU, полевой режим, онбординг.
 - [x] `make deb-check` — `.deb` 7,74 МиБ, launcher на месте.
 - [x] AppImage собран (88,9 МиБ) и запускается: окно за 131 мс после распаковки.
 - [ ] `SHA256SUMS` подписаны релизным ключом.
-- [x] Тег `v1.0.0` создан и запушен в локальный `origin`.
+- [x] Тег `v1.0.1` создан и запушен в локальный `origin`.
 - [ ] CI на GitHub зелёный (amd64 + ARM64).
 - [ ] 10 внешних тестеров, 95% сессий без падений.
 - [ ] Видео 90 секунд для релизной страницы.
 
 ## Известные ограничения релиза
 
-- `repository` в `Cargo.toml` — `https://example.invalid/mappa`, пока
-  нет публичного remote.
+- `repository` в `Cargo.toml` — `https://github.com/vssfeo/mappa`.
 - PPA/Flatpak/autoupdate не настроены.
 - Репозиторий не подписан для `apt` — установка только через `dpkg -i`.

@@ -20,11 +20,12 @@ from pathlib import Path
 
 from PIL import Image
 
-# South coast of Crimea, around Yalta and Ai-Petri.
-WEST, SOUTH, EAST, NORTH = 33.94, 44.34, 34.32, 44.62
-MIN_ZOOM, MAX_ZOOM = 10, 13
+# Atlantic coast of Ireland, around Connemara and the Cliffs of Moher.
+# A neutral coastline keeps the demo free of any real-world conflict.
+WEST, SOUTH, EAST, NORTH = -10.00, 52.95, -9.45, 53.25
+MIN_ZOOM, MAX_ZOOM = 10, 12
 TILE = 256
-NAME = "Yalta demo"
+NAME = "Ireland demo"
 
 
 def lon_to_x(lon: float, zoom: int) -> float:
@@ -47,34 +48,58 @@ def y_to_lat(y: float, zoom: int) -> float:
     return math.degrees(math.atan(math.sinh(n)))
 
 
-def coastline(lon: float) -> float:
-    """Latitude of the shore; the sea lies to the south of it."""
-    u = lon - 34.0
-    return 44.43 + 0.014 * math.sin(u * 28.0) + 0.006 * math.sin(u * 71.0 + 1.3)
+def shoreline(lat: float) -> float:
+    """Longitude of the shore; the Atlantic lies to the west of it."""
+    v = lat - 53.10
+    return -9.80 + 0.020 * math.sin(v * 18.0) + 0.010 * math.sin(v * 55.0 + 1.1)
+
+
+def _hash(ix: int, iy: int) -> float:
+    n = ix * 374_761_393 + iy * 668_265_263
+    n = (n ^ (n >> 13)) * 1_274_126_177
+    return ((n ^ (n >> 16)) & 0xFFFFFFFF) / 0xFFFFFFFF
+
+
+def _noise(x: float, y: float) -> float:
+    ix, iy = math.floor(x), math.floor(y)
+    fx, fy = x - ix, y - iy
+    sx = fx * fx * (3.0 - 2.0 * fx)
+    sy = fy * fy * (3.0 - 2.0 * fy)
+    a = _hash(ix, iy)
+    b = _hash(ix + 1, iy)
+    c = _hash(ix, iy + 1)
+    d = _hash(ix + 1, iy + 1)
+    return a * (1 - sx) * (1 - sy) + b * sx * (1 - sy) + c * (1 - sx) * sy + d * sx * sy
+
+
+def _fbm(lon: float, lat: float, octaves: int = 3) -> float:
+    total = 0.0
+    amplitude = 1.0
+    frequency = 26.0
+    norm = 0.0
+    for _ in range(octaves):
+        total += amplitude * _noise(lon * frequency, lat * frequency)
+        norm += amplitude
+        amplitude *= 0.55
+        frequency *= 2.1
+    return total / norm
 
 
 def height(lon: float, lat: float) -> float:
     """Synthetic elevation in metres; the sea floor is negative."""
-    u = (lon - 34.10) * 42.0
-    v = (lat - 44.48) * 42.0
-    land = (
-        210.0
-        + 180.0 * math.sin(u * 0.80) * math.cos(v * 0.70)
-        + 95.0 * math.sin(u * 1.90 + v * 1.40)
-        + 38.0 * math.sin(u * 3.60 - v * 2.70)
-        + 14.0 * math.sin(u * 6.10 + v * 4.60)
-    )
-    ridge = max(0.0, min(1.0, (lat - 44.43) / 0.09))
-    ridge = ridge * ridge * (3.0 - 2.0 * ridge)
-    land += 620.0 * ridge
-    coast = coastline(lon)
-    if lat < coast:
-        return -max(0.0, (coast - lat) * 90000.0)
+    shore = shoreline(lat)
+    if lon < shore:
+        return -max(0.0, (shore - lon) * 90000.0)
+    inland_distance = lon - shore
+    relief = max(0.0, _fbm(lon, lat) - 0.28)
+    land = 20.0 + 900.0 * relief * relief
+    inland = max(0.0, min(1.0, inland_distance / 0.35))
+    inland = inland * inland * (3.0 - 2.0 * inland)
+    land += 150.0 * inland
+    # Cliffs: a ridge just inland from the shore.
+    cliff = math.exp(-(((inland_distance - 0.03) / 0.025) ** 2))
+    land += 90.0 * cliff
     return max(0.0, land)
-
-
-def metres_per_pixel(lat: float, zoom: int) -> float:
-    return 156_543.03392 * math.cos(math.radians(lat)) / (1 << zoom)
 
 
 LAND = (
@@ -93,6 +118,10 @@ SEA_DEEP = (16, 58, 88)
 
 def lerp(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
     return tuple(int(round(a[i] + (b[i] - a[i]) * t)) for i in range(3))  # type: ignore[return-value]
+
+
+def metres_per_pixel(lat: float, zoom: int) -> float:
+    return 156_543.03392 * math.cos(math.radians(lat)) / (1 << zoom)
 
 
 def land_color(h: float) -> tuple[int, int, int]:
@@ -138,7 +167,7 @@ def render_tile(zoom: int, x: int, y: int) -> Image.Image:
                     color = lerp(color, (222, 232, 226), (60.0 + h) / 60.0)
             else:
                 color = land_color(h)
-                if h < 6.0 and lat < coastline(lon) + 0.012:
+                if h < 6.0 and lon < shoreline(lat) + 0.012:
                     color = lerp((222, 205, 165), color, h / 6.0)
                 slope = math.hypot(slope_x, slope_y)
                 contour_width = max(0.0035, slope * metres * 1.15 / interval)
@@ -148,7 +177,7 @@ def render_tile(zoom: int, x: int, y: int) -> Image.Image:
                     factor = 0.7 if (h % index_line) < index_line * contour_width * 1.5 else 0.84
                     color = tuple(int(c * factor) for c in color)  # type: ignore[assignment]
                 # Vertical exaggeration keeps the relief readable at map scale.
-                light = 0.96 - 2.4 * slope_x - 1.8 * slope_y
+                light = 0.98 - 1.5 * slope_x - 1.1 * slope_y
                 light = max(0.58, min(1.24, light))
                 color = tuple(min(255, int(c * light)) for c in color)  # type: ignore[assignment]
             pixels[offset] = color[0]

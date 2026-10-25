@@ -12,7 +12,7 @@ const CUSTOM_ICON =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lZ9G9QAAAABJRU5ErkJggg=='
 
 const snapshot = (): ProjectSnapshot => ({
-  name: 'Крым',
+  name: 'Demo region',
   providerId: 'topo',
   view: { center: [34.1, 44.9], zoom: 9 },
   layers: {
@@ -85,7 +85,7 @@ test('project round-trips through the .mappa format', () => {
   const parsed = parseProject(serializeProject(file)).file
   assert.equal(parsed.format, 'mappa-project')
   assert.equal(parsed.version, 1)
-  assert.equal(parsed.name, 'Крым')
+  assert.equal(parsed.name, 'Demo region')
   assert.equal(parsed.providerId, 'topo')
   assert.equal(parsed.providerOrder[0], 'osm')
   assert.equal(parsed.providerOrder.length, 7)
