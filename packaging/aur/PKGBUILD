@@ -1,0 +1,30 @@
+# Maintainer: Mappa contributors <release@example.invalid>
+pkgname=mappa
+pkgver=1.5.0
+pkgrel=1
+pkgdesc="Linux-first offline map workstation: packs, DEM, GPS and field mode"
+arch=('x86_64' 'aarch64')
+url="https://github.com/vssfeo/mappa"
+license=('Apache-2.0')
+depends=('webkit2gtk-4.1' 'gtk3' 'libsoup3' 'openssl' 'ca-certificates' 'hicolor-icon-theme')
+makedepends=('rust' 'cargo' 'nodejs' 'npm' 'git')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname-$pkgver"
+  (cd ui && npm ci --no-audit --no-fund && npm run build)
+  cargo build --release --locked -p mappa
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 target/release/mappa "$pkgdir/usr/bin/mappa"
+  install -Dm644 packaging/dev.mappa.desktop \
+    "$pkgdir/usr/share/applications/dev.mappa.desktop"
+  install -Dm644 src-tauri/icons/128x128.png \
+    "$pkgdir/usr/share/icons/hicolor/128x128/apps/dev.mappa.desktop.png"
+  install -Dm644 packaging/flatpak/dev.mappa.desktop.metainfo.xml \
+    "$pkgdir/usr/share/metainfo/dev.mappa.desktop.metainfo.xml"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

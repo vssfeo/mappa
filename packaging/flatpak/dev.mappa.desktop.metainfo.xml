@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.mappa.desktop</id>
+  <name>Mappa</name>
+  <summary>Offline map workstation for Linux</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <description>
+    <p>
+      Mappa is a Linux-first workstation for offline maps: download a region,
+      pack it into MBTiles or PMTiles, open DEM for terrain and radio links,
+      record GPS/NMEA tracks, georeference scanned maps and export missions to
+      QGroundControl. Packs can be served to a team over the local network.
+    </p>
+    <ul>
+      <li>Offline packs with signatures, CLI and LAN tile server</li>
+      <li>DEM, contours, line-of-sight and first Fresnel zone</li>
+      <li>GPS, NMEA, gpsd and MAVLink telemetry</li>
+      <li>Georeferencing of scans into GeoTIFF/COG</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">dev.mappa.desktop</launchable>
+  <url type="homepage">https://github.com/vssfeo/mappa</url>
+  <url type="bugtracker">https://github.com/vssfeo/mappa/issues</url>
+  <developer_name>Mappa contributors</developer_name>
+  <categories>
+    <category>Utility</category>
+    <category>Science</category>
+    <category>Geography</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.5.0" date="2026-10-25">
+      <description><p>MAVLink telemetry, georeferencing with TPS and polynomial transforms, radio link and viewshed, mission export.</p></description>
+    </release>
+  </releases>
+</component>

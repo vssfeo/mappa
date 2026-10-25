@@ -33,6 +33,8 @@ tile-server и интеграция с роботами/полевыми уст�
 | [docs/HANDOVER.md](docs/HANDOVER.md) | передача контекста: состояние git, что проверено, следующие шаги |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | старт, fps, память: как мерить и текущие числа |
 | [docs/RELEASE.md](docs/RELEASE.md) | сборка, проверка и подпись релизных артефактов |
+| [docs/PACKAGING.md](docs/PACKAGING.md) | APT-репозиторий, AUR, Flatpak, Snap, PPA, COPR |
+| [docs/PROMOTION.md](docs/PROMOTION.md) | где и как продвигать: каналы, тексты, календарь |
 
 ## Позиционирование
 

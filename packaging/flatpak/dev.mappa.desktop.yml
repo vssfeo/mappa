@@ -1,0 +1,37 @@
+# Flatpak manifest. Build locally with:
+#   flatpak run org.flatpak.Builder --force-clean build-dir packaging/flatpak/dev.mappa.desktop.yml
+# Flathub submission needs the runtime to ship WebKitGTK 4.1; check before sending.
+app-id: dev.mappa.desktop
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+command: mappa
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=home
+modules:
+  - name: mappa
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+      env:
+        CARGO_HOME: /run/build/mappa/cargo
+    build-commands:
+      - cd ui && npm ci --no-audit --no-fund && npm run build && cd ..
+      - cargo build --release --locked -p mappa
+      - install -Dm755 target/release/mappa /app/bin/mappa
+      - install -Dm644 packaging/dev.mappa.desktop /app/share/applications/dev.mappa.desktop
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/dev.mappa.desktop.png
+      - install -Dm644 packaging/flatpak/dev.mappa.desktop.metainfo.xml /app/share/metainfo/dev.mappa.desktop.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/vssfeo/mappa.git
+        tag: v1.5.0
+        commit: a072dd3

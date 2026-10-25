@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Mappa
+GenericName=Offline map workstation
+Comment=View, download and pack map tiles for offline field work
+Exec=mappa
+Icon=dev.mappa.desktop
+Terminal=false
+Categories=Utility;Science;Geography;Education;
+Keywords=map;gis;offline;mbtiles;pmtiles;gps;dem;georeferencing;
+StartupNotify=true
