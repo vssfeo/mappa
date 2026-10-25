@@ -24,17 +24,20 @@ TCP, gpsd), офлайн- и онлайн-маршруты (OSRM/BRouter, изо
 | Рабочее дерево | чистое |
 | `origin` | `/home/captry/Projects AI/git-backups/mappa.git` (локальный bare) |
 | Бэкап | `/home/captry/Projects AI/git-backups/mappa-all-20261025.bundle` |
-| GitHub | не подключён: на машине нет `gh`, GitHub-токена и SSH-ключа |
+| GitHub | `github` → `https://github.com/vssfeo/mappa.git`, репозиторий ещё не создан; аккаунт может держать только публичные репозитории |
 
-Подключение GitHub, когда появятся доступы:
+Публикация (подробно — [RELEASE.md](RELEASE.md) §«Публикация и зеркала»):
+создать пустой публичный репозиторий `mappa`, затем
 
 ```bash
-gh repo create mappa --private --source . --remote github
 git push -u github main
+git push github v1.0.0      # запускает release.yml
 ```
 
-или вручную: создать пустой репозиторий и `git remote add github <url>`.
-`repository` в `Cargo.toml` пока `https://example.invalid/mappa` — заменить.
+GitHub — зеркало, а не единственная копия: канонические источники —
+локальный bare и bundle. Нужны зеркала на Codeberg/GitVerse. Токен —
+только в credential helper. `repository` в `Cargo.toml` пока
+`https://example.invalid/mappa` — заменить на публичный URL.
 
 ## Онбординг и демо-пак
 
@@ -58,9 +61,8 @@ git push -u github main
   лежат рядом; проверка `sha256sum -c SHA256SUMS` проходит.
 - AppImage распакован и запущен: окно за 131 мс, процесс жив, PSS ~70 МиБ.
 - `.deb`: `Version: 1.0.0`, `/usr/bin/mappa` на месте.
-- **Не подписано:** на машине нет GPG-ключа. Команда для ключа — в
-  [RELEASE.md](RELEASE.md); после этого `scripts/release.sh` подпишет
-  `SHA256SUMS` автоматически.
+- **Подписано** ключом `B7A7 AA55 0705 C563 6D3A 9B20 4019 72C5 D5A0 5A14`
+  (`SHA256SUMS.asc` проверена). Публичная часть — `docs/keys/mappa-release.asc`.
 - Сборка одной командой: `make release`.
 
 ## Проверено (2026-10-25)
