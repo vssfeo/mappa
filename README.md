@@ -14,11 +14,13 @@ tile-server и интеграция с роботами/полевыми уст�
 
 ![Mappa UI, тёмная тема](docs/screenshot-dark.png)
 
-[![Демо Mappa: 65 секунд, английская озвучка](docs/media/mappa-demo-poster.png)](docs/media/mappa-demo.mp4)
+[![Демо Mappa: 2:52, английская озвучка](docs/media/mappa-demo-poster.png)](docs/media/mappa-demo.mp4)
 
-Демо-видео — 65 секунд, английская озвучка: карта, слои, объекты,
-радиолинк, миссия для QGroundControl, телеметрия MAVLink и полевой
-режим. Файл: [docs/media/mappa-demo.mp4](docs/media/mappa-demo.mp4).
+Демо-видео — 2 минуты 52 секунды, английская озвучка: карта, слои,
+офлайн-паки, DEM, объекты, радиолинк, геореференсинг, миссия для
+QGroundControl, телеметрия MAVLink и полевой режим. Разбор по сценам —
+[docs/DEMO.md](docs/DEMO.md). Файл:
+[docs/media/mappa-demo.mp4](docs/media/mappa-demo.mp4).
 
 ## Документы
 
