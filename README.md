@@ -29,6 +29,7 @@ tile-server и интеграция с роботами/полевыми уст�
 | [docs/ROUTING.md](docs/ROUTING.md) | офлайн- и онлайн-маршруты, подсказки, изохроны и off-route alerts |
 | [docs/HANDOVER.md](docs/HANDOVER.md) | передача контекста: состояние git, что проверено, следующие шаги |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | старт, fps, память: как мерить и текущие числа |
+| [docs/RELEASE.md](docs/RELEASE.md) | сборка, проверка и подпись релизных артефактов |
 
 ## Позиционирование
 
@@ -91,7 +92,20 @@ XYZ-шаблон без ключа, а их условия запрещают п
 Yahoo Maps закрыт. Легальный источник с ключом добавляется через
 «Свои источники» (XYZ/WMS/WMTS + заголовки авторизации).
 
-## Запуск
+## Установка
+
+Готовые артефакты — в `dist/release/` (см. [docs/RELEASE.md](docs/RELEASE.md)):
+
+```bash
+sudo dpkg -i dist/release/Mappa_1.0.0_amd64.deb
+# или без установки, с системным WebKit:
+./dist/release/Mappa_1.0.0_amd64.AppImage --appimage-extract-and-run
+```
+
+AppImage самодостаточный (~89 МБ: WebKitGTK и GTK внутри), `.deb` —
+7,7 МБ и использует системные библиотеки.
+
+## Запуск из исходников
 
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"

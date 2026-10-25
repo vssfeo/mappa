@@ -19,8 +19,8 @@ TCP, gpsd), офлайн- и онлайн-маршруты (OSRM/BRouter, изо
 
 | Параметр | Значение |
 |---|---|
-| Ветка | `main`, HEAD — коммит «Refresh the competitor analysis and add 1.x tasks» |
-| Коммитов | 32 (первый — 2026-10-24, «Initial Mappa 1.0 release candidate») |
+| Ветка | `main`, HEAD — коммит «Release 1.0.0», тег `v1.0.0` |
+| Коммитов | 33 (первый — 2026-10-24, «Initial Mappa 1.0 release candidate») |
 | Рабочее дерево | чистое |
 | `origin` | `/home/captry/Projects AI/git-backups/mappa.git` (локальный bare) |
 | Бэкап | `/home/captry/Projects AI/git-backups/mappa-all-20261025.bundle` |
@@ -49,6 +49,20 @@ git push -u github main
 - Нажатие «Открыть демо-пак» подкладывает пак под экран (`fitBounds`) и
   помечает тур пройденным.
 
+## Релиз 1.0.0
+
+- Артефакты: `dist/release/Mappa_1.0.0_amd64.deb` (7,7 МиБ) и
+  `Mappa_1.0.0_amd64.AppImage` (88,9 МиБ, самодостаточный: WebKitGTK,
+  JavaScriptCore и GTK внутри).
+- `SHA256SUMS` и `manifest.json` (версия, коммит, дата, размеры, хеши)
+  лежат рядом; проверка `sha256sum -c SHA256SUMS` проходит.
+- AppImage распакован и запущен: окно за 131 мс, процесс жив, PSS ~70 МиБ.
+- `.deb`: `Version: 1.0.0`, `/usr/bin/mappa` на месте.
+- **Не подписано:** на машине нет GPG-ключа. Команда для ключа — в
+  [RELEASE.md](RELEASE.md); после этого `scripts/release.sh` подпишет
+  `SHA256SUMS` автоматически.
+- Сборка одной командой: `make release`.
+
 ## Проверено (2026-10-25)
 
 - `make check` — зелёный: fmt, clippy `-D warnings`, 198 Rust-тестов,
@@ -57,8 +71,8 @@ git push -u github main
   перезагрузки не появляется.
 - `make bench-start`, `make bench-ui`, `make startup` — числа и методика
   в [PERFORMANCE.md](PERFORMANCE.md).
-- `make deb-check` — OK, `.deb` 7,74 МиБ (было 6,59 до демо-пака),
-  бинарник 17 МБ, ELF stripped.
+- `make release` — `.deb` 7,74 МиБ и AppImage 88,9 МиБ, checksums и
+  manifest готовы, бинарник 17 МБ, ELF stripped.
 - Открытие демо-пака в живом приложении кликом не автоматизировано
   (нет xdotool/wtype на машине); материализация и чтение архива
   покрыты юнит-тестами `src-tauri/src/demo.rs` через `mappa_storage::Mbtiles`.

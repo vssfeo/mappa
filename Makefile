@@ -3,7 +3,7 @@ export PATH := $(dir $(CARGO)):$(PATH)
 TAURI ?= ./ui/node_modules/.bin/tauri
 DISPLAY_ENV ?= env -u WAYLAND_DISPLAY GDK_BACKEND=x11
 
-.PHONY: run dev build deb deb-check cli test fmt fmt-check clippy unicode-check smoke bench bench-large bench-ui bench-start startup demo-pack ui-install ui-dev ui-check check ci
+.PHONY: run dev build deb deb-check release cli test fmt fmt-check clippy unicode-check smoke bench bench-large bench-ui bench-start startup demo-pack ui-install ui-dev ui-check check ci
 
 run dev:
 	$(DISPLAY_ENV) $(TAURI) dev --no-watch
@@ -13,6 +13,9 @@ build:
 
 deb:
 	$(TAURI) build --bundles deb
+
+release:
+	./scripts/release.sh
 
 deb-check: deb
 	@deb="$$(find target/release/bundle/deb -name '*.deb' -print -quit)"; \

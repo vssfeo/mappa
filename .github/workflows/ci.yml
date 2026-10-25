@@ -106,8 +106,8 @@ jobs:
       - name: Install UI dependencies
         run: npm ci --prefix ui
 
-      - name: Build Debian package
-        run: ./ui/node_modules/.bin/tauri build --bundles deb
+      - name: Build packages
+        run: ./ui/node_modules/.bin/tauri build --bundles deb,appimage
 
       - name: Verify the launcher is inside the package
         run: |
@@ -117,10 +117,23 @@ jobs:
           dpkg-deb -f "$deb" Package Version Architecture Depends
           file target/release/mappa
 
+      - name: Verify the AppImage is present
+        run: |
+          appimage="$(find target/release/bundle/appimage -name '*.AppImage' -print -quit)"
+          test -n "$appimage"
+          test -x "$appimage"
+          file "$appimage"
+
       - uses: actions/upload-artifact@v4
         with:
           name: mappa-deb-amd64
           path: target/release/bundle/deb/*.deb
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mappa-appimage-amd64
+          path: target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
   arm64:

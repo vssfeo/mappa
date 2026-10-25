@@ -7,6 +7,7 @@ import {
   useState,
   type KeyboardEvent,
 } from 'react'
+import { getVersion } from '@tauri-apps/api/app'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Marker, type Map as MapLibreMap } from 'maplibre-gl'
 import {
@@ -3208,6 +3209,7 @@ function SettingsPanel() {
   const [customProj, setCustomProj] = useState('')
   const [crsBusy, setCrsBusy] = useState(false)
   const [logBusy, setLogBusy] = useState(false)
+  const [appVersion, setAppVersion] = useState('')
   const [cacheBusy, setCacheBusy] = useState(false)
   const mapView = useViewStore((state) => state.mapView)
   const [lon, lat] = mapView.center
@@ -3219,6 +3221,9 @@ function SettingsPanel() {
   useEffect(() => {
     if (!isNative) return
     void crsPresets().then(setPresets)
+    void getVersion()
+      .then(setAppVersion)
+      .catch(() => setAppVersion(''))
   }, [])
 
   useEffect(() => {
@@ -3995,6 +4000,19 @@ function SettingsPanel() {
           )}
           {tx('Открыть папку журнала', 'Open log folder')}
         </button>
+      </section>
+
+      <section className="section">
+        <div className="section-heading">
+          <span>{tx('О программе', 'About')}</span>
+          <span className="mono">{appVersion ? `v${appVersion}` : '—'}</span>
+        </div>
+        <p className="settings-hint">
+          {tx(
+            'Mappa — офлайн-карты, паки и полевая работа. Лицензия Apache-2.0.',
+            'Mappa — offline maps, packs and field work. Apache-2.0 licence.',
+          )}
+        </p>
       </section>
 
       <div className="settings-actions">

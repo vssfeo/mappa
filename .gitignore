@@ -11,3 +11,4 @@
 !.env.example
 /ui/coverage
 /.claude
+/dist/
