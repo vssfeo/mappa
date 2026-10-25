@@ -2,6 +2,7 @@
 
 mod atomic;
 mod commands;
+mod crash;
 mod custom;
 mod dem;
 mod demo;
@@ -66,6 +67,9 @@ pub fn run() {
                 settings.cache_limit_bytes = limit;
             }
             let limit = settings.cache_limit_bytes;
+
+            let data_dir = app.path().app_data_dir()?;
+            crash::install(&data_dir, settings.crash_reports, env!("CARGO_PKG_VERSION"));
 
             let state = Arc::new(AppState::new(
                 cache,
@@ -144,6 +148,11 @@ pub fn run() {
             dem::dem_profile,
             dem::dem_contours,
             demo::demo_pack,
+            crash::crash_list,
+            crash::crash_read,
+            crash::crash_delete,
+            crash::crash_report_js,
+            crash::crash_enabled,
             gnss::start_nmea_tcp,
             gnss::stop_nmea_tcp,
             gnss::start_gpsd_tcp,

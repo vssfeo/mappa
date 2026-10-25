@@ -20,7 +20,7 @@ TCP, gpsd), офлайн- и онлайн-маршруты (OSRM/BRouter, изо
 | Параметр | Значение |
 |---|---|
 | Ветка | `main`, HEAD — коммит «Release 1.0.0», тег `v1.0.0` |
-| Коммитов | 33 (первый — 2026-10-24, «Initial Mappa 1.0 release candidate») |
+| Коммитов | 35 (первый — 2026-10-24, «Initial Mappa 1.0 release candidate») |
 | Рабочее дерево | чистое |
 | `origin` | `/home/captry/Projects AI/git-backups/mappa.git` (локальный bare) |
 | Бэкап | `/home/captry/Projects AI/git-backups/mappa-all-20261025.bundle` |
@@ -65,9 +65,17 @@ GitHub — зеркало, а не единственная копия: кано
   (`SHA256SUMS.asc` проверена). Публичная часть — `docs/keys/mappa-release.asc`.
 - Сборка одной командой: `make release`.
 
+## Диагностика
+
+- Отчёты о падениях opt-in: `src-tauri/src/crash.rs`, настройка
+  `crashReports`, раздел «Отчёты о падениях» в настройках.
+- Замеры: `make startup`, `make startup-cold`, `make leak`.
+- 10-минутный прогон: PSS 300 → 301 МиБ; полный холодный старт и два
+  часа — в чек-листе релиза.
+
 ## Проверено (2026-10-25)
 
-- `make check` — зелёный: fmt, clippy `-D warnings`, 198 Rust-тестов,
+- `make check` — зелёный: fmt, clippy `-D warnings`, 204 Rust-теста,
   113 UI-тестов, unicode-scan, oxlint, production-сборка UI.
 - `make smoke` — SMOKE OK; тур проверяется на первом запуске, после
   перезагрузки не появляется.

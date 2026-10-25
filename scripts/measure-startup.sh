@@ -8,6 +8,7 @@ set -euo pipefail
 
 APP=${1:-target/release/mappa}
 RUNS=${2:-3}
+COLD=${COLD:-0}
 export DISPLAY=${DISPLAY:-:0}
 
 ms() { echo $(( ($(date +%s%N) - $1) / 1000000 )); }
@@ -28,6 +29,14 @@ command -v xwininfo >/dev/null && have_xwininfo=1
 for run in $(seq 1 "$RUNS"); do
   pkill -x "$(basename "$APP")" 2>/dev/null || true
   sleep 0.8
+  if [[ $COLD == 1 ]]; then
+    # Evict the binary from the page cache; shared libraries stay cached,
+    # which is the unprivileged approximation of a cold start.
+    python3 -c 'import os, sys
+fd = os.open(sys.argv[1], os.O_RDONLY)
+os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+os.close(fd)' "$APP"
+  fi
   start=$(date +%s%N)
   env -u WAYLAND_DISPLAY GDK_BACKEND=x11 "$APP" >/tmp/mappa-startup.log 2>&1 &
   pid=$!

@@ -29,6 +29,9 @@ pub struct AppSettings {
     /// already answered by the local gazetteer.
     #[serde(default = "default_geocode_online")]
     pub geocode_online: bool,
+    /// Opt-in: keep local crash reports when the app panics.
+    #[serde(default)]
+    pub crash_reports: bool,
 }
 
 fn default_geocode_online() -> bool {
@@ -41,6 +44,7 @@ impl Default for AppSettings {
             cache_limit_bytes: DEFAULT_CACHE_LIMIT_BYTES,
             proxy: None,
             geocode_online: true,
+            crash_reports: false,
         }
     }
 }
@@ -82,6 +86,7 @@ pub async fn get_settings(state: SharedState<'_>) -> Result<AppSettings, String>
         cache_limit_bytes: state.cache_limit(),
         proxy: state.proxy.read().await.clone(),
         geocode_online: state.geocode_online.load(Ordering::Relaxed),
+        crash_reports: crate::crash::enabled(),
     })
 }
 
@@ -105,6 +110,7 @@ pub async fn update_settings(
     state
         .geocode_online
         .store(settings.geocode_online, Ordering::Relaxed);
+    crate::crash::set_enabled(settings.crash_reports);
 
     let cache = Arc::clone(&state.cache);
     let limit = settings.cache_limit_bytes;
@@ -135,6 +141,7 @@ mod tests {
             cache_limit_bytes: 1,
             proxy: Some("  http://127.0.0.1:3128  ".to_owned()),
             geocode_online: true,
+            crash_reports: false,
         }
         .sanitized();
         assert_eq!(low.cache_limit_bytes, MIN_CACHE_LIMIT_BYTES);
@@ -144,6 +151,7 @@ mod tests {
             cache_limit_bytes: u64::MAX,
             proxy: Some("   ".to_owned()),
             geocode_online: false,
+            crash_reports: false,
         }
         .sanitized();
         assert_eq!(high.cache_limit_bytes, MAX_CACHE_LIMIT_BYTES);
@@ -158,6 +166,7 @@ mod tests {
             cache_limit_bytes: 512 * 1024 * 1024,
             proxy: Some("http://proxy.local:8080".to_owned()),
             geocode_online: false,
+            crash_reports: true,
         }
         .sanitized();
         save(&path, &settings).unwrap();
@@ -165,6 +174,7 @@ mod tests {
         assert_eq!(loaded.cache_limit_bytes, settings.cache_limit_bytes);
         assert_eq!(loaded.proxy, settings.proxy);
         assert!(!loaded.geocode_online);
+        assert!(loaded.crash_reports);
         std::fs::remove_dir_all(&directory).ok();
     }
 

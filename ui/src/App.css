@@ -2481,6 +2481,45 @@ body.is-layer-dragging {
   gap: 4px;
 }
 
+/* ---------- crash reports ---------- */
+
+.crash-list {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.crash-list li {
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.crash-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.crash-meta strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.crash-message {
+  margin: 4px 0 6px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
 /* ---------- onboarding ---------- */
 
 .onboarding-modal {

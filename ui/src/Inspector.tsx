@@ -62,6 +62,7 @@ import {
 } from './customSources'
 import { useCoverageStore } from './coverage'
 import { closeDem, demContours, demProfile, importDem } from './dem'
+import { deleteCrash, listCrashes, readCrash, type CrashReport } from './crash'
 import { formatBytes, formatCount, formatDuration } from './format'
 import {
   distance,
@@ -3203,6 +3204,8 @@ function SettingsPanel() {
   const [limitMb, setLimitMb] = useState(2048)
   const [proxy, setProxy] = useState('')
   const [geocodeOnline, setGeocodeOnline] = useState(true)
+  const [crashReports, setCrashReports] = useState(false)
+  const [crashes, setCrashes] = useState<CrashReport[]>([])
   const [busy, setBusy] = useState(false)
   const [presets, setPresets] = useState<CrsPreset[]>([])
   const [crsChoice, setCrsChoice] = useState('wgs84')
@@ -3241,6 +3244,28 @@ function SettingsPanel() {
     }
     // oxlint-enable react/set-state-in-effect
   }, [crs])
+
+  const copyCrash = async (id: string) => {
+    try {
+      const text = await readCrash(id)
+      await navigator.clipboard.writeText(text)
+      showToast(tx('Отчёт скопирован', 'The report is copied'))
+    } catch (error) {
+      showToast(
+        tx('Не удалось прочитать отчёт: {p0}', 'Could not read the report: {p0}', {
+          p0: String(error),
+        }),
+      )
+    }
+  }
+
+  const removeCrash = async (id: string) => {
+    try {
+      await deleteCrash(id)
+    } finally {
+      setCrashes(await listCrashes())
+    }
+  }
 
   const applyCrs = async () => {
     if (!isNative) return
@@ -3349,6 +3374,8 @@ function SettingsPanel() {
       setLimitMb(Math.round(current.cacheLimitBytes / MIB))
       setProxy(current.proxy ?? '')
       setGeocodeOnline(current.geocodeOnline)
+      setCrashReports(current.crashReports)
+      setCrashes(await listCrashes())
     }
   }, [])
 
@@ -3524,6 +3551,7 @@ function SettingsPanel() {
     cacheLimitBytes: Math.round(limitMb * MIB),
     proxy: proxy.trim() || null,
     geocodeOnline,
+    crashReports,
   }
 
   const save = async () => {
@@ -3540,6 +3568,8 @@ function SettingsPanel() {
       setLimitMb(Math.round(applied.cacheLimitBytes / MIB))
       setProxy(applied.proxy ?? '')
       setGeocodeOnline(applied.geocodeOnline)
+      setCrashReports(applied.crashReports)
+      setCrashes(await listCrashes())
       showToast(tx('Настройки сохранены', 'Settings saved'))
       await refresh()
     } catch (error) {
@@ -3956,6 +3986,64 @@ function SettingsPanel() {
             'Convergence and scale use the nearest UTM zone (the same mathematics as SK-42/MSK). Declination follows WMM2025; for field work verify it against the official bulletin.',
           )}
         </p>
+      </section>
+
+      <section className="section">
+        <div className="section-heading">
+          <span>{tx('Отчёты о падениях', 'Crash reports')}</span>
+          <span className="mono">{crashes.length}</span>
+        </div>
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={crashReports}
+            onChange={(event) => setCrashReports(event.target.checked)}
+          />
+          <span>
+            {tx(
+              'Хранить отчёты о падениях на этом устройстве',
+              'Keep crash reports on this device',
+            )}
+          </span>
+        </label>
+        <p className="settings-hint">
+          {tx(
+            'Ничего не отправляется автоматически: отчёт можно скопировать и приложить к issue.',
+            'Nothing is sent automatically: copy a report and attach it to an issue.',
+          )}
+        </p>
+        {crashReports &&
+          (crashes.length === 0 ? (
+            <p className="settings-hint">{tx('Отчётов нет', 'No reports')}</p>
+          ) : (
+            <ul className="crash-list">
+              {crashes.map((report) => (
+                <li key={report.id}>
+                  <div className="crash-meta">
+                    <strong>{report.kind}</strong>
+                    <span className="mono">{report.at}</span>
+                  </div>
+                  <p className="crash-message">{report.message}</p>
+                  <div className="settings-actions">
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => void copyCrash(report.id)}
+                    >
+                      {tx('Копировать', 'Copy')}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button is-danger"
+                      onClick={() => void removeCrash(report.id)}
+                    >
+                      {tx('Удалить', 'Delete')}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ))}
       </section>
 
       <section className="section">

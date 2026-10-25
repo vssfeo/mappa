@@ -21,6 +21,7 @@ export interface NativeSettings {
   cacheLimitBytes: number
   proxy: string | null
   geocodeOnline: boolean
+  crashReports: boolean
 }
 
 export interface NativeProvider {

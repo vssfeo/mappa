@@ -55,6 +55,7 @@ import { listCustomSources } from './customSources'
 import { transformPoints } from './native'
 import { importPack, openDemoPack, restorePacks } from './packs'
 import { isNative } from './native'
+import { listCrashes } from './crash'
 import { restoreDem } from './dem'
 import {
   newProject,
@@ -183,6 +184,20 @@ function App() {
   }, [locale])
 
   useEffect(() => startAutosave(), [])
+
+  useEffect(() => {
+    if (!isNative) return
+    void listCrashes().then((reports) => {
+      if (reports.length > 0) {
+        showToast(
+          tx(
+            'Есть отчёт о падении: Настройки → Отчёты о падениях',
+            'A crash report is waiting: Settings → Crash reports',
+          ),
+        )
+      }
+    })
+  }, [showToast, tx])
 
   useEffect(() => {
     void useDownloadsStore.getState().init()
