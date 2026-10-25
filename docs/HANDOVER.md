@@ -19,8 +19,8 @@ TCP, gpsd), офлайн- и онлайн-маршруты (OSRM/BRouter, изо
 
 | Параметр | Значение |
 |---|---|
-| Ветка | `main`, HEAD — коммит «Add first-run tour and the demo pack» |
-| Коммитов | 31 (первый — 2026-10-24, «Initial Mappa 1.0 release candidate») |
+| Ветка | `main`, HEAD — коммит «Refresh the competitor analysis and add 1.x tasks» |
+| Коммитов | 32 (первый — 2026-10-24, «Initial Mappa 1.0 release candidate») |
 | Рабочее дерево | чистое |
 | `origin` | `/home/captry/Projects AI/git-backups/mappa.git` (локальный bare) |
 | Бэкап | `/home/captry/Projects AI/git-backups/mappa-all-20261025.bundle` |
@@ -87,6 +87,10 @@ git push -u github main
 - Старт на холодном page cache и двухчасовой прогон на утечки.
 
 ## Предлагаемые следующие шаги
+
+Полный список задач с критериями приёмки и оценкой объёма —
+[ROADMAP.md §17](ROADMAP.md); оценки и позиционирование —
+[COMPETITORS.md §3](COMPETITORS.md).
 
 **P0 — внешний remote.** Подключить GitHub (см. выше), заменить
 `repository` в `Cargo.toml`, прогнать `.github/workflows/ci.yml`
