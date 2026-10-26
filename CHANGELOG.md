@@ -3,6 +3,20 @@
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версии — [SemVer](https://semver.org/lang/ru/).
 
+## [1.18.0] — 2026-10-26
+
+### Добавлено
+
+- Каталог «Готовых слоёв» расширен до 9 проверенных источников:
+  Yandex Map/Satellite, Google Map/Satellite/Hybrid/Terrain,
+  Esri Imagery/Streets/Topo.
+- Выбор слоёв чекбоксами и кнопка «Добавить выбранные: N»; согласие
+  с предупреждением по-прежнему обязательно, офлайн отключён.
+
+### Изменено
+
+- `make check`: 250 Rust-тестов, 131 UI-тест.
+
 ## [1.17.0] — 2026-10-26
 
 ### Добавлено

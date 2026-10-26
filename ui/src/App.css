@@ -3851,3 +3851,20 @@ body.is-layer-dragging {
   gap: 6px;
   flex-wrap: wrap;
 }
+
+.preset-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 16px;
+  margin: 8px 0 12px;
+}
+
+.preset-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}

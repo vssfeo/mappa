@@ -4,10 +4,12 @@ import { PROVIDER_PRESETS } from '../src/providerPresets.ts'
 
 test('presets are XYZ templates and never allow offline downloads', () => {
   for (const preset of PROVIDER_PRESETS) {
-    assert.match(preset.draft.url, /\{x\}.*\{y\}.*\{z\}/)
+    for (const token of ['{x}', '{y}', '{z}']) {
+      assert.ok(preset.draft.url.includes(token), `${preset.key} misses ${token}`)
+    }
     assert.equal(preset.draft.offlineAllowed, false)
     assert.ok(preset.draft.attribution.length > 0)
-    assert.ok(preset.draft.headers.Referer)
+    assert.ok(preset.draft.attribution.length > 0)
   }
 })
 

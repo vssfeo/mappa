@@ -60,7 +60,7 @@ import {
   type CustomSource,
   type CustomSourceDraft,
 } from './customSources'
-import { PROVIDER_PRESETS, type ProviderPreset } from './providerPresets'
+import { PROVIDER_PRESETS } from './providerPresets'
 import { useCoverageStore } from './coverage'
 import { closeDem, demContours, demProfile, importDem } from './dem'
 import { deleteCrash, listCrashes, readCrash, type CrashReport } from './crash'
@@ -4235,6 +4235,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const [presetOpen, setPresetOpen] = useState(false)
   const [presetAccepted, setPresetAccepted] = useState(false)
   const [presetBusy, setPresetBusy] = useState<string | null>(null)
+  const [presetSelected, setPresetSelected] = useState<Set<string>>(new Set())
   const [sourceBusy, setSourceBusy] = useState(false)
   const [sourceError, setSourceError] = useState<string | null>(null)
   const [sourceDraft, setSourceDraft] = useState<CustomSourceDraft>({
@@ -4577,15 +4578,33 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
     setSourceForm(true)
   }
 
-  const addPreset = async (preset: ProviderPreset) => {
-    setPresetBusy(preset.key)
+  const togglePreset = (key: string) => {
+    setPresetSelected((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const addSelectedPresets = async () => {
+    const picked = PROVIDER_PRESETS.filter((preset) =>
+      presetSelected.has(preset.key),
+    )
+    if (picked.length === 0) return
+    setPresetBusy('all')
     setSourceError(null)
     try {
-      await saveCustomSource({ ...preset.draft })
+      for (const preset of picked) {
+        await saveCustomSource({ ...preset.draft })
+      }
       setCustomSources(await listCustomSources())
       showToast(
-        tx('Слой добавлен: {p0}', 'Layer added: {p0}', { p0: preset.name }),
+        tx('Добавлено слоёв: {p0}', 'Layers added: {p0}', {
+          p0: picked.length,
+        }),
       )
+      setPresetSelected(new Set())
       setPresetOpen(false)
       setPresetAccepted(false)
     } catch (error) {
@@ -5143,23 +5162,48 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                     'I understand and take responsibility',
                   )}
                 </label>
+                <div className="preset-groups">
+                  {[...new Set(PROVIDER_PRESETS.map((preset) => preset.group))].map(
+                    (group) => (
+                      <div key={group} className="preset-group">
+                        <span className="muted">{group}</span>
+                        {PROVIDER_PRESETS.filter(
+                          (preset) => preset.group === group,
+                        ).map((preset) => (
+                          <label key={preset.key} className="source-check">
+                            <input
+                              type="checkbox"
+                              checked={presetSelected.has(preset.key)}
+                              disabled={!presetAccepted}
+                              onChange={() => togglePreset(preset.key)}
+                            />
+                            {preset.name}
+                          </label>
+                        ))}
+                      </div>
+                    ),
+                  )}
+                </div>
                 <div className="marker-actions">
-                  {PROVIDER_PRESETS.map((preset) => (
-                    <button
-                      key={preset.key}
-                      type="button"
-                      className="secondary-button"
-                      disabled={!presetAccepted || presetBusy !== null}
-                      onClick={() => void addPreset(preset)}
-                    >
-                      {presetBusy === preset.key ? (
-                        <Loader2 size={14} className="spin" />
-                      ) : (
-                        <Layers3 size={14} />
-                      )}
-                      {preset.name}
-                    </button>
-                  ))}
+                  <button
+                    type="button"
+                    className="primary-button"
+                    disabled={
+                      !presetAccepted ||
+                      presetSelected.size === 0 ||
+                      presetBusy !== null
+                    }
+                    onClick={() => void addSelectedPresets()}
+                  >
+                    {presetBusy !== null ? (
+                      <Loader2 size={14} className="spin" />
+                    ) : (
+                      <Layers3 size={14} />
+                    )}
+                    {tx('Добавить выбранные: {p0}', 'Add selected: {p0}', {
+                      p0: presetSelected.size,
+                    })}
+                  </button>
                   <button
                     type="button"
                     className="ghost-button"
