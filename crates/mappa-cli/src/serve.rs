@@ -1,5 +1,6 @@
 //! Local tile server and read-only REST API for the shared cache and packs.
 
+use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::net::{IpAddr, UdpSocket};
 use std::path::PathBuf;
@@ -9,7 +10,7 @@ use std::time::Instant;
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use mappa_core::{Bbox, ProviderCatalog};
-use mappa_storage::{DownloadStore, Mbtiles, PmtilesPack, SqliteCache, TileKey};
+use mappa_storage::{DownloadStore, JobStatus, Mbtiles, NewJob, PmtilesPack, SqliteCache, TileKey};
 
 use crate::sync::{self, SaveOutcome};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -49,6 +50,9 @@ pub struct ServeArgs {
     /// Каталог для синхронизированных проектов; по умолчанию рядом с кэшем.
     #[arg(long)]
     pub sync_dir: Option<PathBuf>,
+    /// Не запускать фоновый воркер заданий (только ставить в очередь).
+    #[arg(long)]
+    pub no_worker: bool,
     /// Каталог для GPX-треков с телефона; по умолчанию рядом с кэшем.
     #[arg(long)]
     pub tracks_dir: Option<PathBuf>,
@@ -68,6 +72,8 @@ struct ServeState {
     catalog: Arc<ProviderCatalog>,
     packs: Vec<Arc<ServePack>>,
     queue: Option<Arc<DownloadStore>>,
+    cache_path: PathBuf,
+    idempotency: Mutex<HashMap<String, String>>,
     token: Option<String>,
     started: Instant,
     base_url: String,
@@ -102,6 +108,7 @@ enum Route {
     Providers,
     Packs,
     Jobs,
+    Job(String),
     Mobile,
     MobileJs,
     MobileCss,
@@ -259,6 +266,8 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         catalog,
         packs,
         queue,
+        cache_path: cache_file.clone(),
+        idempotency: Mutex::new(HashMap::new()),
         token,
         started: Instant::now(),
         base_url,
@@ -330,6 +339,9 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         println!("  QR:    LAN-адрес не найден; подключение по QR недоступно");
     }
 
+    if !args.no_worker && state.queue.is_some() {
+        tokio::spawn(job_worker(Arc::clone(&state)));
+    }
     let connections = Arc::new(Semaphore::new(64));
     loop {
         let (stream, _peer) = listener.accept().await?;
@@ -544,7 +556,7 @@ async fn handle_request_with_body(
     let allowed = match method {
         "GET" | "HEAD" => true,
         "PUT" => matches!(route, Route::SyncProject(_)),
-        "POST" => matches!(route, Route::Track),
+        "POST" => matches!(route, Route::Track | Route::Jobs),
         _ => false,
     };
     if !allowed {
@@ -572,7 +584,21 @@ async fn handle_request_with_body(
         },
         Route::Providers => Response::json(200, providers_json(state)),
         Route::Packs => Response::json(200, packs_json(state)),
-        Route::Jobs => Response::json(200, jobs_json(state)),
+        Route::Jobs => {
+            if method == "POST" {
+                job_post(state, headers, body)
+            } else {
+                Response::json(200, jobs_json(state))
+            }
+        }
+        Route::Job(id) => match state
+            .queue
+            .as_ref()
+            .and_then(|queue| queue.get(&id).ok().flatten())
+        {
+            Some(job) => Response::json(200, serde_json::to_string(&job).unwrap_or_default()),
+            None => Response::json(404, "{\"error\":\"job not found\"}".to_owned()),
+        },
         Route::Mobile => Response::html(mobile_html(state)),
         Route::MobileJs => Response::asset("text/javascript; charset=utf-8", LEAFLET_JS.to_vec()),
         Route::MobileCss => Response::asset("text/css; charset=utf-8", LEAFLET_CSS.to_vec()),
@@ -678,6 +704,7 @@ fn route(target: &str) -> Route {
         ["api", "providers"] => Route::Providers,
         ["api", "packs"] => Route::Packs,
         ["api", "jobs"] => Route::Jobs,
+        ["api", "jobs", id] => Route::Job((*id).to_owned()),
         ["m"] => Route::Mobile,
         ["m", "leaflet.js"] => Route::MobileJs,
         ["m", "leaflet.css"] => Route::MobileCss,
@@ -1139,6 +1166,8 @@ mod tests {
             catalog: Arc::new(ProviderCatalog::builtin().unwrap()),
             packs: Vec::new(),
             queue: None,
+            cache_path: std::env::temp_dir().join("mappa-serve-cache.sqlite3"),
+            idempotency: Mutex::new(HashMap::new()),
             token: None,
             started: Instant::now(),
             base_url: "http://127.0.0.1:8080".to_owned(),
@@ -1273,6 +1302,8 @@ mod sync_tests {
             catalog: Arc::new(ProviderCatalog::builtin().unwrap()),
             packs: Vec::new(),
             queue: None,
+            cache_path: std::env::temp_dir().join("mappa-serve-cache.sqlite3"),
+            idempotency: Mutex::new(HashMap::new()),
             token: None,
             started: Instant::now(),
             base_url: "http://127.0.0.1:8080".to_owned(),
@@ -1587,4 +1618,263 @@ fn mobile_html(state: &ServeState) -> String {
 </html>
 "##
     )
+}
+
+fn job_post(state: &ServeState, headers: &[(String, String)], body: &[u8]) -> Response {
+    let Some(queue) = state.queue.as_ref() else {
+        return Response::json(
+            503,
+            "{\"error\":\"download queue is unavailable\"}".to_owned(),
+        );
+    };
+    let value: serde_json::Value = match serde_json::from_slice(body) {
+        Ok(value) => value,
+        Err(error) => {
+            return Response::json(
+                400,
+                format!("{{\"error\":\"{}\"}}", json_escape(&error.to_string())),
+            );
+        }
+    };
+    let provider = value
+        .get("provider")
+        .and_then(|item| item.as_str())
+        .unwrap_or_default()
+        .to_owned();
+    let name = value
+        .get("name")
+        .and_then(|item| item.as_str())
+        .unwrap_or("download")
+        .to_owned();
+    let bbox: Vec<f64> = value
+        .get("bbox")
+        .and_then(|item| item.as_array())
+        .map(|items| items.iter().filter_map(|item| item.as_f64()).collect())
+        .unwrap_or_default();
+    let min_zoom = value
+        .get("minZoom")
+        .and_then(|item| item.as_u64())
+        .unwrap_or(0) as u8;
+    let max_zoom = value
+        .get("maxZoom")
+        .and_then(|item| item.as_u64())
+        .unwrap_or(min_zoom as u64) as u8;
+    if provider.is_empty() || bbox.len() != 4 {
+        return Response::json(
+            400,
+            "{\"error\":\"provider and bbox [west,south,east,north] are required\"}".to_owned(),
+        );
+    }
+    let polygon = value
+        .get("polygon")
+        .and_then(|item| item.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|point| {
+                    let pair = point.as_array()?;
+                    Some([pair.first()?.as_f64()?, pair.get(1)?.as_f64()?])
+                })
+                .collect::<Vec<[f64; 2]>>()
+        });
+    let source_ids = value
+        .get("sourceIds")
+        .and_then(|item| item.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(ToOwned::to_owned))
+                .collect::<Vec<String>>()
+        })
+        .unwrap_or_default();
+    let key = headers
+        .iter()
+        .find(|(name, _)| name == "idempotency-key")
+        .map(|(_, value)| value.clone())
+        .or_else(|| {
+            value
+                .get("idempotencyKey")
+                .and_then(|item| item.as_str())
+                .map(ToOwned::to_owned)
+        });
+    if let Some(key) = &key
+        && let Ok(map) = state.idempotency.lock()
+        && let Some(existing) = map.get(key)
+        && let Ok(Some(job)) = queue.get(existing)
+    {
+        return Response::json(200, serde_json::to_string(&job).unwrap_or_default());
+    }
+    let new_job = NewJob {
+        name,
+        provider_id: provider,
+        west: bbox[0],
+        south: bbox[1],
+        east: bbox[2],
+        north: bbox[3],
+        min_zoom,
+        max_zoom,
+        polygon,
+        source_ids,
+    };
+    match queue.create(new_job) {
+        Ok(job) => {
+            if let (Some(key), Ok(mut map)) = (key, state.idempotency.lock()) {
+                map.insert(key, job.id.clone());
+            }
+            Response::json(202, serde_json::to_string(&job).unwrap_or_default())
+        }
+        Err(error) => Response::json(
+            400,
+            format!("{{\"error\":\"{}\"}}", json_escape(&error.to_string())),
+        ),
+    }
+}
+
+async fn job_worker(state: Arc<ServeState>) {
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let Some(queue) = state.queue.as_ref() else {
+            continue;
+        };
+        let Ok(jobs) = queue.list() else {
+            continue;
+        };
+        let Some(job) = jobs.into_iter().find(|job| job.status == JobStatus::Queued) else {
+            continue;
+        };
+        if !queue.set_running_if_queued(&job.id).unwrap_or(false) {
+            continue;
+        }
+        let args = crate::DownloadArgs {
+            provider: job.provider_id.clone(),
+            bbox: format!("{},{},{},{}", job.west, job.south, job.east, job.north),
+            zoom: format!("{}-{}", job.min_zoom, job.max_zoom),
+            cache: Some(state.cache_path.clone()),
+            providers_dir: None,
+            max_tiles: 2_000_000,
+            limit_mb: 2048,
+            dry_run: false,
+        };
+        match crate::run_download(&args, true).await {
+            Ok(report) => {
+                let _ = queue.update_progress(
+                    &job.id,
+                    job.total_tiles,
+                    report.failed,
+                    report.bytes,
+                    job.total_tiles,
+                );
+                let _ = queue.set_status_if_running(&job.id, JobStatus::Completed, None);
+            }
+            Err(error) => {
+                let _ = queue.set_status_if_running(
+                    &job.id,
+                    JobStatus::Failed,
+                    Some(&error.to_string()),
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod mobile_tests {
+    use super::*;
+
+    fn state(tag: &str) -> ServeState {
+        let dir = std::env::temp_dir().join(format!(
+            "mappa-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        ServeState {
+            cache: Arc::new(SqliteCache::open_in_memory().unwrap()),
+            catalog: Arc::new(ProviderCatalog::builtin().unwrap()),
+            packs: Vec::new(),
+            queue: None,
+            cache_path: dir.join("cache.sqlite3"),
+            idempotency: Mutex::new(HashMap::new()),
+            token: None,
+            started: Instant::now(),
+            base_url: "http://127.0.0.1:8080".to_owned(),
+            sync_dir: dir.clone(),
+            tracks_dir: dir,
+        }
+    }
+
+    #[tokio::test]
+    async fn track_upload_writes_gpx() {
+        let state = state("track");
+        let body = serde_json::json!({
+            "name": "Phone track",
+            "points": [
+                {"lat": 53.1, "lon": -9.6, "alt": 12.0},
+                {"lat": 53.2, "lon": -9.7}
+            ]
+        })
+        .to_string();
+        let response =
+            handle_request_with_body(&state, "POST", "/api/track", &[], body.as_bytes()).await;
+        assert_eq!(response.status, 200);
+        let gpx = std::fs::read_dir(&state.tracks_dir)
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.path())
+            .find(|path| path.extension().and_then(|value| value.to_str()) == Some("gpx"))
+            .expect("gpx file");
+        let text = std::fs::read_to_string(gpx).unwrap();
+        assert!(text.contains("<trkpt lat=\"53.1000000\" lon=\"-9.6000000\">"));
+        let _ = std::fs::remove_dir_all(&state.tracks_dir);
+    }
+
+    #[tokio::test]
+    async fn mobile_page_is_html_and_track_needs_post() {
+        let state = state("mobile");
+        let page = handle_request(&state, "GET", "/m", &[]).await;
+        assert_eq!(page.status, 200);
+        assert!(page.content_type.starts_with("text/html"));
+        let html = String::from_utf8_lossy(&page.body);
+        assert!(html.contains("Mappa track"));
+        assert!(html.contains("leaflet.js"));
+        assert!(html.contains("window.MAPPA_PACKS"));
+        let wrong = handle_request(&state, "PUT", "/api/track", &[]).await;
+        assert_eq!(wrong.status, 405);
+        let script = handle_request(&state, "GET", "/m/leaflet.js", &[]).await;
+        assert_eq!(script.status, 200);
+        assert!(script.content_type.starts_with("text/javascript"));
+        let style = handle_request(&state, "GET", "/m/leaflet.css", &[]).await;
+        assert_eq!(style.status, 200);
+    }
+
+    #[tokio::test]
+    async fn post_job_is_idempotent_and_readable() {
+        let mut state = state("jobs");
+        state.queue = Some(Arc::new(DownloadStore::open_in_memory().unwrap()));
+        let body = serde_json::json!({
+            "provider": "usgs",
+            "bbox": [-9.8, 52.9, -9.4, 53.3],
+            "minZoom": 10,
+            "maxZoom": 11,
+            "name": "Aran"
+        })
+        .to_string();
+        let headers = vec![("idempotency-key".to_owned(), "abc".to_owned())];
+        let first =
+            handle_request_with_body(&state, "POST", "/api/jobs", &headers, body.as_bytes()).await;
+        assert_eq!(first.status, 202);
+        let job: serde_json::Value = serde_json::from_slice(&first.body).unwrap();
+        let id = job["id"].as_str().unwrap().to_owned();
+        let second =
+            handle_request_with_body(&state, "POST", "/api/jobs", &headers, body.as_bytes()).await;
+        assert_eq!(second.status, 200);
+        let again: serde_json::Value = serde_json::from_slice(&second.body).unwrap();
+        assert_eq!(again["id"].as_str().unwrap(), id);
+        let read = handle_request(&state, "GET", &format!("/api/jobs/{id}"), &[]).await;
+        assert_eq!(read.status, 200);
+        let invalid = handle_request_with_body(&state, "POST", "/api/jobs", &[], b"{}").await;
+        assert_eq!(invalid.status, 400);
+    }
 }

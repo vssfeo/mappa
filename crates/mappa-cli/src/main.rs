@@ -1,6 +1,7 @@
 //! `mappa-cli`: download, pack and inspect the same cache as the desktop app.
 
 mod batch;
+mod mcp;
 mod qr;
 mod sas;
 mod serve;
@@ -56,6 +57,8 @@ enum Command {
     Serve(serve::ServeArgs),
     /// Импортировать кэш SAS.Planet в MBTiles.
     ImportSas(sas::SasArgs),
+    /// Запустить MCP-сервер (JSON-RPC по stdio).
+    Mcp,
 }
 
 #[derive(Debug, Args)]
@@ -156,6 +159,12 @@ async fn main() -> Result<()> {
             serve::run(args).await
         }
         Command::ImportSas(args) => sas::run(args, json),
+        Command::Mcp => {
+            if json {
+                bail!("--json не поддерживается командой mcp");
+            }
+            mcp::run().await
+        }
     }
 }
 

@@ -3,6 +3,20 @@
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версии — [SemVer](https://semver.org/lang/ru/).
 
+## [1.10.0] — 2026-10-26
+
+### Добавлено
+
+- `POST /api/jobs` с идемпотентностью и `GET /api/jobs/{id}`;
+  фоновый воркер `mappa serve` выполняет задания из очереди.
+- MCP-сервер `mappa-cli mcp`: `list_providers`, `download`, `pack`,
+  `import_sas` через JSON-RPC по stdio.
+- `docs/MCP.md`.
+
+### Изменено
+
+- `make check`: 245 Rust-тестов, 129 UI-тестов.
+
 ## [1.9.0] — 2026-10-26
 
 ### Добавлено
