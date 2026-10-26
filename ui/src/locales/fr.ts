@@ -153,6 +153,7 @@ export const fr: Record<string, string> = {
   'Tour': 'Visite',
   'TPS (3+ points)': 'TPS (3+ points)',
   'Track added: {p0} points': 'Trace ajoutée : {p0} points',
+  'Track from the phone: {p0}': 'Trace reçue du téléphone : {p0}',
   'Track on the map': 'Trace sur la carte',
   'Track points': 'Points de trace',
   'Track saved: {p0}': 'Trace enregistrée : {p0}',

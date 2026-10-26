@@ -65,6 +65,10 @@ const parseGpxFeatures = (text: string): FeatureImport => {
   return { features, skipped: skipped + parsed.skipped }
 }
 
+/** Parses GPX text into map features (used by the track inbox). */
+export const parseTracksFromGpx = (text: string): FeatureImport =>
+  parseGpxFeatures(text)
+
 export async function importFeatureFile(): Promise<FeatureImport | null> {
   requireNative()
   const selected = await open({

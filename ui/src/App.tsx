@@ -50,6 +50,8 @@ import { LosPanel } from './LosPanel'
 import { MissionPanel } from './MissionPanel'
 import { TelemetryPanel } from './TelemetryPanel'
 import { AlmanacPanel } from './AlmanacPanel'
+import { listTracks } from './tracks'
+import { parseTracksFromGpx } from './featureTransfer'
 import { SyncPanel } from './SyncPanel'
 import { Rail } from './Rail'
 import { Shortcuts } from './Shortcuts'
@@ -60,7 +62,7 @@ import type { Command } from './commands'
 import { listCustomSources } from './customSources'
 import { transformPoints } from './native'
 import { importPack, openDemoPack, restorePacks } from './packs'
-import { isNative } from './native'
+import { isNative, readTextFile } from './native'
 import { listCrashes } from './crash'
 import { restoreDem } from './dem'
 import {
@@ -196,6 +198,47 @@ function App() {
   }, [locale])
 
   useEffect(() => startAutosave(), [])
+
+  useEffect(() => {
+    if (!isNative) return
+    let alive = true
+    const key = 'mappa-imported-tracks'
+    const imported = (() => {
+      try {
+        return new Set<string>(JSON.parse(localStorage.getItem(key) ?? '[]'))
+      } catch {
+        return new Set<string>()
+      }
+    })()
+    const scan = async () => {
+      const files = await listTracks()
+      const weekAgo = Date.now() / 1000 - 7 * 86_400
+      for (const file of files) {
+        if (!alive || imported.has(file.path) || file.modified < weekAgo) continue
+        imported.add(file.path)
+        try {
+          const parsed = parseTracksFromGpx(await readTextFile(file.path))
+          if (parsed.features.length === 0) continue
+          useAppStore.getState().addFeatures(parsed.features)
+          showToast(
+            tx('Трек с телефона: {p0}', 'Track from the phone: {p0}', {
+              p0: parsed.features[0]?.name ?? file.name,
+            }),
+          )
+        } catch {
+          // A partially written GPX is retried on the next scan only when
+          // the path changes; ignore corrupt files.
+        }
+      }
+      localStorage.setItem(key, JSON.stringify([...imported].slice(-500)))
+    }
+    void scan()
+    const timer = setInterval(() => void scan(), 5000)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [showToast, tx])
 
   useEffect(() => {
     if (!isNative) return

@@ -22,6 +22,7 @@ mod settings;
 mod state;
 mod telemetry;
 mod tiles;
+mod tracks;
 mod viewshed;
 mod wmts;
 mod xyz;
@@ -166,6 +167,7 @@ pub fn run() {
             telemetry::mavlink_status,
             telemetry::mavlink_track,
             telemetry::mavlink_clear,
+            tracks::list_tracks,
             gnss::start_nmea_tcp,
             gnss::stop_nmea_tcp,
             gnss::start_gpsd_tcp,
