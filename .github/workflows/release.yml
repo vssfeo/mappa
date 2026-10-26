@@ -18,7 +18,7 @@ jobs:
     env:
       MAPPA_GPG_PRIVATE_KEY: ${{ secrets.MAPPA_GPG_PRIVATE_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Tauri and WebKitGTK dependencies
         run: |
@@ -35,7 +35,7 @@ jobs:
         with:
           workspaces: ". -> target"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm

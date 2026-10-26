@@ -123,7 +123,13 @@ pub fn list(dir: &Path) -> io::Result<Vec<SyncEnvelope>> {
             items.push(envelope);
         }
     }
-    items.sort_by_key(|item| std::cmp::Reverse(item.updated_at));
+    items.sort_by(|left, right| {
+        right
+            .updated_at
+            .cmp(&left.updated_at)
+            .then_with(|| right.saved_at.cmp(&left.saved_at))
+            .then_with(|| left.name.cmp(&right.name))
+    });
     Ok(items)
 }
 
