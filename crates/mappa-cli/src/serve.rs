@@ -109,6 +109,7 @@ enum Route {
     Packs,
     Jobs,
     Job(String),
+    PackJob,
     Mobile,
     MobileJs,
     MobileCss,
@@ -556,7 +557,7 @@ async fn handle_request_with_body(
     let allowed = match method {
         "GET" | "HEAD" => true,
         "PUT" => matches!(route, Route::SyncProject(_)),
-        "POST" => matches!(route, Route::Track | Route::Jobs),
+        "POST" => matches!(route, Route::Track | Route::Jobs | Route::PackJob),
         _ => false,
     };
     if !allowed {
@@ -603,6 +604,7 @@ async fn handle_request_with_body(
         Route::MobileJs => Response::asset("text/javascript; charset=utf-8", LEAFLET_JS.to_vec()),
         Route::MobileCss => Response::asset("text/css; charset=utf-8", LEAFLET_CSS.to_vec()),
         Route::Track => track_post(state, body),
+        Route::PackJob => pack_post(state, body),
         Route::SyncList => Response::json(200, sync_list_json(state)),
         Route::SyncProject(name) => {
             if method == "PUT" {
@@ -709,6 +711,7 @@ fn route(target: &str) -> Route {
         ["m", "leaflet.js"] => Route::MobileJs,
         ["m", "leaflet.css"] => Route::MobileCss,
         ["api", "track"] => Route::Track,
+        ["api", "pack"] => Route::PackJob,
         ["api", "sync"] => Route::SyncList,
         ["api", "sync", name] => Route::SyncProject(percent_decode(name)),
         ["style", name] => match name.strip_suffix(".json") {
@@ -1183,6 +1186,7 @@ mod tests {
         assert_eq!(route("/api/sync"), Route::SyncList);
         assert_eq!(route("/m"), Route::Mobile);
         assert_eq!(route("/api/track"), Route::Track);
+        assert_eq!(route("/api/pack"), Route::PackJob);
         assert_eq!(
             route("/api/sync/team"),
             Route::SyncProject("team".to_owned())
@@ -1459,6 +1463,7 @@ fn mobile_html(state: &ServeState) -> String {
   .ok {{ color:var(--ok); }}
   input {{ width:100%; min-height:44px; margin-top:6px; padding:10px 12px; border-radius:10px; border:1px solid #263241; background:#0f151c; color:var(--text); font:inherit; }}
   #status {{ margin-top:10px; font-size:14px; }}
+  #pack {{ width:100%; min-height:44px; margin-bottom:12px; padding:8px 12px; border-radius:10px; border:1px solid #263241; background:#0f151c; color:var(--text); font:inherit; }}
   .leaflet-container {{ background:#0f151c; font:inherit; }}
   .leaflet-control-attribution {{ background:rgba(10,14,20,.8); color:#9aa7b8; }}
   .leaflet-control-attribution a {{ color:#9aa7b8; }}
@@ -1476,6 +1481,7 @@ fn mobile_html(state: &ServeState) -> String {
 
   <div id="map"></div>
   <div id="nomap" hidden>No pack is served. Start the server with <code>--pack region.mbtiles</code> to see the map.</div>
+  <select id="pack" hidden aria-label="Pack"></select>
 
   <div class="card">
     <div class="readout" id="distance">0 m</div>
@@ -1514,20 +1520,34 @@ fn mobile_html(state: &ServeState) -> String {
   if (!window.isSecureContext) $('insecure').hidden = false;
 
   if (packs.length) {{
-    var pack = packs[0];
-    var southWest = [pack.bounds[1], pack.bounds[0]];
-    var northEast = [pack.bounds[3], pack.bounds[2]];
+    var select = $('pack');
+    packs.forEach(function (item, index) {{
+      var option = document.createElement('option');
+      option.value = String(index);
+      option.textContent = item.name;
+      select.appendChild(option);
+    }});
+    select.hidden = packs.length < 2;
     map = L.map('map', {{ zoomControl: true }});
-    map.fitBounds([southWest, northEast]);
-    var suffix = token ? '?token=' + encodeURIComponent(token) : '';
-    L.tileLayer('/packs/' + encodeURIComponent(pack.id) + '/{{z}}/{{x}}/{{y}}' + suffix, {{
-      minZoom: pack.minZoom,
-      maxZoom: pack.maxZoom,
-      bounds: [southWest, northEast],
-      attribution: 'Mappa pack'
-    }}).addTo(map);
     line = L.polyline([], {{ color: '#ff7a45', weight: 4 }}).addTo(map);
-    $('packname').textContent = 'Pack: ' + pack.name + ' — record and send.';
+    var layer = null;
+    var showPack = function (index) {{
+      var pack = packs[index] || packs[0];
+      var southWest = [pack.bounds[1], pack.bounds[0]];
+      var northEast = [pack.bounds[3], pack.bounds[2]];
+      if (layer) map.removeLayer(layer);
+      var suffix = token ? '?token=' + encodeURIComponent(token) : '';
+      layer = L.tileLayer('/packs/' + encodeURIComponent(pack.id) + '/{{z}}/{{x}}/{{y}}' + suffix, {{
+        minZoom: pack.minZoom,
+        maxZoom: pack.maxZoom,
+        bounds: [southWest, northEast],
+        attribution: 'Mappa pack'
+      }}).addTo(map);
+      map.fitBounds([southWest, northEast]);
+      $('packname').textContent = 'Pack: ' + pack.name + ' — record and send.';
+    }};
+    select.addEventListener('change', function () {{ showPack(Number(select.value)); }});
+    showPack(0);
   }} else {{
     $('nomap').hidden = false;
     $('map').hidden = true;
@@ -1840,6 +1860,7 @@ mod mobile_tests {
         assert!(html.contains("Mappa track"));
         assert!(html.contains("leaflet.js"));
         assert!(html.contains("window.MAPPA_PACKS"));
+        assert!(html.contains("id=\"pack\""));
         let wrong = handle_request(&state, "PUT", "/api/track", &[]).await;
         assert_eq!(wrong.status, 405);
         let script = handle_request(&state, "GET", "/m/leaflet.js", &[]).await;
@@ -1876,5 +1897,62 @@ mod mobile_tests {
         assert_eq!(read.status, 200);
         let invalid = handle_request_with_body(&state, "POST", "/api/jobs", &[], b"{}").await;
         assert_eq!(invalid.status, 400);
+    }
+}
+
+fn pack_post(state: &ServeState, body: &[u8]) -> Response {
+    let value: serde_json::Value = match serde_json::from_slice(body) {
+        Ok(value) => value,
+        Err(error) => {
+            return Response::json(
+                400,
+                format!("{{\"error\":\"{}\"}}", json_escape(&error.to_string())),
+            );
+        }
+    };
+    let provider = value
+        .get("provider")
+        .and_then(|item| item.as_str())
+        .unwrap_or_default();
+    let bbox = value
+        .get("bbox")
+        .and_then(|item| item.as_str())
+        .unwrap_or_default();
+    let zoom = value
+        .get("zoom")
+        .and_then(|item| item.as_str())
+        .unwrap_or_default();
+    let output = value
+        .get("output")
+        .and_then(|item| item.as_str())
+        .unwrap_or_default();
+    if provider.is_empty() || bbox.is_empty() || zoom.is_empty() || output.is_empty() {
+        return Response::json(
+            400,
+            "{\"error\":\"provider, bbox, zoom and output are required\"}".to_owned(),
+        );
+    }
+    let request = crate::PackArgs {
+        provider: provider.to_owned(),
+        bbox: bbox.to_owned(),
+        zoom: zoom.to_owned(),
+        output: std::path::PathBuf::from(output),
+        name: value
+            .get("name")
+            .and_then(|item| item.as_str())
+            .map(ToOwned::to_owned),
+        license: value
+            .get("license")
+            .and_then(|item| item.as_str())
+            .map(ToOwned::to_owned),
+        cache: Some(state.cache_path.clone()),
+        providers_dir: None,
+    };
+    match crate::run_pack(&request, true) {
+        Ok(report) => Response::json(200, serde_json::to_string(&report).unwrap_or_default()),
+        Err(error) => Response::json(
+            400,
+            format!("{{\"error\":\"{}\"}}", json_escape(&error.to_string())),
+        ),
     }
 }
