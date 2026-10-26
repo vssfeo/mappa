@@ -114,3 +114,38 @@ jobs:
           if [ -f dist/release/SHA256SUMS.asc ]; then
             gh release upload "$GITHUB_REF_NAME" dist/release/SHA256SUMS.asc
           fi
+
+  windows:
+    needs: release
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Install UI dependencies
+        run: npm ci --prefix ui
+
+      - name: Build the installer
+        run: ./ui/node_modules/.bin/tauri build --bundles nsis
+
+      - name: Publish the installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $installer = Get-ChildItem target/release/bundle/nsis/*.exe | Select-Object -First 1
+          $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($installer.Name)" | Set-Content SHA256SUMS-windows.txt
+          gh release upload "$env:GITHUB_REF_NAME" $installer.FullName SHA256SUMS-windows.txt --clobber

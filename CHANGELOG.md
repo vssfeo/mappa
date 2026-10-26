@@ -3,6 +3,20 @@
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версии — [SemVer](https://semver.org/lang/ru/).
 
+## [1.19.0] — 2026-10-26
+
+### Добавлено
+
+- Windows-бета: NSIS-установщик, `SetThreadExecutionState` для полевого
+  режима, `explorer` для папки логов, кэш CLI в `%LOCALAPPDATA%`.
+- CI job `windows`: check, тесты CLI, сборка установщика, установка и
+  smoke-запуск с WebView2; релизный job прикладывает `.exe` к релизу.
+- `docs/WINDOWS.md`.
+
+### Изменено
+
+- `make check`: 250 Rust-тестов, 131 UI-тест.
+
 ## [1.18.0] — 2026-10-26
 
 ### Добавлено
