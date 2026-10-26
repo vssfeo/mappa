@@ -50,9 +50,10 @@ import { LosPanel } from './LosPanel'
 import { MissionPanel } from './MissionPanel'
 import { TelemetryPanel } from './TelemetryPanel'
 import { AlmanacPanel } from './AlmanacPanel'
-import { listTracks } from './tracks'
+import { importedTracks, listTracks, markTrackImported } from './tracks'
 import { parseTracksFromGpx } from './featureTransfer'
 import { SyncPanel } from './SyncPanel'
+import { TracksPanel } from './TracksPanel'
 import { Rail } from './Rail'
 import { Shortcuts } from './Shortcuts'
 import { StatusBar } from './StatusBar'
@@ -186,6 +187,7 @@ function App() {
   const [telemetryOpen, setTelemetryOpen] = useState(false)
   const [almanacOpen, setAlmanacOpen] = useState(false)
   const [syncOpen, setSyncOpen] = useState(false)
+  const [tracksOpen, setTracksOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
 
   useEffect(() => {
@@ -202,20 +204,12 @@ function App() {
   useEffect(() => {
     if (!isNative) return
     let alive = true
-    const key = 'mappa-imported-tracks'
-    const imported = (() => {
-      try {
-        return new Set<string>(JSON.parse(localStorage.getItem(key) ?? '[]'))
-      } catch {
-        return new Set<string>()
-      }
-    })()
     const scan = async () => {
       const files = await listTracks()
       const weekAgo = Date.now() / 1000 - 7 * 86_400
       for (const file of files) {
-        if (!alive || imported.has(file.path) || file.modified < weekAgo) continue
-        imported.add(file.path)
+        if (!alive || importedTracks().has(file.path) || file.modified < weekAgo) continue
+        markTrackImported(file.path)
         try {
           const parsed = parseTracksFromGpx(await readTextFile(file.path))
           if (parsed.features.length === 0) continue
@@ -230,7 +224,6 @@ function App() {
           // the path changes; ignore corrupt files.
         }
       }
-      localStorage.setItem(key, JSON.stringify([...imported].slice(-500)))
     }
     void scan()
     const timer = setInterval(() => void scan(), 5000)
@@ -1347,6 +1340,13 @@ function App() {
         action: () => setAlmanacOpen(true),
       },
       {
+        id: 'tracks',
+        label: tx('Треки с телефона', 'Tracks from the phone'),
+        group: tx('Инструменты', 'Tools'),
+        icon: MapIcon,
+        action: () => setTracksOpen(true),
+      },
+      {
         id: 'sync',
         label: tx('Командная синхронизация', 'Team sync'),
         group: tx('Инструменты', 'Tools'),
@@ -1373,6 +1373,7 @@ function App() {
       setAlmanacOpen,
       setLosOpen,
       setSyncOpen,
+      setTracksOpen,
       setMissionOpen,
       setTelemetryOpen,
       setMeasureMode,
@@ -1519,6 +1520,7 @@ function App() {
       {georefOpen && <GeorefPanel onClose={() => setGeorefOpen(false)} />}
       {almanacOpen && <AlmanacPanel onClose={() => setAlmanacOpen(false)} />}
       {syncOpen && <SyncPanel map={map} onClose={() => setSyncOpen(false)} />}
+      {tracksOpen && <TracksPanel onClose={() => setTracksOpen(false)} />}
       {losOpen && <LosPanel onClose={() => setLosOpen(false)} />}
       {missionOpen && <MissionPanel onClose={() => setMissionOpen(false)} />}
       {telemetryOpen && (

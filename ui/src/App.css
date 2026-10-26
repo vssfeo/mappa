@@ -3837,3 +3837,10 @@ body.is-layer-dragging {
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);
 }
+
+.track-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
