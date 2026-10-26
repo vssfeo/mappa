@@ -49,6 +49,7 @@ import { GeorefPanel } from './GeorefPanel'
 import { LosPanel } from './LosPanel'
 import { MissionPanel } from './MissionPanel'
 import { TelemetryPanel } from './TelemetryPanel'
+import { AlmanacPanel } from './AlmanacPanel'
 import { Rail } from './Rail'
 import { Shortcuts } from './Shortcuts'
 import { StatusBar } from './StatusBar'
@@ -180,6 +181,7 @@ function App() {
   const [losOpen, setLosOpen] = useState(false)
   const [missionOpen, setMissionOpen] = useState(false)
   const [telemetryOpen, setTelemetryOpen] = useState(false)
+  const [almanacOpen, setAlmanacOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
 
   useEffect(() => {
@@ -257,6 +259,7 @@ function App() {
           '2': setLosOpen,
           '3': setMissionOpen,
           '4': setTelemetryOpen,
+          '5': setAlmanacOpen,
         }[tool]
         if (open) {
           event.preventDefault()
@@ -1291,6 +1294,13 @@ function App() {
         action: () => setGeorefOpen(true),
       },
       {
+        id: 'almanac',
+        label: tx('Солнце и луна', 'Sun and moon'),
+        group: tx('Инструменты', 'Tools'),
+        icon: MapIcon,
+        action: () => setAlmanacOpen(true),
+      },
+      {
         id: 'shortcuts',
         label: tx('Горячие клавиши', 'Keyboard shortcuts'),
         group: tx('Помощь', 'Help'),
@@ -1307,6 +1317,7 @@ function App() {
       setDrawing,
       setFeatureMode,
       setGeorefOpen,
+      setAlmanacOpen,
       setLosOpen,
       setMissionOpen,
       setTelemetryOpen,
@@ -1452,6 +1463,7 @@ function App() {
         <Shortcuts onClose={() => setShortcutsOpen(false)} />
       )}
       {georefOpen && <GeorefPanel onClose={() => setGeorefOpen(false)} />}
+      {almanacOpen && <AlmanacPanel onClose={() => setAlmanacOpen(false)} />}
       {losOpen && <LosPanel onClose={() => setLosOpen(false)} />}
       {missionOpen && <MissionPanel onClose={() => setMissionOpen(false)} />}
       {telemetryOpen && (
