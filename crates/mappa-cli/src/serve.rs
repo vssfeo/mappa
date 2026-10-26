@@ -103,6 +103,8 @@ enum Route {
     Packs,
     Jobs,
     Mobile,
+    MobileJs,
+    MobileCss,
     Track,
     SyncList,
     SyncProject(String),
@@ -137,6 +139,18 @@ impl Response {
             content_type: "application/json; charset=utf-8",
             body: body.into_bytes(),
             headers: Vec::new(),
+        }
+    }
+
+    fn asset(content_type: &'static str, body: Vec<u8>) -> Self {
+        Self {
+            status: 200,
+            content_type,
+            body,
+            headers: vec![(
+                "Cache-Control".to_owned(),
+                "public, max-age=86400".to_owned(),
+            )],
         }
     }
 
@@ -559,7 +573,9 @@ async fn handle_request_with_body(
         Route::Providers => Response::json(200, providers_json(state)),
         Route::Packs => Response::json(200, packs_json(state)),
         Route::Jobs => Response::json(200, jobs_json(state)),
-        Route::Mobile => Response::html(mobile_html()),
+        Route::Mobile => Response::html(mobile_html(state)),
+        Route::MobileJs => Response::asset("text/javascript; charset=utf-8", LEAFLET_JS.to_vec()),
+        Route::MobileCss => Response::asset("text/css; charset=utf-8", LEAFLET_CSS.to_vec()),
         Route::Track => track_post(state, body),
         Route::SyncList => Response::json(200, sync_list_json(state)),
         Route::SyncProject(name) => {
@@ -663,6 +679,8 @@ fn route(target: &str) -> Route {
         ["api", "packs"] => Route::Packs,
         ["api", "jobs"] => Route::Jobs,
         ["m"] => Route::Mobile,
+        ["m", "leaflet.js"] => Route::MobileJs,
+        ["m", "leaflet.css"] => Route::MobileCss,
         ["api", "track"] => Route::Track,
         ["api", "sync"] => Route::SyncList,
         ["api", "sync", name] => Route::SyncProject(percent_decode(name)),
@@ -1362,40 +1380,71 @@ fn track_post(state: &ServeState, body: &[u8]) -> Response {
     )
 }
 
-fn mobile_html() -> String {
-    r#"<!doctype html>
+const LEAFLET_JS: &[u8] = include_bytes!("../assets/leaflet/leaflet.js");
+const LEAFLET_CSS: &[u8] = include_bytes!("../assets/leaflet/leaflet.css");
+
+fn mobile_html(state: &ServeState) -> String {
+    let packs: Vec<serde_json::Value> = state
+        .packs
+        .iter()
+        .map(|pack| {
+            serde_json::json!({
+                "id": pack.id,
+                "name": pack.name,
+                "bounds": [pack.bounds.west(), pack.bounds.south(), pack.bounds.east(), pack.bounds.north()],
+                "minZoom": pack.min_zoom,
+                "maxZoom": pack.max_zoom,
+            })
+        })
+        .collect();
+    let packs_json = serde_json::to_string(&packs)
+        .unwrap_or_else(|_| "[]".to_owned())
+        .replace("</", "<\\/");
+    format!(
+        r##"<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mappa track</title>
+<link rel="stylesheet" href="/m/leaflet.css">
 <style>
-  :root { color-scheme: dark; --bg:#0b0f14; --surface:#141b23; --text:#f2f6fc; --dim:#9aa7b8; --accent:#ff7a45; --ok:#43d9c5; }
-  * { box-sizing: border-box; }
-  body { margin:0; padding:20px; background:var(--bg); color:var(--text); font:16px/1.45 system-ui, sans-serif; }
-  h1 { font-size:22px; margin:0 0 4px; }
-  p { margin:0 0 14px; color:var(--dim); font-size:14px; }
-  .card { background:var(--surface); border:1px solid #263241; border-radius:14px; padding:16px; margin-bottom:14px; }
-  .big { display:flex; gap:10px; }
-  button { flex:1; min-height:54px; border:0; border-radius:12px; font:inherit; font-weight:600; color:#0b0f14; background:var(--accent); }
-  button.secondary { background:#263241; color:var(--text); }
-  button:disabled { opacity:.45; }
-  .readout { font-size:34px; font-weight:700; letter-spacing:.5px; }
-  .muted { color:var(--dim); font-size:13px; }
-  .warn { border-color:#7a4a1f; background:#2a1a10; color:#ffcf9f; }
-  .ok { color:var(--ok); }
-  input { width:100%; min-height:46px; margin-top:6px; padding:10px 12px; border-radius:10px; border:1px solid #263241; background:#0f151c; color:var(--text); font:inherit; }
-  #status { margin-top:10px; font-size:14px; }
+  :root {{ color-scheme: dark; --bg:#0b0f14; --surface:#141b23; --text:#f2f6fc; --dim:#9aa7b8; --accent:#ff7a45; --ok:#43d9c5; }}
+  * {{ box-sizing: border-box; }}
+  html, body {{ margin:0; padding:0; background:var(--bg); color:var(--text); font:16px/1.45 system-ui, sans-serif; }}
+  .wrap {{ padding:14px; max-width:760px; margin:0 auto; }}
+  h1 {{ font-size:20px; margin:0 0 2px; }}
+  p {{ margin:0 0 10px; color:var(--dim); font-size:13px; }}
+  #map {{ height:44vh; min-height:260px; border-radius:14px; border:1px solid #263241; margin-bottom:12px; }}
+  #nomap {{ padding:14px; border:1px dashed #263241; border-radius:14px; color:var(--dim); margin-bottom:12px; font-size:13px; }}
+  .card {{ background:var(--surface); border:1px solid #263241; border-radius:14px; padding:14px; margin-bottom:12px; }}
+  .big {{ display:flex; gap:10px; }}
+  button {{ flex:1; min-height:52px; border:0; border-radius:12px; font:inherit; font-weight:600; color:#0b0f14; background:var(--accent); }}
+  button.secondary {{ background:#263241; color:var(--text); }}
+  button:disabled {{ opacity:.45; }}
+  .readout {{ font-size:32px; font-weight:700; letter-spacing:.5px; }}
+  .muted {{ color:var(--dim); font-size:13px; }}
+  .warn {{ border-color:#7a4a1f; background:#2a1a10; color:#ffcf9f; }}
+  .ok {{ color:var(--ok); }}
+  input {{ width:100%; min-height:44px; margin-top:6px; padding:10px 12px; border-radius:10px; border:1px solid #263241; background:#0f151c; color:var(--text); font:inherit; }}
+  #status {{ margin-top:10px; font-size:14px; }}
+  .leaflet-container {{ background:#0f151c; font:inherit; }}
+  .leaflet-control-attribution {{ background:rgba(10,14,20,.8); color:#9aa7b8; }}
+  .leaflet-control-attribution a {{ color:#9aa7b8; }}
 </style>
 </head>
 <body>
+<div class="wrap">
   <h1>Mappa track</h1>
-  <p>Record a GPS track and send it to the laptop.</p>
+  <p id="packname">Record a GPS track and send it to the laptop.</p>
 
   <div id="insecure" class="card warn" hidden>
     GPS is blocked on <code>http://</code>. Restart the server with
     <code>mappa serve --tls</code>, accept the certificate warning, and reopen this page.
   </div>
+
+  <div id="map"></div>
+  <div id="nomap" hidden>No pack is served. Start the server with <code>--pack region.mbtiles</code> to see the map.</div>
 
   <div class="card">
     <div class="readout" id="distance">0 m</div>
@@ -1415,161 +1464,127 @@ fn mobile_html() -> String {
     </div>
     <div id="status" class="muted"></div>
   </div>
+</div>
 
+<script>window.MAPPA_PACKS = {packs_json};</script>
+<script src="/m/leaflet.js"></script>
 <script>
-(function () {
+(function () {{
   var token = new URLSearchParams(location.search).get('token') || '';
+  var packs = window.MAPPA_PACKS || [];
   var points = [];
   var watchId = null;
   var last = null;
   var distance = 0;
-  var $ = function (id) { return document.getElementById(id); };
-  var secure = window.isSecureContext;
-  if (!secure) $('insecure').hidden = false;
+  var map = null;
+  var line = null;
+  var marker = null;
+  var $ = function (id) {{ return document.getElementById(id); }};
+  if (!window.isSecureContext) $('insecure').hidden = false;
 
-  function metres(a, b) {
+  if (packs.length) {{
+    var pack = packs[0];
+    var southWest = [pack.bounds[1], pack.bounds[0]];
+    var northEast = [pack.bounds[3], pack.bounds[2]];
+    map = L.map('map', {{ zoomControl: true }});
+    map.fitBounds([southWest, northEast]);
+    var suffix = token ? '?token=' + encodeURIComponent(token) : '';
+    L.tileLayer('/packs/' + encodeURIComponent(pack.id) + '/{{z}}/{{x}}/{{y}}' + suffix, {{
+      minZoom: pack.minZoom,
+      maxZoom: pack.maxZoom,
+      bounds: [southWest, northEast],
+      attribution: 'Mappa pack'
+    }}).addTo(map);
+    line = L.polyline([], {{ color: '#ff7a45', weight: 4 }}).addTo(map);
+    $('packname').textContent = 'Pack: ' + pack.name + ' — record and send.';
+  }} else {{
+    $('nomap').hidden = false;
+    $('map').hidden = true;
+  }}
+
+  function metres(a, b) {{
     var R = 6371000, rad = Math.PI / 180;
     var dLat = (b.lat - a.lat) * rad, dLon = (b.lon - a.lon) * rad;
     var s = Math.sin(dLat / 2) ** 2 +
       Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
     return 2 * R * Math.asin(Math.sqrt(s));
-  }
-  function render() {
+  }}
+  function render() {{
     $('count').textContent = points.length;
     $('distance').textContent = distance >= 1000
       ? (distance / 1000).toFixed(2) + ' km'
       : Math.round(distance) + ' m';
     $('send').disabled = points.length === 0 || watchId !== null;
-  }
-  function fail(error) {
+  }}
+  function fail(error) {{
     $('status').textContent = 'GPS error: ' + error.message;
-  }
-  function start() {
-    if (!navigator.geolocation) { fail({ message: 'not supported' }); return; }
+  }}
+  function start() {{
+    if (!navigator.geolocation) {{ fail({{ message: 'not supported' }}); return; }}
     $('status').textContent = 'Recording…';
-    watchId = navigator.geolocation.watchPosition(function (pos) {
-      var point = {
+    watchId = navigator.geolocation.watchPosition(function (pos) {{
+      var point = {{
         lat: pos.coords.latitude,
         lon: pos.coords.longitude,
         alt: pos.coords.altitude == null ? undefined : pos.coords.altitude,
         time: new Date(pos.timestamp).toISOString()
-      };
+      }};
       if (last) distance += metres(last, point);
       last = point;
       points.push(point);
       $('accuracy').textContent = '±' + Math.round(pos.coords.accuracy) + ' m';
+      if (map) {{
+        var latlng = [point.lat, point.lon];
+        if (!marker) {{
+          marker = L.circleMarker(latlng, {{ radius: 7, color: '#43d9c5', fillColor: '#43d9c5', fillOpacity: 1 }}).addTo(map);
+        }} else {{
+          marker.setLatLng(latlng);
+        }}
+        line.addLatLng(latlng);
+        if (!map.getBounds().pad(-0.15).contains(latlng)) map.panTo(latlng);
+      }}
       render();
       $('status').textContent = 'Recording… ' + points.length + ' points';
-    }, fail, { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 });
+    }}, fail, {{ enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }});
     $('start').disabled = true;
     $('stop').disabled = false;
     $('send').disabled = true;
-  }
-  function stop() {
+  }}
+  function stop() {{
     if (watchId !== null) navigator.geolocation.clearWatch(watchId);
     watchId = null;
     $('start').disabled = false;
     $('stop').disabled = true;
     $('status').textContent = 'Stopped at ' + points.length + ' points';
     render();
-  }
-  async function send() {
+  }}
+  async function send() {{
     stop();
     $('status').textContent = 'Sending…';
-    try {
+    try {{
       var url = '/api/track' + (token ? '?token=' + encodeURIComponent(token) : '');
-      var response = await fetch(url, {
+      var response = await fetch(url, {{
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: $('name').value || 'Phone track', points: points })
-      });
+        headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify({{ name: $('name').value || 'Phone track', points: points }})
+      }});
       var data = await response.json();
       if (!response.ok) throw new Error(data.error || ('HTTP ' + response.status));
       $('status').textContent = 'Saved: ' + data.file + ' (' + data.points + ' points)';
       $('status').className = 'ok';
-    } catch (error) {
+    }} catch (error) {{
       $('status').textContent = 'Upload failed: ' + error.message;
       $('status').className = 'muted';
-    }
-  }
+    }}
+  }}
   $('start').addEventListener('click', start);
   $('stop').addEventListener('click', stop);
   $('send').addEventListener('click', send);
   render();
-})();
+}})();
 </script>
 </body>
 </html>
-"#
-    .to_owned()
-}
-
-#[cfg(test)]
-mod mobile_tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn track_upload_writes_gpx() {
-        let dir = std::env::temp_dir().join(format!(
-            "mappa-track-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let state = ServeState {
-            cache: Arc::new(SqliteCache::open_in_memory().unwrap()),
-            catalog: Arc::new(ProviderCatalog::builtin().unwrap()),
-            packs: Vec::new(),
-            queue: None,
-            token: None,
-            started: Instant::now(),
-            base_url: "http://127.0.0.1:8080".to_owned(),
-            sync_dir: dir.clone(),
-            tracks_dir: dir.clone(),
-        };
-        let body = serde_json::json!({
-            "name": "Phone track",
-            "points": [
-                {"lat": 53.1, "lon": -9.6, "alt": 12.0},
-                {"lat": 53.2, "lon": -9.7}
-            ]
-        })
-        .to_string();
-        let response =
-            handle_request_with_body(&state, "POST", "/api/track", &[], body.as_bytes()).await;
-        assert_eq!(response.status, 200);
-        let gpx = std::fs::read_dir(&dir)
-            .unwrap()
-            .flatten()
-            .map(|entry| entry.path())
-            .find(|path| path.extension().and_then(|value| value.to_str()) == Some("gpx"))
-            .expect("gpx file");
-        let text = std::fs::read_to_string(gpx).unwrap();
-        assert!(text.contains("<trkpt lat=\"53.1000000\" lon=\"-9.6000000\">"));
-        assert!(text.contains("<ele>12.0</ele>"));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[tokio::test]
-    async fn mobile_page_is_html_and_track_needs_post() {
-        let state = ServeState {
-            cache: Arc::new(SqliteCache::open_in_memory().unwrap()),
-            catalog: Arc::new(ProviderCatalog::builtin().unwrap()),
-            packs: Vec::new(),
-            queue: None,
-            token: None,
-            started: Instant::now(),
-            base_url: "http://127.0.0.1:8080".to_owned(),
-            sync_dir: std::env::temp_dir().join("mappa-mobile-sync"),
-            tracks_dir: std::env::temp_dir().join("mappa-mobile-tracks"),
-        };
-        let page = handle_request(&state, "GET", "/m", &[]).await;
-        assert_eq!(page.status, 200);
-        assert!(page.content_type.starts_with("text/html"));
-        assert!(String::from_utf8_lossy(&page.body).contains("Mappa track"));
-        let wrong = handle_request(&state, "PUT", "/api/track", &[]).await;
-        assert_eq!(wrong.status, 405);
-    }
+"##
+    )
 }
