@@ -3,6 +3,18 @@
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версии — [SemVer](https://semver.org/lang/ru/).
 
+## [1.14.0] — 2026-10-26
+
+### Добавлено
+
+- SSE-прогресс заданий: `GET /api/jobs/{id}/events` отдаёт поток
+  `data:` с JSON каждые 500 мс и закрывается на `completed`, `failed`
+  или `cancelled`. Опрос `GET /api/jobs/{id}` остаётся.
+
+### Изменено
+
+- `make check`: 247 Rust-тестов, 129 UI-тестов.
+
 ## [1.13.0] — 2026-10-26
 
 ### Добавлено

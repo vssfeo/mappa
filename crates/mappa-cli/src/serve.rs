@@ -473,6 +473,22 @@ where
                     return Ok(());
                 }
             };
+            let (path, query) = target.split_once('?').unwrap_or((target.as_str(), ""));
+            if method == "GET"
+                && let Some(id) = job_events_id(path)
+            {
+                if !authorized(&state, query, &headers) {
+                    write_response(
+                        &mut stream,
+                        Response::json(401, "{\"error\":\"unauthorized\"}".to_owned()),
+                        true,
+                    )
+                    .await?;
+                    return Ok(());
+                }
+                stream_job_events(&mut stream, &state, &id).await?;
+                return Ok(());
+            }
             let content_length = headers
                 .iter()
                 .find(|(name, _)| name == "content-length")
@@ -1197,6 +1213,12 @@ mod tests {
         assert_eq!(route("/m"), Route::Mobile);
         assert_eq!(route("/api/track"), Route::Track);
         assert_eq!(route("/api/pack"), Route::PackJob);
+        assert_eq!(
+            job_events_id("/api/jobs/abc/events"),
+            Some("abc".to_owned())
+        );
+        assert_eq!(job_events_id("/api/jobs/abc/events?x=1"), None);
+        assert_eq!(job_events_id("/api/jobs//events"), None);
         assert_eq!(
             route("/api/sync/team"),
             Route::SyncProject("team".to_owned())
@@ -2021,4 +2043,63 @@ fn job_cancel(state: &ServeState, id: &str) -> Response {
             format!("{{\"error\":\"{}\"}}", json_escape(&error.to_string())),
         ),
     }
+}
+
+fn job_events_id(path: &str) -> Option<String> {
+    let rest = path.strip_prefix("/api/jobs/")?;
+    let id = rest.strip_suffix("/events")?;
+    if id.is_empty() || id.len() > 64 || id.contains('/') {
+        return None;
+    }
+    Some(id.to_owned())
+}
+
+async fn stream_job_events<S>(stream: &mut S, state: &ServeState, id: &str) -> Result<()>
+where
+    S: AsyncWrite + Unpin,
+{
+    let Some(queue) = state.queue.as_ref() else {
+        write_response(
+            stream,
+            Response::json(
+                503,
+                "{\"error\":\"download queue is unavailable\"}".to_owned(),
+            ),
+            true,
+        )
+        .await?;
+        return Ok(());
+    };
+    if queue.get(id)?.is_none() {
+        write_response(
+            stream,
+            Response::json(404, "{\"error\":\"job not found\"}".to_owned()),
+            true,
+        )
+        .await?;
+        return Ok(());
+    }
+    let head = "HTTP/1.1 200 OK\r\n\
+                Content-Type: text/event-stream\r\n\
+                Cache-Control: no-cache\r\n\
+                Connection: close\r\n\
+                Server: mappa\r\n\
+                Access-Control-Allow-Origin: *\r\n\
+                \r\n";
+    stream.write_all(head.as_bytes()).await?;
+    loop {
+        let Some(job) = queue.get(id)? else {
+            break;
+        };
+        let data = serde_json::to_string(&job).unwrap_or_else(|_| "{}".to_owned());
+        stream
+            .write_all(format!("data: {data}\n\n").as_bytes())
+            .await?;
+        stream.flush().await?;
+        if job.status.is_terminal() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+    Ok(())
 }
