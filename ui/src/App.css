@@ -3844,3 +3844,10 @@ body.is-layer-dragging {
   gap: 6px;
   flex-shrink: 0;
 }
+
+.source-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}

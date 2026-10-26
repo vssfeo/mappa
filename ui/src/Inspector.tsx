@@ -60,6 +60,7 @@ import {
   type CustomSource,
   type CustomSourceDraft,
 } from './customSources'
+import { PROVIDER_PRESETS, type ProviderPreset } from './providerPresets'
 import { useCoverageStore } from './coverage'
 import { closeDem, demContours, demProfile, importDem } from './dem'
 import { deleteCrash, listCrashes, readCrash, type CrashReport } from './crash'
@@ -4231,6 +4232,9 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const packLicense = useAppStore((state) => state.packLicense)
   const [cache, setCache] = useState<NativeCacheStats | null>(null)
   const [sourceForm, setSourceForm] = useState(false)
+  const [presetOpen, setPresetOpen] = useState(false)
+  const [presetAccepted, setPresetAccepted] = useState(false)
+  const [presetBusy, setPresetBusy] = useState<string | null>(null)
   const [sourceBusy, setSourceBusy] = useState(false)
   const [sourceError, setSourceError] = useState<string | null>(null)
   const [sourceDraft, setSourceDraft] = useState<CustomSourceDraft>({
@@ -4571,6 +4575,24 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
     setWmtsLayers([])
     setSourceError(null)
     setSourceForm(true)
+  }
+
+  const addPreset = async (preset: ProviderPreset) => {
+    setPresetBusy(preset.key)
+    setSourceError(null)
+    try {
+      await saveCustomSource({ ...preset.draft })
+      setCustomSources(await listCustomSources())
+      showToast(
+        tx('Слой добавлен: {p0}', 'Layer added: {p0}', { p0: preset.name }),
+      )
+      setPresetOpen(false)
+      setPresetAccepted(false)
+    } catch (error) {
+      setSourceError(String(error))
+    } finally {
+      setPresetBusy(null)
+    }
   }
 
   const closeSourceForm = () => {
@@ -5062,27 +5084,93 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                 {tx('Свои источники', 'Custom sources')} ·{' '}
                 {formatCount(customSources.length)}
               </span>
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={() => setSourceForm((open) => !open)}
-                disabled={!isNative}
-                title={
-                  isNative
-                    ? tx(
-                        'Добавить XYZ/TMS, WMS или WMTS источник',
-                        'Add an XYZ/TMS, WMS or WMTS source',
-                      )
-                    : tx(
-                        'Доступно в нативном приложении',
-                        'Available in the native app',
-                      )
-                }
-              >
-                <Plus size={14} />
-                {tx('Добавить', 'Add')}
-              </button>
+              <div className="source-actions">
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => {
+                    setPresetOpen((open) => !open)
+                    setSourceForm(false)
+                  }}
+                  disabled={!isNative}
+                  title={tx('Готовые слои', 'Ready-made layers')}
+                >
+                  <Layers3 size={14} />
+                  {tx('Готовые слои', 'Ready-made layers')}
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => setSourceForm((open) => !open)}
+                  disabled={!isNative}
+                  title={
+                    isNative
+                      ? tx(
+                          'Добавить XYZ/TMS, WMS или WMTS источник',
+                          'Add an XYZ/TMS, WMS or WMTS source',
+                        )
+                      : tx(
+                          'Доступно в нативном приложении',
+                          'Available in the native app',
+                        )
+                  }
+                >
+                  <Plus size={14} />
+                  {tx('Добавить', 'Add')}
+                </button>
+              </div>
             </div>
+
+            {presetOpen && (
+              <div className="source-form">
+                <div className="section-heading">
+                  <span>{tx('Готовые слои', 'Ready-made layers')}</span>
+                </div>
+                <p className="settings-hint">
+                  {tx(
+                    'Эти слои принадлежат их правообладателям. Использование может нарушать условия ресурса; Mappa не выдаёт лицензию и не проверяет права. Офлайн-скачивание отключено, ответственность за использование — на вас.',
+                    'These layers belong to their rightsholders. Use may violate the resource terms; Mappa grants no licence and does not verify rights. Offline downloads are disabled; you are responsible for use.',
+                  )}
+                </p>
+                <label className="source-check">
+                  <input
+                    type="checkbox"
+                    checked={presetAccepted}
+                    onChange={(event) => setPresetAccepted(event.target.checked)}
+                  />
+                  {tx(
+                    'Я понимаю и беру ответственность на себя',
+                    'I understand and take responsibility',
+                  )}
+                </label>
+                <div className="marker-actions">
+                  {PROVIDER_PRESETS.map((preset) => (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      className="secondary-button"
+                      disabled={!presetAccepted || presetBusy !== null}
+                      onClick={() => void addPreset(preset)}
+                    >
+                      {presetBusy === preset.key ? (
+                        <Loader2 size={14} className="spin" />
+                      ) : (
+                        <Layers3 size={14} />
+                      )}
+                      {preset.name}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => setPresetOpen(false)}
+                  >
+                    {tx('Отмена', 'Cancel')}
+                  </button>
+                </div>
+                {sourceError && <p className="georef-error">{sourceError}</p>}
+              </div>
+            )}
 
             {sourceForm && (
               <div className="source-form">
