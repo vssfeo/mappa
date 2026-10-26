@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::net::{IpAddr, UdpSocket};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -74,6 +75,7 @@ struct ServeState {
     queue: Option<Arc<DownloadStore>>,
     cache_path: PathBuf,
     idempotency: Mutex<HashMap<String, String>>,
+    cancellations: Mutex<HashMap<String, Arc<AtomicBool>>>,
     token: Option<String>,
     started: Instant,
     base_url: String,
@@ -109,6 +111,7 @@ enum Route {
     Packs,
     Jobs,
     Job(String),
+    JobCancel(String),
     PackJob,
     Mobile,
     MobileJs,
@@ -269,6 +272,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         queue,
         cache_path: cache_file.clone(),
         idempotency: Mutex::new(HashMap::new()),
+        cancellations: Mutex::new(HashMap::new()),
         token,
         started: Instant::now(),
         base_url,
@@ -557,7 +561,10 @@ async fn handle_request_with_body(
     let allowed = match method {
         "GET" | "HEAD" => true,
         "PUT" => matches!(route, Route::SyncProject(_)),
-        "POST" => matches!(route, Route::Track | Route::Jobs | Route::PackJob),
+        "POST" => matches!(
+            route,
+            Route::Track | Route::Jobs | Route::PackJob | Route::JobCancel(_)
+        ),
         _ => false,
     };
     if !allowed {
@@ -592,6 +599,7 @@ async fn handle_request_with_body(
                 Response::json(200, jobs_json(state))
             }
         }
+        Route::JobCancel(id) => job_cancel(state, &id),
         Route::Job(id) => match state
             .queue
             .as_ref()
@@ -707,6 +715,7 @@ fn route(target: &str) -> Route {
         ["api", "packs"] => Route::Packs,
         ["api", "jobs"] => Route::Jobs,
         ["api", "jobs", id] => Route::Job((*id).to_owned()),
+        ["api", "jobs", id, "cancel"] => Route::JobCancel((*id).to_owned()),
         ["m"] => Route::Mobile,
         ["m", "leaflet.js"] => Route::MobileJs,
         ["m", "leaflet.css"] => Route::MobileCss,
@@ -1171,6 +1180,7 @@ mod tests {
             queue: None,
             cache_path: std::env::temp_dir().join("mappa-serve-cache.sqlite3"),
             idempotency: Mutex::new(HashMap::new()),
+            cancellations: Mutex::new(HashMap::new()),
             token: None,
             started: Instant::now(),
             base_url: "http://127.0.0.1:8080".to_owned(),
@@ -1308,6 +1318,7 @@ mod sync_tests {
             queue: None,
             cache_path: std::env::temp_dir().join("mappa-serve-cache.sqlite3"),
             idempotency: Mutex::new(HashMap::new()),
+            cancellations: Mutex::new(HashMap::new()),
             token: None,
             started: Instant::now(),
             base_url: "http://127.0.0.1:8080".to_owned(),
@@ -1775,7 +1786,26 @@ async fn job_worker(state: Arc<ServeState>) {
             limit_mb: 2048,
             dry_run: false,
         };
-        match crate::run_download(&args, true).await {
+        let cancel = Arc::new(AtomicBool::new(false));
+        if let Ok(mut map) = state.cancellations.lock() {
+            map.insert(job.id.clone(), Arc::clone(&cancel));
+        }
+        let progress_queue = Arc::clone(queue);
+        let progress_id = job.id.clone();
+        let progress = Arc::new(move |done: u64, failed: u64, bytes: u64| {
+            let _ =
+                progress_queue.update_progress(&progress_id, done, failed, bytes, done + failed);
+        });
+        let result =
+            crate::run_download_with(&args, true, Some(Arc::clone(&cancel)), Some(progress)).await;
+        if let Ok(mut map) = state.cancellations.lock() {
+            map.remove(&job.id);
+        }
+        if cancel.load(Ordering::Relaxed) {
+            let _ = queue.set_status_if_running(&job.id, JobStatus::Cancelled, None);
+            continue;
+        }
+        match result {
             Ok(report) => {
                 let _ = queue.update_progress(
                     &job.id,
@@ -1817,6 +1847,7 @@ mod mobile_tests {
             queue: None,
             cache_path: dir.join("cache.sqlite3"),
             idempotency: Mutex::new(HashMap::new()),
+            cancellations: Mutex::new(HashMap::new()),
             token: None,
             started: Instant::now(),
             base_url: "http://127.0.0.1:8080".to_owned(),
@@ -1952,6 +1983,41 @@ fn pack_post(state: &ServeState, body: &[u8]) -> Response {
         Ok(report) => Response::json(200, serde_json::to_string(&report).unwrap_or_default()),
         Err(error) => Response::json(
             400,
+            format!("{{\"error\":\"{}\"}}", json_escape(&error.to_string())),
+        ),
+    }
+}
+
+fn job_cancel(state: &ServeState, id: &str) -> Response {
+    let Some(queue) = state.queue.as_ref() else {
+        return Response::json(
+            503,
+            "{\"error\":\"download queue is unavailable\"}".to_owned(),
+        );
+    };
+    let job = match queue.get(id) {
+        Ok(Some(job)) => job,
+        Ok(None) => return Response::json(404, "{\"error\":\"job not found\"}".to_owned()),
+        Err(error) => {
+            return Response::json(
+                500,
+                format!("{{\"error\":\"{}\"}}", json_escape(&error.to_string())),
+            );
+        }
+    };
+    if job.status.is_terminal() {
+        return Response::json(409, "{\"error\":\"job is already finished\"}".to_owned());
+    }
+    if let Ok(map) = state.cancellations.lock()
+        && let Some(flag) = map.get(id)
+    {
+        flag.store(true, Ordering::Relaxed);
+    }
+    match queue.set_status_unless_terminal(id, JobStatus::Cancelled, None) {
+        Ok(true) => Response::json(200, serde_json::to_string(&job).unwrap_or_default()),
+        Ok(false) => Response::json(409, "{\"error\":\"job is already finished\"}".to_owned()),
+        Err(error) => Response::json(
+            500,
             format!("{{\"error\":\"{}\"}}", json_escape(&error.to_string())),
         ),
     }

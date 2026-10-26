@@ -10,7 +10,7 @@ mod track;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
@@ -22,6 +22,9 @@ use serde::Serialize;
 
 /// A failed tile message printed after the last task settles.
 type TileTask = Option<String>;
+
+/// Called with downloaded, failed and byte counters during a download.
+pub(crate) type ProgressCallback = Arc<dyn Fn(u64, u64, u64) + Send + Sync>;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
@@ -282,6 +285,16 @@ async fn download(args: DownloadArgs, json: bool) -> Result<()> {
 }
 
 pub(crate) async fn run_download(args: &DownloadArgs, quiet: bool) -> Result<DownloadReport> {
+    run_download_with(args, quiet, None, None).await
+}
+
+/// Downloads a region, optionally checking a cancel flag and reporting progress.
+pub(crate) async fn run_download_with(
+    args: &DownloadArgs,
+    quiet: bool,
+    cancel: Option<Arc<AtomicBool>>,
+    progress: Option<ProgressCallback>,
+) -> Result<DownloadReport> {
     let started = Instant::now();
     let (west, south, east, north) = parse_bbox(&args.bbox)?;
     let (min_zoom, max_zoom) = parse_zoom(&args.zoom)?;
@@ -359,11 +372,26 @@ pub(crate) async fn run_download(args: &DownloadArgs, quiet: bool) -> Result<Dow
     let limit_bytes = args.limit_mb.saturating_mul(1024 * 1024);
     let mut tasks: JoinSet<TileTask> = JoinSet::new();
 
-    for zoom in min_zoom..=max_zoom {
+    'zooms: for zoom in min_zoom..=max_zoom {
         let range = TileRange::new(&bbox, zoom).map_err(anyhow::Error::msg)?;
         for coord in range.iter() {
+            if cancel
+                .as_ref()
+                .is_some_and(|flag| flag.load(Ordering::Relaxed))
+            {
+                break 'zooms;
+            }
             let key = TileKey::new(&provider.id, zoom, coord.x(), coord.y(), &provider.format);
             processed += 1;
+            if let Some(callback) = &progress
+                && processed.is_multiple_of(200)
+            {
+                callback(
+                    downloaded.load(Ordering::Relaxed),
+                    failed.load(Ordering::Relaxed),
+                    bytes.load(Ordering::Relaxed),
+                );
+            }
             if cache.peek(&key)?.is_some() {
                 skipped += 1;
             } else {
@@ -479,6 +507,13 @@ pub(crate) async fn run_download(args: &DownloadArgs, quiet: bool) -> Result<Dow
             );
             last_report = Instant::now();
         }
+    }
+    if let Some(callback) = &progress {
+        callback(
+            downloaded.load(Ordering::Relaxed),
+            failed.load(Ordering::Relaxed),
+            bytes.load(Ordering::Relaxed),
+        );
     }
     let downloaded = downloaded.load(Ordering::Relaxed);
     let failed = failed.load(Ordering::Relaxed);

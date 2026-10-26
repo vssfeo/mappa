@@ -63,7 +63,10 @@ mappa-cli serve --host 0.0.0.0 --token mappa-lan \
   `{provider, bbox:[west,south,east,north], minZoom, maxZoom, name?, polygon?, sourceIds?}`.
   Заголовок `Idempotency-Key` (или поле `idempotencyKey`) возвращает
   существующее задание вместо дубля. Ответ `202`, повтор — `200`.
+- `POST /api/jobs/{id}/cancel` — отмена: queued снимается сразу, running
+  останавливает загрузку по флагу; `409`, если задание уже завершено.
 - `--no-worker` отключает фоновый воркер: задания только ставятся в очередь.
+- Воркер обновляет `done_tiles`/`failed_tiles`/`bytes` каждые 200 тайлов.
 - `POST /api/pack` — синхронный экспорт:
   `{provider, bbox:"w,s,e,n", zoom:"10-12", output, name?, license?}`.
   Возвращает отчёт `run_pack`; файл не перезаписывается. Запрос блокирует
