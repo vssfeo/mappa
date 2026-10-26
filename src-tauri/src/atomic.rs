@@ -49,6 +49,8 @@ fn create_temp(
     stamp: u128,
     private: bool,
 ) -> io::Result<(PathBuf, std::fs::File)> {
+    #[cfg(not(unix))]
+    let _ = private;
     let mut attempt = 0;
     loop {
         let temporary = parent.join(format!(

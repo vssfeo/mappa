@@ -2173,7 +2173,7 @@ checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 
 [[package]]
 name = "mappa"
-version = "1.18.0"
+version = "1.19.0"
 dependencies = [
  "blake3",
  "image",
@@ -2190,11 +2190,12 @@ dependencies = [
  "tauri-plugin-log",
  "thiserror 2.0.21",
  "tokio",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
 name = "mappa-cli"
-version = "1.18.0"
+version = "1.19.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2210,7 +2211,7 @@ dependencies = [
 
 [[package]]
 name = "mappa-core"
-version = "1.18.0"
+version = "1.19.0"
 dependencies = [
  "proj4rs",
  "serde",
@@ -2219,7 +2220,7 @@ dependencies = [
 
 [[package]]
 name = "mappa-net"
-version = "1.18.0"
+version = "1.19.0"
 dependencies = [
  "base64 0.22.1",
  "httpdate",
@@ -2232,7 +2233,7 @@ dependencies = [
 
 [[package]]
 name = "mappa-storage"
-version = "1.18.0"
+version = "1.19.0"
 dependencies = [
  "blake3",
  "image",
@@ -5153,6 +5154,15 @@ name = "windows-sys"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
+dependencies = [
+ "windows-targets 0.52.6",
+]
+
+[[package]]
+name = "windows-sys"
+version = "0.59.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
  "windows-targets 0.52.6",
 ]

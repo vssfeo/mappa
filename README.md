@@ -113,6 +113,11 @@ Yahoo Maps закрыт. Легальный источник с ключом д�
 
 ## Установка
 
+**Windows (бета):** скачайте `Mappa_<версия>_x64-setup.exe` из
+[последнего релиза](https://github.com/vssfeo/mappa/releases/latest).
+Установщик без подписи, SmartScreen попросит подтверждение; нужен
+WebView2. Подробности — [docs/WINDOWS.md](docs/WINDOWS.md).
+
 Готовые артефакты — в `dist/release/` или в
 [GitHub Releases](https://github.com/vssfeo/mappa/releases) (см.
 [docs/RELEASE.md](docs/RELEASE.md)):
