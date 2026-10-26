@@ -50,6 +50,7 @@ import { LosPanel } from './LosPanel'
 import { MissionPanel } from './MissionPanel'
 import { TelemetryPanel } from './TelemetryPanel'
 import { AlmanacPanel } from './AlmanacPanel'
+import { SyncPanel } from './SyncPanel'
 import { Rail } from './Rail'
 import { Shortcuts } from './Shortcuts'
 import { StatusBar } from './StatusBar'
@@ -182,6 +183,7 @@ function App() {
   const [missionOpen, setMissionOpen] = useState(false)
   const [telemetryOpen, setTelemetryOpen] = useState(false)
   const [almanacOpen, setAlmanacOpen] = useState(false)
+  const [syncOpen, setSyncOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
 
   useEffect(() => {
@@ -260,6 +262,7 @@ function App() {
           '3': setMissionOpen,
           '4': setTelemetryOpen,
           '5': setAlmanacOpen,
+          '6': setSyncOpen,
         }[tool]
         if (open) {
           event.preventDefault()
@@ -1301,6 +1304,13 @@ function App() {
         action: () => setAlmanacOpen(true),
       },
       {
+        id: 'sync',
+        label: tx('Командная синхронизация', 'Team sync'),
+        group: tx('Инструменты', 'Tools'),
+        icon: MapIcon,
+        action: () => setSyncOpen(true),
+      },
+      {
         id: 'shortcuts',
         label: tx('Горячие клавиши', 'Keyboard shortcuts'),
         group: tx('Помощь', 'Help'),
@@ -1319,6 +1329,7 @@ function App() {
       setGeorefOpen,
       setAlmanacOpen,
       setLosOpen,
+      setSyncOpen,
       setMissionOpen,
       setTelemetryOpen,
       setMeasureMode,
@@ -1464,6 +1475,7 @@ function App() {
       )}
       {georefOpen && <GeorefPanel onClose={() => setGeorefOpen(false)} />}
       {almanacOpen && <AlmanacPanel onClose={() => setAlmanacOpen(false)} />}
+      {syncOpen && <SyncPanel map={map} onClose={() => setSyncOpen(false)} />}
       {losOpen && <LosPanel onClose={() => setLosOpen(false)} />}
       {missionOpen && <MissionPanel onClose={() => setMissionOpen(false)} />}
       {telemetryOpen && (

@@ -10,11 +10,14 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use mappa_core::{Bbox, ProviderCatalog};
 use mappa_storage::{DownloadStore, Mbtiles, PmtilesPack, SqliteCache, TileKey};
+
+use crate::sync::{self, SaveOutcome};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Semaphore;
 
 const MAX_HEADER_BYTES: usize = 16 * 1024;
+const MAX_BODY_BYTES: usize = 64 * 1024 * 1024;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Args)]
@@ -40,6 +43,9 @@ pub struct ServeArgs {
     /// Необязательный токен для API и тайлов (?token=...).
     #[arg(long)]
     pub token: Option<String>,
+    /// Каталог для синхронизированных проектов; по умолчанию рядом с кэшем.
+    #[arg(long)]
+    pub sync_dir: Option<PathBuf>,
     /// Не печатать QR-код для подключения в терминале.
     #[arg(long)]
     pub no_qr: bool,
@@ -56,6 +62,7 @@ struct ServeState {
     token: Option<String>,
     started: Instant,
     base_url: String,
+    sync_dir: PathBuf,
 }
 
 struct ServePack {
@@ -85,6 +92,8 @@ enum Route {
     Providers,
     Packs,
     Jobs,
+    SyncList,
+    SyncProject(String),
     Style(String),
     CacheTile {
         provider: String,
@@ -171,6 +180,12 @@ pub async fn run(args: ServeArgs) -> Result<()> {
             None
         }
     };
+    let sync_dir = args.sync_dir.clone().unwrap_or_else(|| {
+        cache_file
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("sync")
+    });
     let token = args
         .token
         .as_deref()
@@ -195,6 +210,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         token,
         started: Instant::now(),
         base_url,
+        sync_dir,
     });
 
     println!("Mappa tile server {VERSION}");
@@ -214,7 +230,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
             println!("  warning: LAN access is open; use --token to restrict it");
         }
     }
-    println!("  API:   /api/status, /api/providers, /api/packs, /api/jobs");
+    println!("  API:   /api/status, /api/providers, /api/packs, /api/jobs, /api/sync");
     println!("  tiles: /tiles/{{provider}}/{{z}}/{{x}}/{{y}}");
     println!("  packs: /packs/{{id}}/{{z}}/{{x}}/{{y}}");
     if state.token.is_some() {
@@ -361,8 +377,8 @@ async fn open_pack(index: usize, path: &std::path::Path) -> Result<ServePack> {
 }
 
 async fn handle_connection(mut stream: TcpStream, state: Arc<ServeState>) -> Result<()> {
-    let mut buffer = Vec::with_capacity(2048);
-    let mut chunk = [0_u8; 2048];
+    let mut buffer = Vec::with_capacity(4096);
+    let mut chunk = [0_u8; 4096];
     loop {
         let read = stream.read(&mut chunk).await?;
         if read == 0 {
@@ -378,11 +394,34 @@ async fn handle_connection(mut stream: TcpStream, state: Arc<ServeState>) -> Res
                     return Ok(());
                 }
             };
-            let response = handle_request(&state, &method, &target, &headers).await;
+            let content_length = headers
+                .iter()
+                .find(|(name, _)| name == "content-length")
+                .and_then(|(_, value)| value.parse::<usize>().ok())
+                .unwrap_or(0);
+            if content_length > MAX_BODY_BYTES {
+                write_response(&mut stream, Response::text(413, "body too large"), true).await?;
+                return Ok(());
+            }
+            let body_start = end + 4;
+            while buffer.len() < body_start + content_length {
+                let read = stream.read(&mut chunk).await?;
+                if read == 0 {
+                    break;
+                }
+                buffer.extend_from_slice(&chunk[..read]);
+            }
+            if buffer.len() < body_start + content_length {
+                write_response(&mut stream, Response::text(400, "incomplete body"), true).await?;
+                return Ok(());
+            }
+            let body = buffer[body_start..body_start + content_length].to_vec();
+            let response =
+                handle_request_with_body(&state, &method, &target, &headers, &body).await;
             write_response(&mut stream, response, method != "HEAD").await?;
             return Ok(());
         }
-        if buffer.len() > MAX_HEADER_BYTES {
+        if buffer.len() > MAX_HEADER_BYTES + MAX_BODY_BYTES {
             write_response(&mut stream, Response::text(431, "headers too large"), true).await?;
             return Ok(());
         }
@@ -413,11 +452,22 @@ fn parse_request(head: &str) -> Option<RequestHead> {
     Some((method, target, headers))
 }
 
+#[cfg(test)]
 async fn handle_request(
     state: &ServeState,
     method: &str,
     target: &str,
     headers: &[(String, String)],
+) -> Response {
+    handle_request_with_body(state, method, target, headers, &[]).await
+}
+
+async fn handle_request_with_body(
+    state: &ServeState,
+    method: &str,
+    target: &str,
+    headers: &[(String, String)],
+    body: &[u8],
 ) -> Response {
     if method == "OPTIONS" {
         return Response {
@@ -427,15 +477,20 @@ async fn handle_request(
             headers: allow_headers(),
         };
     }
-    if method != "GET" && method != "HEAD" {
+    let (path, query) = target.split_once('?').unwrap_or((target, ""));
+    let route = route(path);
+    let allowed = match method {
+        "GET" | "HEAD" => true,
+        "PUT" => matches!(route, Route::SyncProject(_)),
+        _ => false,
+    };
+    if !allowed {
         let mut response = Response::text(405, "method not allowed");
         response
             .headers
-            .push(("Allow".to_owned(), "GET, HEAD, OPTIONS".to_owned()));
+            .push(("Allow".to_owned(), "GET, HEAD, PUT, OPTIONS".to_owned()));
         return response;
     }
-    let (path, query) = target.split_once('?').unwrap_or((target, ""));
-    let route = route(path);
     if route == Route::Health {
         return Response::text(200, "ok");
     }
@@ -455,6 +510,14 @@ async fn handle_request(
         Route::Providers => Response::json(200, providers_json(state)),
         Route::Packs => Response::json(200, packs_json(state)),
         Route::Jobs => Response::json(200, jobs_json(state)),
+        Route::SyncList => Response::json(200, sync_list_json(state)),
+        Route::SyncProject(name) => {
+            if method == "PUT" {
+                sync_project_put(state, &name, query, body)
+            } else {
+                sync_project_get(state, &name)
+            }
+        }
         Route::Style(provider) => match style_json(state, &provider) {
             Some(body) => Response::json(200, body),
             None => Response::json(404, "{\"error\":\"unknown provider\"}".to_owned()),
@@ -468,6 +531,76 @@ async fn handle_request(
     }
 }
 
+fn sync_list_json(state: &ServeState) -> String {
+    match sync::list(&state.sync_dir) {
+        Ok(items) => {
+            let projects: Vec<serde_json::Value> = items
+                .iter()
+                .map(|item| {
+                    serde_json::json!({
+                        "name": item.name,
+                        "savedAt": item.saved_at,
+                        "updatedAt": item.updated_at,
+                        "version": item.version,
+                    })
+                })
+                .collect();
+            serde_json::json!({"projects": projects}).to_string()
+        }
+        Err(error) => format!("{{\"error\":\"{}\"}}", json_escape(&error.to_string())),
+    }
+}
+
+fn sync_project_get(state: &ServeState, name: &str) -> Response {
+    match sync::load(&state.sync_dir, name) {
+        Ok(Some(envelope)) => {
+            Response::json(200, serde_json::to_string(&envelope).unwrap_or_default())
+        }
+        Ok(None) => Response::json(404, "{\"error\":\"project not found\"}".to_owned()),
+        Err(error) => Response::json(
+            400,
+            format!("{{\"error\":\"{}\"}}", json_escape(&error.to_string())),
+        ),
+    }
+}
+
+fn sync_project_put(state: &ServeState, name: &str, query: &str, body: &[u8]) -> Response {
+    if body.is_empty() {
+        return Response::json(400, "{\"error\":\"empty body\"}".to_owned());
+    }
+    if body.len() > MAX_BODY_BYTES {
+        return Response::json(413, "{\"error\":\"body too large\"}".to_owned());
+    }
+    let project: serde_json::Value = match serde_json::from_slice(body) {
+        Ok(value) => value,
+        Err(error) => {
+            return Response::json(
+                400,
+                format!("{{\"error\":\"{}\"}}", json_escape(&error.to_string())),
+            );
+        }
+    };
+    if !project.is_object() {
+        return Response::json(
+            400,
+            "{\"error\":\"project must be a JSON object\"}".to_owned(),
+        );
+    }
+    let force = query.split('&').any(|part| part == "force=1");
+    match sync::save(&state.sync_dir, name, project, force) {
+        Ok(SaveOutcome::Saved(envelope)) => {
+            Response::json(200, serde_json::to_string(&envelope).unwrap_or_default())
+        }
+        Ok(SaveOutcome::Conflict(envelope)) => {
+            Response::json(409, serde_json::to_string(&envelope).unwrap_or_default())
+        }
+        Err(error) => Response::json(
+            400,
+            format!("{{\"error\":\"{}\"}}", json_escape(&error.to_string())),
+        ),
+    }
+}
+
 fn route(target: &str) -> Route {
     let path = target.trim_start_matches('/');
     let segments: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
@@ -478,6 +611,8 @@ fn route(target: &str) -> Route {
         ["api", "providers"] => Route::Providers,
         ["api", "packs"] => Route::Packs,
         ["api", "jobs"] => Route::Jobs,
+        ["api", "sync"] => Route::SyncList,
+        ["api", "sync", name] => Route::SyncProject(percent_decode(name)),
         ["style", name] => match name.strip_suffix(".json") {
             Some(provider) if !provider.is_empty() && provider.len() <= 64 => {
                 Route::Style(provider.to_owned())
@@ -803,6 +938,8 @@ async fn write_response(
         204 => "No Content",
         400 => "Bad Request",
         401 => "Unauthorized",
+        409 => "Conflict",
+        413 => "Payload Too Large",
         404 => "Not Found",
         405 => "Method Not Allowed",
         431 => "Request Header Fields Too Large",
@@ -833,7 +970,7 @@ fn allow_headers() -> Vec<(String, String)> {
     vec![
         (
             "Access-Control-Allow-Methods".to_owned(),
-            "GET, HEAD, OPTIONS".to_owned(),
+            "GET, HEAD, PUT, OPTIONS".to_owned(),
         ),
         (
             "Access-Control-Allow-Headers".to_owned(),
@@ -932,6 +1069,7 @@ mod tests {
             token: None,
             started: Instant::now(),
             base_url: "http://127.0.0.1:8080".to_owned(),
+            sync_dir: std::env::temp_dir().join("mappa-serve-sync-tests"),
         }
     }
 
@@ -939,6 +1077,11 @@ mod tests {
     fn routes_tiles_api_and_styles() {
         assert_eq!(route("/health"), Route::Health);
         assert_eq!(route("/api/status"), Route::Status);
+        assert_eq!(route("/api/sync"), Route::SyncList);
+        assert_eq!(
+            route("/api/sync/team"),
+            Route::SyncProject("team".to_owned())
+        );
         assert_eq!(
             route("/tiles/osm/10/1/2.png"),
             Route::CacheTile {
@@ -1030,5 +1173,80 @@ mod tests {
         assert_eq!(header.status, 200);
         let missing = handle_request(&state, "GET", "/tiles/osm/10/1/2?token=secret", &[]).await;
         assert_eq!(missing.status, 404);
+    }
+}
+
+#[cfg(test)]
+mod sync_tests {
+    use super::*;
+
+    fn unique_dir(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "mappa-serve-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    fn state(dir: PathBuf) -> ServeState {
+        ServeState {
+            cache: Arc::new(SqliteCache::open_in_memory().unwrap()),
+            catalog: Arc::new(ProviderCatalog::builtin().unwrap()),
+            packs: Vec::new(),
+            queue: None,
+            token: None,
+            started: Instant::now(),
+            base_url: "http://127.0.0.1:8080".to_owned(),
+            sync_dir: dir,
+        }
+    }
+
+    #[tokio::test]
+    async fn put_get_and_conflict() {
+        let dir = unique_dir("put");
+        let state = state(dir.clone());
+        let body = serde_json::json!({
+            "format": "mappa-project",
+            "savedAt": "2026-10-26T10:00:00.000Z",
+            "name": "team",
+        })
+        .to_string();
+        let put =
+            handle_request_with_body(&state, "PUT", "/api/sync/team", &[], body.as_bytes()).await;
+        assert_eq!(put.status, 200);
+        let get = handle_request(&state, "GET", "/api/sync/team", &[]).await;
+        assert_eq!(get.status, 200);
+        let older = serde_json::json!({
+            "format": "mappa-project",
+            "savedAt": "2026-10-26T09:00:00.000Z",
+        })
+        .to_string();
+        let conflict =
+            handle_request_with_body(&state, "PUT", "/api/sync/team", &[], older.as_bytes()).await;
+        assert_eq!(conflict.status, 409);
+        let forced = handle_request_with_body(
+            &state,
+            "PUT",
+            "/api/sync/team?force=1",
+            &[],
+            older.as_bytes(),
+        )
+        .await;
+        assert_eq!(forced.status, 200);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn rejects_bad_names_and_methods() {
+        let dir = unique_dir("bad");
+        let state = state(dir.clone());
+        let bad = handle_request_with_body(&state, "PUT", "/api/sync/bad/name", &[], b"{}").await;
+        assert_eq!(bad.status, 405);
+        let missing = handle_request(&state, "GET", "/api/sync/absent", &[]).await;
+        assert_eq!(missing.status, 404);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

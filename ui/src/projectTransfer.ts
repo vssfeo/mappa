@@ -66,6 +66,9 @@ const snapshot = (name: string) => {
   })
 }
 
+/** Builds the current workspace as a portable project snapshot. */
+export const currentProjectSnapshot = (name: string): MappaProject => snapshot(name)
+
 let cachedAutosavePath: string | null = null
 
 const recoveryPath = async (): Promise<string> => {

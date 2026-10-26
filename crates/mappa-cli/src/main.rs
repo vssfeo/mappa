@@ -3,6 +3,7 @@
 mod batch;
 mod qr;
 mod serve;
+mod sync;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
