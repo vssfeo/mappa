@@ -586,6 +586,8 @@ pub async fn create_download(
     let job = downloads
         .store
         .create(NewJob {
+            kind: mappa_storage::JobKind::Download,
+            output: None,
             name,
             provider_id: request.provider_id,
             west: request.west,

@@ -62,7 +62,10 @@ mappa-cli serve --host 0.0.0.0 --token mappa-lan \
 - `POST /api/jobs` — поставить загрузку:
   `{provider, bbox:[west,south,east,north], minZoom, maxZoom, name?, polygon?, sourceIds?}`.
   Заголовок `Idempotency-Key` (или поле `idempotencyKey`) возвращает
-  существующее задание вместо дубля. Ответ `202`, повтор — `200`.
+  существующее задание вместо дубля; ключи хранятся в SQLite и
+  переживают рестарт. Ответ `202`, повтор — `200`.
+  Для `kind: "pack"` обязателен `output` (`.mbtiles` или `.pmtiles`),
+  иначе `400`.
 - `GET /api/jobs/{id}/events` — SSE-поток: событие `data:` с JSON задания
   каждые 500 мс, поток закрывается на терминальном статусе.
 - `POST /api/jobs/{id}/cancel` — отмена: queued снимается сразу, running

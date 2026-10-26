@@ -13,7 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use mappa_core::{Bbox, TileRange, normalize_ring, ring_bounds, tile_intersects_ring_with_bounds};
 use rusqlite::{Connection, OptionalExtension, params};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::{StorageError, StorageResult};
 
@@ -74,9 +74,40 @@ impl FromStr for JobStatus {
     }
 }
 
-/// Input for a new download job.
+/// What a queued job does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum JobKind {
+    Download,
+    Pack,
+}
+
+impl JobKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Download => "download",
+            Self::Pack => "pack",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, StorageError> {
+        match value {
+            "download" => Ok(Self::Download),
+            "pack" => Ok(Self::Pack),
+            other => Err(StorageError::InvalidJob(format!(
+                "unknown job kind {other:?}"
+            ))),
+        }
+    }
+}
+
+/// Input for a new job.
 #[derive(Debug, Clone)]
 pub struct NewJob {
+    /// Download or pack.
+    pub kind: JobKind,
+    /// Output path for pack jobs.
+    pub output: Option<String>,
     /// Display name.
     pub name: String,
     /// Provider id.
@@ -105,6 +136,11 @@ pub struct NewJob {
 pub struct DownloadJob {
     /// Stable id.
     pub id: String,
+    /// Download or pack.
+    pub kind: JobKind,
+    /// Output path for pack jobs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
     /// Display name.
     pub name: String,
     /// Provider id.
@@ -219,6 +255,9 @@ impl DownloadStore {
 
     fn migrate(conn: &Connection) -> StorageResult<()> {
         let version: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+        if version > 5 {
+            return Err(StorageError::UnsupportedSchema(version));
+        }
         if version == 0 {
             conn.execute_batch(
                 "BEGIN;
@@ -242,19 +281,27 @@ impl DownloadStore {
                    error        TEXT,
                    polygon      TEXT,
                    cursor_tiles INTEGER NOT NULL DEFAULT 0,
-                   source_ids   TEXT NOT NULL DEFAULT '[]'
+                   source_ids   TEXT NOT NULL DEFAULT '[]',
+                   kind         TEXT NOT NULL DEFAULT 'download',
+                   output       TEXT
                  );
                  CREATE INDEX IF NOT EXISTS jobs_status ON jobs(status);
-                 PRAGMA user_version = 4;
+                 CREATE TABLE IF NOT EXISTS idempotency (
+                   key        TEXT PRIMARY KEY,
+                   job_id     TEXT NOT NULL,
+                   created_at INTEGER NOT NULL
+                 );
+                 PRAGMA user_version = 5;
                  COMMIT;",
             )?;
-        } else if version == 1 {
+            return Ok(());
+        }
+        if version == 1 {
             conn.execute_batch(
                 "BEGIN;
                  ALTER TABLE jobs ADD COLUMN polygon TEXT;
                  ALTER TABLE jobs ADD COLUMN cursor_tiles INTEGER NOT NULL DEFAULT 0;
                  ALTER TABLE jobs ADD COLUMN source_ids TEXT NOT NULL DEFAULT '[]';
-                 PRAGMA user_version = 4;
                  COMMIT;",
             )?;
         } else if version == 2 {
@@ -262,18 +309,28 @@ impl DownloadStore {
                 "BEGIN;
                  ALTER TABLE jobs ADD COLUMN cursor_tiles INTEGER NOT NULL DEFAULT 0;
                  ALTER TABLE jobs ADD COLUMN source_ids TEXT NOT NULL DEFAULT '[]';
-                 PRAGMA user_version = 4;
                  COMMIT;",
             )?;
         } else if version == 3 {
             conn.execute_batch(
                 "BEGIN;
                  ALTER TABLE jobs ADD COLUMN source_ids TEXT NOT NULL DEFAULT '[]';
-                 PRAGMA user_version = 4;
                  COMMIT;",
             )?;
-        } else if version > 4 {
-            return Err(StorageError::UnsupportedSchema(version));
+        }
+        if version < 5 {
+            conn.execute_batch(
+                "BEGIN;
+                 ALTER TABLE jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'download';
+                 ALTER TABLE jobs ADD COLUMN output TEXT;
+                 CREATE TABLE IF NOT EXISTS idempotency (
+                   key        TEXT PRIMARY KEY,
+                   job_id     TEXT NOT NULL,
+                   created_at INTEGER NOT NULL
+                 );
+                 PRAGMA user_version = 5;
+                 COMMIT;",
+            )?;
         }
         Ok(())
     }
@@ -291,6 +348,23 @@ impl DownloadStore {
                 "min_zoom is greater than max_zoom".to_owned(),
             ));
         }
+        let output = match job.kind {
+            JobKind::Pack => {
+                let output = job.output.as_deref().unwrap_or("").trim();
+                if output.is_empty() {
+                    return Err(StorageError::InvalidJob(
+                        "output is required for pack jobs".to_owned(),
+                    ));
+                }
+                if !(output.ends_with(".mbtiles") || output.ends_with(".pmtiles")) {
+                    return Err(StorageError::InvalidJob(
+                        "pack output must end in .mbtiles or .pmtiles".to_owned(),
+                    ));
+                }
+                Some(output.to_owned())
+            }
+            JobKind::Download => None,
+        };
         let bbox = Bbox::new(job.west, job.south, job.east, job.north)
             .map_err(|error| StorageError::InvalidJob(error.to_string()))?;
         let polygon = match job.polygon.as_deref() {
@@ -332,6 +406,8 @@ impl DownloadStore {
         let id = new_job_id();
         let record = DownloadJob {
             id: id.clone(),
+            kind: job.kind,
+            output: output.clone(),
             name: job.name.trim().to_owned(),
             provider_id: job.provider_id,
             west: draw_bbox.west(),
@@ -365,8 +441,8 @@ impl DownloadStore {
             "INSERT INTO jobs
                (id, name, provider_id, west, south, east, north, min_zoom, max_zoom,
                 status, total_tiles, done_tiles, failed_tiles, bytes, created_at,
-                updated_at, error, polygon, source_ids)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, 0, 0, ?12, ?12, NULL, ?13, ?14)",
+                updated_at, error, polygon, source_ids, kind, output)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, 0, 0, ?12, ?12, NULL, ?13, ?14, ?15, ?16)",
             params![
                 record.id,
                 record.name,
@@ -381,10 +457,35 @@ impl DownloadStore {
                 i64::try_from(record.total_tiles).unwrap_or(i64::MAX),
                 record.created_at,
                 polygon_json,
-                sources_json
+                sources_json,
+                record.kind.as_str(),
+                output
             ],
         )?;
         Ok(record)
+    }
+
+    /// Returns the job id remembered for an idempotency key.
+    pub fn job_for_key(&self, key: &str) -> StorageResult<Option<String>> {
+        let conn = self.conn.lock().expect("jobs mutex poisoned");
+        conn.query_row(
+            "SELECT job_id FROM idempotency WHERE key = ?1",
+            [key],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(Into::into)
+    }
+
+    /// Remembers an idempotency key; existing keys win.
+    pub fn remember_key(&self, key: &str, job_id: &str) -> StorageResult<()> {
+        let conn = self.conn.lock().expect("jobs mutex poisoned");
+        conn.execute(
+            "INSERT OR IGNORE INTO idempotency (key, job_id, created_at)
+             VALUES (?1, ?2, ?3)",
+            params![key, job_id, now_secs()],
+        )?;
+        Ok(())
     }
 
     /// Returns one job.
@@ -394,7 +495,7 @@ impl DownloadStore {
             "SELECT id, name, provider_id, west, south, east, north, min_zoom,
                     max_zoom, status, total_tiles, done_tiles, failed_tiles,
                     bytes, created_at, updated_at, error, polygon, cursor_tiles,
-                    source_ids
+                    source_ids, kind, output
              FROM jobs WHERE id = ?1",
             [id],
             row_to_job,
@@ -410,7 +511,7 @@ impl DownloadStore {
             "SELECT id, name, provider_id, west, south, east, north, min_zoom,
                     max_zoom, status, total_tiles, done_tiles, failed_tiles,
                     bytes, created_at, updated_at, error, polygon, cursor_tiles,
-                    source_ids
+                    source_ids, kind, output
              FROM jobs
              ORDER BY CASE status
                         WHEN 'running' THEN 0
@@ -586,6 +687,8 @@ fn row_to_job(row: &rusqlite::Row<'_>) -> rusqlite::Result<DownloadJob> {
             .get::<_, Option<String>>(19)?
             .and_then(|json| serde_json::from_str(&json).ok())
             .unwrap_or_default(),
+        kind: JobKind::parse(&row.get::<_, String>(20)?).unwrap_or(JobKind::Download),
+        output: row.get(21)?,
         status,
         total_tiles: u64::try_from(row.get::<_, i64>(10)?).unwrap_or(0),
         done_tiles: u64::try_from(row.get::<_, i64>(11)?).unwrap_or(0),
@@ -678,6 +781,8 @@ mod tests {
 
     fn job() -> NewJob {
         NewJob {
+            kind: JobKind::Download,
+            output: None,
             name: "Moscow".into(),
             provider_id: "osm".into(),
             west: 37.0,
@@ -728,6 +833,40 @@ mod tests {
         assert_eq!(job.failed_tiles, 0);
         assert_eq!(job.bytes, 1500);
         assert_eq!(job.cursor_tiles, 7);
+    }
+
+    #[test]
+    fn pack_jobs_require_output_and_roundtrip() {
+        let store = DownloadStore::open_in_memory().unwrap();
+        let mut pack = job();
+        pack.kind = JobKind::Pack;
+        assert!(store.create(pack.clone()).is_err());
+        pack.output = Some("/tmp/region.mbtiles".into());
+        let created = store.create(pack).unwrap();
+        assert_eq!(created.kind, JobKind::Pack);
+        assert_eq!(created.output.as_deref(), Some("/tmp/region.mbtiles"));
+        let loaded = store.get(&created.id).unwrap().unwrap();
+        assert_eq!(loaded.kind, JobKind::Pack);
+        assert_eq!(loaded.output, created.output);
+    }
+
+    #[test]
+    fn idempotency_keys_survive_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("jobs.sqlite3");
+        let id = {
+            let store = DownloadStore::open(&path).unwrap();
+            let id = store.create(job()).unwrap().id;
+            store.remember_key("abc", &id).unwrap();
+            store.remember_key("abc", "other").unwrap();
+            id
+        };
+        let store = DownloadStore::open(&path).unwrap();
+        assert_eq!(
+            store.job_for_key("abc").unwrap().as_deref(),
+            Some(id.as_str())
+        );
+        assert!(store.job_for_key("missing").unwrap().is_none());
     }
 
     #[test]

@@ -11,7 +11,9 @@ use std::time::Instant;
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use mappa_core::{Bbox, ProviderCatalog};
-use mappa_storage::{DownloadStore, JobStatus, Mbtiles, NewJob, PmtilesPack, SqliteCache, TileKey};
+use mappa_storage::{
+    DownloadStore, JobKind, JobStatus, Mbtiles, NewJob, PmtilesPack, SqliteCache, TileKey,
+};
 
 use crate::sync::{self, SaveOutcome};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -74,7 +76,6 @@ struct ServeState {
     packs: Vec<Arc<ServePack>>,
     queue: Option<Arc<DownloadStore>>,
     cache_path: PathBuf,
-    idempotency: Mutex<HashMap<String, String>>,
     cancellations: Mutex<HashMap<String, Arc<AtomicBool>>>,
     token: Option<String>,
     started: Instant,
@@ -271,7 +272,6 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         packs,
         queue,
         cache_path: cache_file.clone(),
-        idempotency: Mutex::new(HashMap::new()),
         cancellations: Mutex::new(HashMap::new()),
         token,
         started: Instant::now(),
@@ -1195,7 +1195,6 @@ mod tests {
             packs: Vec::new(),
             queue: None,
             cache_path: std::env::temp_dir().join("mappa-serve-cache.sqlite3"),
-            idempotency: Mutex::new(HashMap::new()),
             cancellations: Mutex::new(HashMap::new()),
             token: None,
             started: Instant::now(),
@@ -1339,7 +1338,6 @@ mod sync_tests {
             packs: Vec::new(),
             queue: None,
             cache_path: std::env::temp_dir().join("mappa-serve-cache.sqlite3"),
-            idempotency: Mutex::new(HashMap::new()),
             cancellations: Mutex::new(HashMap::new()),
             token: None,
             started: Instant::now(),
@@ -1470,9 +1468,10 @@ fn mobile_html(state: &ServeState) -> String {
         .replace("</", "<\\/");
     format!(
         r##"<!doctype html>
-<html lang="en">
+<html lang="en" translate="no">
 <head>
 <meta charset="utf-8">
+<meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mappa track</title>
 <link rel="stylesheet" href="/m/leaflet.css">
@@ -1502,7 +1501,7 @@ fn mobile_html(state: &ServeState) -> String {
   .leaflet-control-attribution a {{ color:#9aa7b8; }}
 </style>
 </head>
-<body>
+<body translate="no">
 <div class="wrap">
   <h1>Mappa track</h1>
   <p id="packname">Record a GPS track and send it to the laptop.</p>
@@ -1751,13 +1750,29 @@ fn job_post(state: &ServeState, headers: &[(String, String)], body: &[u8]) -> Re
                 .map(ToOwned::to_owned)
         });
     if let Some(key) = &key
-        && let Ok(map) = state.idempotency.lock()
-        && let Some(existing) = map.get(key)
-        && let Ok(Some(job)) = queue.get(existing)
+        && let Ok(Some(existing)) = queue.job_for_key(key)
+        && let Ok(Some(job)) = queue.get(&existing)
     {
         return Response::json(200, serde_json::to_string(&job).unwrap_or_default());
     }
+    let kind = match value
+        .get("kind")
+        .and_then(|item| item.as_str())
+        .unwrap_or("download")
+    {
+        "pack" => mappa_storage::JobKind::Pack,
+        "download" => mappa_storage::JobKind::Download,
+        other => {
+            return Response::json(400, format!("{{\"error\":\"unknown job kind {other}\"}}"));
+        }
+    };
+    let output = value
+        .get("output")
+        .and_then(|item| item.as_str())
+        .map(ToOwned::to_owned);
     let new_job = NewJob {
+        kind,
+        output,
         name,
         provider_id: provider,
         west: bbox[0],
@@ -1771,8 +1786,8 @@ fn job_post(state: &ServeState, headers: &[(String, String)], body: &[u8]) -> Re
     };
     match queue.create(new_job) {
         Ok(job) => {
-            if let (Some(key), Ok(mut map)) = (key, state.idempotency.lock()) {
-                map.insert(key, job.id.clone());
+            if let Some(key) = key {
+                let _ = queue.remember_key(&key, &job.id);
             }
             Response::json(202, serde_json::to_string(&job).unwrap_or_default())
         }
@@ -1808,6 +1823,46 @@ async fn job_worker(state: Arc<ServeState>) {
             limit_mb: 2048,
             dry_run: false,
         };
+        if job.kind == JobKind::Pack {
+            let Some(output) = job.output.clone() else {
+                let _ = queue.set_status_if_running(
+                    &job.id,
+                    JobStatus::Failed,
+                    Some("pack job has no output"),
+                );
+                continue;
+            };
+            let request = crate::PackArgs {
+                provider: job.provider_id.clone(),
+                bbox: format!("{},{},{},{}", job.west, job.south, job.east, job.north),
+                zoom: format!("{}-{}", job.min_zoom, job.max_zoom),
+                output: std::path::PathBuf::from(output),
+                name: Some(job.name.clone()),
+                license: None,
+                cache: Some(state.cache_path.clone()),
+                providers_dir: None,
+            };
+            match crate::run_pack(&request, true) {
+                Ok(report) => {
+                    let _ = queue.update_progress(
+                        &job.id,
+                        job.total_tiles,
+                        0,
+                        report.bytes,
+                        job.total_tiles,
+                    );
+                    let _ = queue.set_status_if_running(&job.id, JobStatus::Completed, None);
+                }
+                Err(error) => {
+                    let _ = queue.set_status_if_running(
+                        &job.id,
+                        JobStatus::Failed,
+                        Some(&error.to_string()),
+                    );
+                }
+            }
+            continue;
+        }
         let cancel = Arc::new(AtomicBool::new(false));
         if let Ok(mut map) = state.cancellations.lock() {
             map.insert(job.id.clone(), Arc::clone(&cancel));
@@ -1868,7 +1923,6 @@ mod mobile_tests {
             packs: Vec::new(),
             queue: None,
             cache_path: dir.join("cache.sqlite3"),
-            idempotency: Mutex::new(HashMap::new()),
             cancellations: Mutex::new(HashMap::new()),
             token: None,
             started: Instant::now(),

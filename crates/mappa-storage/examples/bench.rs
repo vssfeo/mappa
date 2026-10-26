@@ -172,6 +172,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let queue_path = directory.join("downloads.sqlite3");
     let queue = DownloadStore::open(&queue_path)?;
     let job = queue.create(NewJob {
+        kind: mappa_storage::JobKind::Download,
+        output: None,
         name: "bench".to_owned(),
         provider_id: "bench".to_owned(),
         west: BENCH_WEST,

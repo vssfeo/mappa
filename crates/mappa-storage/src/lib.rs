@@ -17,7 +17,7 @@ pub use cache::{
     now_unix,
 };
 pub use error::{StorageError, StorageResult};
-pub use jobs::{DownloadJob, DownloadStore, JobStatus, NewJob};
+pub use jobs::{DownloadJob, DownloadStore, JobKind, JobStatus, NewJob};
 pub use manifest::{PackManifest, verify_manifest, write_manifest};
 pub use mbtiles::{Mbtiles, MbtilesMetadata, MbtilesWriter};
 pub use pack::{
