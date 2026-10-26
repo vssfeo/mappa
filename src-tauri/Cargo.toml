@@ -30,3 +30,6 @@ tauri-plugin-dialog = "2"
 tauri-plugin-log = "2"
 thiserror = "2"
 tokio = { version = "1", features = ["io-util", "net", "sync", "macros", "time"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Power"] }

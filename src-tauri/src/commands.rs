@@ -193,7 +193,11 @@ pub async fn open_log_directory(app: tauri::AppHandle) -> Result<String, String>
     let display = directory.display().to_string();
     let target = directory.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        std::process::Command::new("xdg-open")
+        #[cfg(windows)]
+        let mut command = std::process::Command::new("explorer");
+        #[cfg(not(windows))]
+        let mut command = std::process::Command::new("xdg-open");
+        command
             .arg(&target)
             .status()
             .map_err(|error| format!("cannot open {}: {error}", target.display()))

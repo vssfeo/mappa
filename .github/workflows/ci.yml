@@ -204,3 +204,35 @@ jobs:
           if ldd target/release/mappa | grep -q 'not found'; then
             exit 1
           fi
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Install UI dependencies
+        run: npm ci --prefix ui
+
+      - name: Build the UI
+        run: npm run build --prefix ui
+
+      - name: Check the CLI
+        run: cargo check -p mappa-cli --all-targets
+
+      - name: Test the CLI
+        run: cargo test -p mappa-cli
+
+      - name: Check the app
+        run: cargo check -p mappa --lib
