@@ -2,8 +2,10 @@
 
 mod batch;
 mod qr;
+mod sas;
 mod serve;
 mod sync;
+mod track;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -52,6 +54,8 @@ enum Command {
     Batch(batch::BatchArgs),
     /// Запустить локальный tile-server и REST API.
     Serve(serve::ServeArgs),
+    /// Импортировать кэш SAS.Planet в MBTiles.
+    ImportSas(sas::SasArgs),
 }
 
 #[derive(Debug, Args)]
@@ -151,6 +155,7 @@ async fn main() -> Result<()> {
             }
             serve::run(args).await
         }
+        Command::ImportSas(args) => sas::run(args, json),
     }
 }
 

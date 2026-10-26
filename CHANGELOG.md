@@ -3,6 +3,21 @@
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версии — [SemVer](https://semver.org/lang/ru/).
 
+## [1.8.0] — 2026-10-26
+
+### Добавлено
+
+- Мобильный компаньон: `mappa serve --tls` с самоподписанным
+  сертификатом, страница `/m` для записи GPS-трека и `POST /api/track`,
+  который сохраняет GPX на ноутбуке. QR ведёт на `/m`.
+- Импорт кэша SAS.Planet: `mappa-cli import-sas --source --output`,
+  выбор слоя, границы и зуммы, отчёт в JSON.
+- Зависимости `rcgen` и `tokio-rustls` для TLS.
+
+### Изменено
+
+- `make check`: 242 Rust-теста, 129 UI-тестов.
+
 ## [1.7.0] — 2026-10-26
 
 ### Добавлено

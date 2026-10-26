@@ -12,9 +12,12 @@ use mappa_core::{Bbox, ProviderCatalog};
 use mappa_storage::{DownloadStore, Mbtiles, PmtilesPack, SqliteCache, TileKey};
 
 use crate::sync::{self, SaveOutcome};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::net::TcpListener;
 use tokio::sync::Semaphore;
+use tokio_rustls::TlsAcceptor;
+use tokio_rustls::rustls::ServerConfig;
+use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 
 const MAX_HEADER_BYTES: usize = 16 * 1024;
 const MAX_BODY_BYTES: usize = 64 * 1024 * 1024;
@@ -46,6 +49,12 @@ pub struct ServeArgs {
     /// Каталог для синхронизированных проектов; по умолчанию рядом с кэшем.
     #[arg(long)]
     pub sync_dir: Option<PathBuf>,
+    /// Каталог для GPX-треков с телефона; по умолчанию рядом с кэшем.
+    #[arg(long)]
+    pub tracks_dir: Option<PathBuf>,
+    /// Отдавать HTTPS с самоподписанным сертификатом; нужен для GPS на телефоне.
+    #[arg(long)]
+    pub tls: bool,
     /// Не печатать QR-код для подключения в терминале.
     #[arg(long)]
     pub no_qr: bool,
@@ -63,6 +72,7 @@ struct ServeState {
     started: Instant,
     base_url: String,
     sync_dir: PathBuf,
+    tracks_dir: PathBuf,
 }
 
 struct ServePack {
@@ -92,6 +102,8 @@ enum Route {
     Providers,
     Packs,
     Jobs,
+    Mobile,
+    Track,
     SyncList,
     SyncProject(String),
     Style(String),
@@ -123,6 +135,15 @@ impl Response {
         Self {
             status,
             content_type: "application/json; charset=utf-8",
+            body: body.into_bytes(),
+            headers: Vec::new(),
+        }
+    }
+
+    fn html(body: String) -> Self {
+        Self {
+            status: 200,
+            content_type: "text/html; charset=utf-8",
             body: body.into_bytes(),
             headers: Vec::new(),
         }
@@ -180,6 +201,12 @@ pub async fn run(args: ServeArgs) -> Result<()> {
             None
         }
     };
+    let tracks_dir = args.tracks_dir.clone().unwrap_or_else(|| {
+        cache_file
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("tracks")
+    });
     let sync_dir = args.sync_dir.clone().unwrap_or_else(|| {
         cache_file
             .parent()
@@ -201,7 +228,18 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     } else {
         address.ip().to_string()
     };
-    let base_url = format!("http://{display_host}:{}", address.port());
+    let lan_hosts = if address.ip().is_unspecified() {
+        local_addresses()
+    } else {
+        Vec::new()
+    };
+    let tls_acceptor = if args.tls {
+        Some(build_tls(&lan_hosts)?)
+    } else {
+        None
+    };
+    let scheme = if args.tls { "https" } else { "http" };
+    let base_url = format!("{scheme}://{display_host}:{}", address.port());
     let state = Arc::new(ServeState {
         cache,
         catalog,
@@ -211,20 +249,16 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         started: Instant::now(),
         base_url,
         sync_dir,
+        tracks_dir,
     });
 
     println!("Mappa tile server {VERSION}");
     println!("  cache: {}", cache_file.display());
     println!("  packs: {}", state.packs.len());
     println!("  local: {}/", state.base_url);
-    let lan_hosts = if address.ip().is_unspecified() {
-        local_addresses()
-    } else {
-        Vec::new()
-    };
     if address.ip().is_unspecified() {
         for ip in &lan_hosts {
-            println!("  LAN:   http://{ip}:{}/", address.port());
+            println!("  LAN:   {scheme}://{ip}:{}/", address.port());
         }
         if state.token.is_none() {
             println!("  warning: LAN access is open; use --token to restrict it");
@@ -247,11 +281,11 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     if let Some(host) = qr_host {
         let qr_url = match state.token.as_deref() {
             Some(token) => format!(
-                "http://{host}:{}/?token={}",
+                "{scheme}://{host}:{}/m?token={}",
                 address.port(),
                 percent_encode(token)
             ),
-            None => format!("http://{host}:{}/", address.port()),
+            None => format!("{scheme}://{host}:{}/m", address.port()),
         };
         match crate::qr::encode(&qr_url) {
             Ok(code) => {
@@ -287,9 +321,20 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         let (stream, _peer) = listener.accept().await?;
         let permit = Arc::clone(&connections).acquire_owned().await?;
         let state = Arc::clone(&state);
+        let tls = tls_acceptor.clone();
         tokio::spawn(async move {
             let _permit = permit;
-            if let Err(error) = handle_connection(stream, state).await {
+            let result = match tls {
+                Some(acceptor) => match acceptor.accept(stream).await {
+                    Ok(stream) => handle_connection(stream, state).await,
+                    Err(error) => {
+                        eprintln!("tls handshake failed: {error}");
+                        return;
+                    }
+                },
+                None => handle_connection(stream, state).await,
+            };
+            if let Err(error) = result {
                 eprintln!("request failed: {error}");
             }
         });
@@ -376,7 +421,10 @@ async fn open_pack(index: usize, path: &std::path::Path) -> Result<ServePack> {
     }
 }
 
-async fn handle_connection(mut stream: TcpStream, state: Arc<ServeState>) -> Result<()> {
+async fn handle_connection<S>(mut stream: S, state: Arc<ServeState>) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
     let mut buffer = Vec::with_capacity(4096);
     let mut chunk = [0_u8; 4096];
     loop {
@@ -482,6 +530,7 @@ async fn handle_request_with_body(
     let allowed = match method {
         "GET" | "HEAD" => true,
         "PUT" => matches!(route, Route::SyncProject(_)),
+        "POST" => matches!(route, Route::Track),
         _ => false,
     };
     if !allowed {
@@ -510,6 +559,8 @@ async fn handle_request_with_body(
         Route::Providers => Response::json(200, providers_json(state)),
         Route::Packs => Response::json(200, packs_json(state)),
         Route::Jobs => Response::json(200, jobs_json(state)),
+        Route::Mobile => Response::html(mobile_html()),
+        Route::Track => track_post(state, body),
         Route::SyncList => Response::json(200, sync_list_json(state)),
         Route::SyncProject(name) => {
             if method == "PUT" {
@@ -611,6 +662,8 @@ fn route(target: &str) -> Route {
         ["api", "providers"] => Route::Providers,
         ["api", "packs"] => Route::Packs,
         ["api", "jobs"] => Route::Jobs,
+        ["m"] => Route::Mobile,
+        ["api", "track"] => Route::Track,
         ["api", "sync"] => Route::SyncList,
         ["api", "sync", name] => Route::SyncProject(percent_decode(name)),
         ["style", name] => match name.strip_suffix(".json") {
@@ -918,6 +971,9 @@ fn index_text(state: &ServeState) -> String {
          GET /api/providers\n\
          GET /api/packs\n\
          GET /api/jobs\n\
+         GET /api/sync\n\
+         POST /api/track\n\
+         GET /m\n\
          GET /style/{{provider}}.json\n\
          GET /tiles/{{provider}}/{{z}}/{{x}}/{{y}}\n\
          GET /packs/{{id}}/{{z}}/{{x}}/{{y}}\n\n\
@@ -928,11 +984,10 @@ fn index_text(state: &ServeState) -> String {
     )
 }
 
-async fn write_response(
-    stream: &mut TcpStream,
-    response: Response,
-    include_body: bool,
-) -> Result<()> {
+async fn write_response<S>(stream: &mut S, response: Response, include_body: bool) -> Result<()>
+where
+    S: AsyncWrite + Unpin,
+{
     let reason = match response.status {
         200 => "OK",
         204 => "No Content",
@@ -970,7 +1025,7 @@ fn allow_headers() -> Vec<(String, String)> {
     vec![
         (
             "Access-Control-Allow-Methods".to_owned(),
-            "GET, HEAD, PUT, OPTIONS".to_owned(),
+            "GET, HEAD, POST, PUT, OPTIONS".to_owned(),
         ),
         (
             "Access-Control-Allow-Headers".to_owned(),
@@ -1070,6 +1125,7 @@ mod tests {
             started: Instant::now(),
             base_url: "http://127.0.0.1:8080".to_owned(),
             sync_dir: std::env::temp_dir().join("mappa-serve-sync-tests"),
+            tracks_dir: std::env::temp_dir().join("mappa-serve-track-tests"),
         }
     }
 
@@ -1078,6 +1134,8 @@ mod tests {
         assert_eq!(route("/health"), Route::Health);
         assert_eq!(route("/api/status"), Route::Status);
         assert_eq!(route("/api/sync"), Route::SyncList);
+        assert_eq!(route("/m"), Route::Mobile);
+        assert_eq!(route("/api/track"), Route::Track);
         assert_eq!(
             route("/api/sync/team"),
             Route::SyncProject("team".to_owned())
@@ -1200,7 +1258,8 @@ mod sync_tests {
             token: None,
             started: Instant::now(),
             base_url: "http://127.0.0.1:8080".to_owned(),
-            sync_dir: dir,
+            sync_dir: dir.clone(),
+            tracks_dir: dir,
         }
     }
 
@@ -1248,5 +1307,269 @@ mod sync_tests {
         let missing = handle_request(&state, "GET", "/api/sync/absent", &[]).await;
         assert_eq!(missing.status, 404);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+fn build_tls(lan_hosts: &[IpAddr]) -> Result<TlsAcceptor> {
+    let _ = tokio_rustls::rustls::crypto::ring::default_provider().install_default();
+    let mut names = vec![
+        "localhost".to_owned(),
+        "127.0.0.1".to_owned(),
+        "::1".to_owned(),
+    ];
+    for ip in lan_hosts {
+        names.push(ip.to_string());
+    }
+    let certified = rcgen::generate_simple_self_signed(names)
+        .context("cannot generate a self-signed certificate")?;
+    let certificate = CertificateDer::from(certified.cert.der().to_vec());
+    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(certified.key_pair.serialize_der()));
+    let config = ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(vec![certificate], key)
+        .context("cannot build the TLS server config")?;
+    Ok(TlsAcceptor::from(Arc::new(config)))
+}
+
+fn track_post(state: &ServeState, body: &[u8]) -> Response {
+    let track = match crate::track::parse(body) {
+        Ok(track) => track,
+        Err(error) => {
+            return Response::json(400, format!("{{\"error\":\"{}\"}}", json_escape(&error)));
+        }
+    };
+    let gpx = crate::track::to_gpx(&track);
+    if let Err(error) = std::fs::create_dir_all(&state.tracks_dir) {
+        return Response::json(
+            500,
+            format!("{{\"error\":\"{}\"}}", json_escape(&error.to_string())),
+        );
+    }
+    let path = state.tracks_dir.join(crate::track::file_name(&track.name));
+    if let Err(error) = std::fs::write(&path, gpx) {
+        return Response::json(
+            500,
+            format!("{{\"error\":\"{}\"}}", json_escape(&error.to_string())),
+        );
+    }
+    Response::json(
+        200,
+        serde_json::json!({
+            "file": path.display().to_string(),
+            "points": track.points.len(),
+        })
+        .to_string(),
+    )
+}
+
+fn mobile_html() -> String {
+    r#"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mappa track</title>
+<style>
+  :root { color-scheme: dark; --bg:#0b0f14; --surface:#141b23; --text:#f2f6fc; --dim:#9aa7b8; --accent:#ff7a45; --ok:#43d9c5; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--text); font:16px/1.45 system-ui, sans-serif; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  p { margin:0 0 14px; color:var(--dim); font-size:14px; }
+  .card { background:var(--surface); border:1px solid #263241; border-radius:14px; padding:16px; margin-bottom:14px; }
+  .big { display:flex; gap:10px; }
+  button { flex:1; min-height:54px; border:0; border-radius:12px; font:inherit; font-weight:600; color:#0b0f14; background:var(--accent); }
+  button.secondary { background:#263241; color:var(--text); }
+  button:disabled { opacity:.45; }
+  .readout { font-size:34px; font-weight:700; letter-spacing:.5px; }
+  .muted { color:var(--dim); font-size:13px; }
+  .warn { border-color:#7a4a1f; background:#2a1a10; color:#ffcf9f; }
+  .ok { color:var(--ok); }
+  input { width:100%; min-height:46px; margin-top:6px; padding:10px 12px; border-radius:10px; border:1px solid #263241; background:#0f151c; color:var(--text); font:inherit; }
+  #status { margin-top:10px; font-size:14px; }
+</style>
+</head>
+<body>
+  <h1>Mappa track</h1>
+  <p>Record a GPS track and send it to the laptop.</p>
+
+  <div id="insecure" class="card warn" hidden>
+    GPS is blocked on <code>http://</code>. Restart the server with
+    <code>mappa serve --tls</code>, accept the certificate warning, and reopen this page.
+  </div>
+
+  <div class="card">
+    <div class="readout" id="distance">0 m</div>
+    <div class="muted"><span id="count">0</span> points · <span id="accuracy">—</span></div>
+  </div>
+
+  <div class="card big">
+    <button id="start">Start</button>
+    <button id="stop" class="secondary" disabled>Stop</button>
+  </div>
+
+  <div class="card">
+    <label for="name" class="muted">Track name</label>
+    <input id="name" value="Phone track" autocomplete="off">
+    <div class="big" style="margin-top:12px">
+      <button id="send" disabled>Send to laptop</button>
+    </div>
+    <div id="status" class="muted"></div>
+  </div>
+
+<script>
+(function () {
+  var token = new URLSearchParams(location.search).get('token') || '';
+  var points = [];
+  var watchId = null;
+  var last = null;
+  var distance = 0;
+  var $ = function (id) { return document.getElementById(id); };
+  var secure = window.isSecureContext;
+  if (!secure) $('insecure').hidden = false;
+
+  function metres(a, b) {
+    var R = 6371000, rad = Math.PI / 180;
+    var dLat = (b.lat - a.lat) * rad, dLon = (b.lon - a.lon) * rad;
+    var s = Math.sin(dLat / 2) ** 2 +
+      Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(s));
+  }
+  function render() {
+    $('count').textContent = points.length;
+    $('distance').textContent = distance >= 1000
+      ? (distance / 1000).toFixed(2) + ' km'
+      : Math.round(distance) + ' m';
+    $('send').disabled = points.length === 0 || watchId !== null;
+  }
+  function fail(error) {
+    $('status').textContent = 'GPS error: ' + error.message;
+  }
+  function start() {
+    if (!navigator.geolocation) { fail({ message: 'not supported' }); return; }
+    $('status').textContent = 'Recording…';
+    watchId = navigator.geolocation.watchPosition(function (pos) {
+      var point = {
+        lat: pos.coords.latitude,
+        lon: pos.coords.longitude,
+        alt: pos.coords.altitude == null ? undefined : pos.coords.altitude,
+        time: new Date(pos.timestamp).toISOString()
+      };
+      if (last) distance += metres(last, point);
+      last = point;
+      points.push(point);
+      $('accuracy').textContent = '±' + Math.round(pos.coords.accuracy) + ' m';
+      render();
+      $('status').textContent = 'Recording… ' + points.length + ' points';
+    }, fail, { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 });
+    $('start').disabled = true;
+    $('stop').disabled = false;
+    $('send').disabled = true;
+  }
+  function stop() {
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+    $('start').disabled = false;
+    $('stop').disabled = true;
+    $('status').textContent = 'Stopped at ' + points.length + ' points';
+    render();
+  }
+  async function send() {
+    stop();
+    $('status').textContent = 'Sending…';
+    try {
+      var url = '/api/track' + (token ? '?token=' + encodeURIComponent(token) : '');
+      var response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: $('name').value || 'Phone track', points: points })
+      });
+      var data = await response.json();
+      if (!response.ok) throw new Error(data.error || ('HTTP ' + response.status));
+      $('status').textContent = 'Saved: ' + data.file + ' (' + data.points + ' points)';
+      $('status').className = 'ok';
+    } catch (error) {
+      $('status').textContent = 'Upload failed: ' + error.message;
+      $('status').className = 'muted';
+    }
+  }
+  $('start').addEventListener('click', start);
+  $('stop').addEventListener('click', stop);
+  $('send').addEventListener('click', send);
+  render();
+})();
+</script>
+</body>
+</html>
+"#
+    .to_owned()
+}
+
+#[cfg(test)]
+mod mobile_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn track_upload_writes_gpx() {
+        let dir = std::env::temp_dir().join(format!(
+            "mappa-track-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let state = ServeState {
+            cache: Arc::new(SqliteCache::open_in_memory().unwrap()),
+            catalog: Arc::new(ProviderCatalog::builtin().unwrap()),
+            packs: Vec::new(),
+            queue: None,
+            token: None,
+            started: Instant::now(),
+            base_url: "http://127.0.0.1:8080".to_owned(),
+            sync_dir: dir.clone(),
+            tracks_dir: dir.clone(),
+        };
+        let body = serde_json::json!({
+            "name": "Phone track",
+            "points": [
+                {"lat": 53.1, "lon": -9.6, "alt": 12.0},
+                {"lat": 53.2, "lon": -9.7}
+            ]
+        })
+        .to_string();
+        let response =
+            handle_request_with_body(&state, "POST", "/api/track", &[], body.as_bytes()).await;
+        assert_eq!(response.status, 200);
+        let gpx = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.path())
+            .find(|path| path.extension().and_then(|value| value.to_str()) == Some("gpx"))
+            .expect("gpx file");
+        let text = std::fs::read_to_string(gpx).unwrap();
+        assert!(text.contains("<trkpt lat=\"53.1000000\" lon=\"-9.6000000\">"));
+        assert!(text.contains("<ele>12.0</ele>"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn mobile_page_is_html_and_track_needs_post() {
+        let state = ServeState {
+            cache: Arc::new(SqliteCache::open_in_memory().unwrap()),
+            catalog: Arc::new(ProviderCatalog::builtin().unwrap()),
+            packs: Vec::new(),
+            queue: None,
+            token: None,
+            started: Instant::now(),
+            base_url: "http://127.0.0.1:8080".to_owned(),
+            sync_dir: std::env::temp_dir().join("mappa-mobile-sync"),
+            tracks_dir: std::env::temp_dir().join("mappa-mobile-tracks"),
+        };
+        let page = handle_request(&state, "GET", "/m", &[]).await;
+        assert_eq!(page.status, 200);
+        assert!(page.content_type.starts_with("text/html"));
+        assert!(String::from_utf8_lossy(&page.body).contains("Mappa track"));
+        let wrong = handle_request(&state, "PUT", "/api/track", &[]).await;
+        assert_eq!(wrong.status, 405);
     }
 }
