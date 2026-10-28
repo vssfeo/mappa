@@ -3868,3 +3868,57 @@ body.is-layer-dragging {
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);
 }
+
+.layer-row.compact {
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  gap: 6px;
+  padding: 3px 6px;
+}
+
+.layer-row.compact .layer-grip {
+  width: 18px;
+  height: 18px;
+}
+
+.layer-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.layer-line strong {
+  max-width: 44%;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layer-line .layer-kind {
+  flex: none;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.layer-line input[type='range'] {
+  flex: 1 1 44px;
+  width: auto;
+  min-width: 40px;
+  height: 3px;
+}
+
+.layer-line .layer-opacity {
+  flex: none;
+  width: 32px;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: right;
+}
+
+.layer-actions {
+  display: flex;
+  align-items: center;
+}

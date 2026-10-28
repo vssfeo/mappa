@@ -112,6 +112,7 @@ import type {
 import { readMarkerIcon } from './markerIcons'
 import { sk42Epsg, sk42Zone, sk42ZoneFromY } from './sk42'
 import { useLayerDrag } from './useLayerDrag'
+import { LayerRow } from './LayerRow'
 import {
   exportKey,
   useDownloadsStore,
@@ -4946,163 +4947,78 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
               )}
             </p>
             <div className="layer-list">
-              {[...providerOrder].reverse().map((id) => {
-                const item = providerById(id)
-                const state = layers[item.id]
+              {customSourceOrder
+              .slice()
+              .reverse()
+              .map((id) => {
+                const source = customSources.find((item) => item.id === id)
+                if (!source) return null
+                const layer = customLayers[source.id] ?? {
+                  visible: true,
+                  opacity: 1,
+                }
                 return (
-                  <div
-                    className={`layer-row${state.visible ? ' is-visible' : ''}${
-                      providerDrag.dragId === item.id ? ' is-dragging' : ''
-                    }${
-                      providerDrag.dropTarget?.id === item.id
-                        ? ` drop-${providerDrag.dropTarget.after ? 'after' : 'before'}`
-                        : ''
-                    }`}
-                    key={item.id}
-                    data-layer-id={item.id}
-                  >
-                    <button
-                      type="button"
-                      className="layer-eye"
-                      onClick={() => toggleLayer(item.id)}
-                      aria-label={
-                        state.visible
-                          ? `${tx('Скрыть', 'Hide')} ${item.label}`
-                          : `${tx('Показать', 'Show')} ${item.label}`
-                      }
-                      aria-pressed={state.visible}
-                    >
-                      {state.visible ? <Eye size={15} /> : <EyeOff size={15} />}
-                    </button>
-                    <div className="layer-main">
-                      <div className="layer-title">
-                        <button
-                          type="button"
-                          className="layer-grip"
-                          onPointerDown={(event) =>
-                            providerDrag.start(event, item.id)
-                          }
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => {
-                            if (event.key === 'ArrowUp') {
-                              event.preventDefault()
-                              moveProvider(item.id, 1)
-                            } else if (event.key === 'ArrowDown') {
-                              event.preventDefault()
-                              moveProvider(item.id, -1)
-                            }
-                          }}
-                          aria-label={`${tx('Перетащить слой', 'Drag layer')} ${item.label}`}
-                          title={tx(
-                            'Перетащите или используйте ↑/↓',
-                            'Drag or use ↑/↓',
-                          )}
-                        >
-                          <GripVertical size={14} />
-                        </button>
-                        <strong>{item.label}</strong>
-                        <span>{item.short}</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        value={state.opacity}
-                        onChange={(event) =>
-                          setLayerOpacity(
-                            item.id,
-                            Number(event.target.value),
-                          )
-                        }
-                        aria-label={tx(
-                                      'Прозрачность {p0}',
-                                      'Opacity of {p0}',
-                                      { p0: item.label },
-                                    )}
-                      />
-                    </div>
-                    <span className="layer-opacity">
-                      {Math.round(state.opacity * 100)}%
-                    </span>
-                  </div>
+                  <LayerRow
+                    key={source.id}
+                    id={source.id}
+                    name={source.name}
+                    kind={
+                      source.kind === 'wms'
+                        ? 'WMS'
+                        : source.scheme.toUpperCase()
+                    }
+                    visible={layer.visible}
+                    opacity={layer.opacity}
+                    dragging={customDrag.dragId === source.id}
+                    drop={
+                      customDrag.dropTarget?.id === source.id
+                        ? customDrag.dropTarget.after
+                          ? 'after'
+                          : 'before'
+                        : null
+                    }
+                    onToggle={() => toggleCustomLayer(source.id)}
+                    onOpacity={(value) =>
+                      setCustomLayerOpacity(source.id, value)
+                    }
+                    onDragStart={(event) => customDrag.start(event, source.id)}
+                    onMove={(delta) => moveCustomSource(source.id, delta)}
+                    onEdit={() => editSource(source)}
+                  />
                 )
               })}
+            {[...providerOrder].reverse().map((id) => {
+              const item = providerById(id)
+              const state = layers[item.id]
+              return (
+                <LayerRow
+                  key={item.id}
+                  id={item.id}
+                  name={item.label}
+                  kind={item.short}
+                  visible={state.visible}
+                  opacity={state.opacity}
+                  dragging={providerDrag.dragId === item.id}
+                  drop={
+                    providerDrag.dropTarget?.id === item.id
+                      ? providerDrag.dropTarget.after
+                        ? 'after'
+                        : 'before'
+                      : null
+                  }
+                  onToggle={() => toggleLayer(item.id)}
+                  onOpacity={(value) => setLayerOpacity(item.id, value)}
+                  onDragStart={(event) => providerDrag.start(event, item.id)}
+                  onMove={(delta) => moveProvider(item.id, delta)}
+                />
+              )
+            })}
             </div>
           </section>
 
           <section className="section">
             <div className="section-heading">
-              <span>{tx('Покрытие кэша', 'Cache coverage')}</span>
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={() => setCoverageVisible(!coverageVisible)}
-                disabled={!isNative}
-                title={
-                  isNative
-                    ? tx(
-                        'Показать скачанные тайлы активной подложки',
-                        'Show cached tiles of the active basemap',
-                      )
-                    : tx(
-                        'Доступно в нативном приложении',
-                        'Available in the native app',
-                      )
-                }
-              >
-                {coverageVisible ? <EyeOff size={14} /> : <Eye size={14} />}
-                {coverageVisible ? tx('Скрыть', 'Hide') : tx('Показать', 'Show')}
-              </button>
-            </div>
-            {coverageVisible && (
-              <div className="coverage-controls">
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() => void refreshCoverage(providerId)}
-                  disabled={coverageBusy}
-                >
-                  {coverageBusy ? (
-                    <Loader2 size={14} className="spin" />
-                  ) : (
-                    <RefreshCw size={14} />
-                  )}
-                  {tx('Обновить', 'Refresh')}
-                </button>
-                <span className="mono">
-                  {formatCount(coverageTiles.length)}
-                  {coverageTruncated ? '+' : ''} {tx('тайлов', 'tiles')}
-                </span>
-              </div>
-            )}
-            {coverageVisible && (
-              <p className="settings-hint">
-                {tx(
-                  'Полупрозрачные квадраты показывают тайлы активной подложки в текущем виде. Обновляется после остановки карты.',
-                  'Translucent squares show cached tiles of the active basemap in the current view. Refreshes after the map stops moving.',
-                )}
-                {coverageTruncated &&
-                  tx(
-                    ' Показаны первые 50 000 тайлов.',
-                    ' Showing the first 50,000 tiles.',
-                  )}
-                {coverageError &&
-                  tx(
-                    ' Ошибка: {p0}',
-                    ' Error: {p0}',
-                    { p0: coverageError },
-                  )}
-              </p>
-            )}
-          </section>
-
-          <section className="section">
-            <div className="section-heading">
-              <span>
-                {tx('Свои источники', 'Custom sources')} ·{' '}
-                {formatCount(customSources.length)}
-              </span>
+              <span>{tx('Добавить слой', 'Add layer')}</span>
               <div className="source-actions">
                 <button
                   type="button"
@@ -5557,6 +5473,22 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                   )}
                 </label>
                 <div className="marker-actions">
+                  {sourceDraft.id && (
+                    <button
+                      type="button"
+                      className="ghost-button is-danger"
+                      onClick={() => {
+                        const source = customSources.find(
+                          (item) => item.id === sourceDraft.id,
+                        )
+                        if (source) {
+                          void removeSource(source.id, source.name)
+                        }
+                      }}
+                    >
+                      {tx('Удалить', 'Delete')}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="primary-button"
@@ -5581,149 +5513,71 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
               </div>
             )}
 
-            {customSources.length > 0 && (
-              <p className="layer-hint">
-                {tx(
-                  'Перетащите источник за ручку ⋮⋮. Верхний слой рисуется выше остальных.',
-                  'Drag a source by its ⋮⋮ handle. The top layer draws above the rest.',
-                )}
-              </p>
-            )}
-            {customSources.length === 0 && !sourceForm ? (
-              <p className="pack-empty">
-                {tx(
-                  'Подключите свой XYZ/TMS сервер или API с ключом в заголовке. Заголовки хранятся локально с правами владельца.',
-                  'Connect your own XYZ/TMS server or an API with a key in a header. Headers are stored locally with owner-only permissions.',
-                )}
-              </p>
-            ) : (
-              <div className="layer-list">
-                {[...customSourceOrder].reverse().map((id) => {
-                  const source = customSources.find((item) => item.id === id)
-                  if (!source) return null
-                  const layer = customLayers[source.id] ?? {
-                    visible: true,
-                    opacity: 1,
-                  }
-                  return (
-                    <div
-                      className={`layer-row pack-row${layer.visible ? ' is-visible' : ''}${
-                        customDrag.dragId === source.id ? ' is-dragging' : ''
-                      }${
-                        customDrag.dropTarget?.id === source.id
-                          ? ` drop-${customDrag.dropTarget.after ? 'after' : 'before'}`
-                          : ''
-                      }`}
-                      key={source.id}
-                      data-layer-id={source.id}
-                    >
-                      <button
-                        type="button"
-                        className="layer-eye"
-                        onClick={() => toggleCustomLayer(source.id)}
-                        aria-label={
-                          layer.visible
-                            ? `${tx('Скрыть', 'Hide')} ${source.name}`
-                            : `${tx('Показать', 'Show')} ${source.name}`
-                        }
-                        aria-pressed={layer.visible}
-                      >
-                        {layer.visible ? (
-                          <Eye size={15} />
-                        ) : (
-                          <EyeOff size={15} />
-                        )}
-                      </button>
-                      <div className="layer-main">
-                        <div className="layer-title">
-                          <button
-                            type="button"
-                            className="layer-grip"
-                            onPointerDown={(event) =>
-                              customDrag.start(event, source.id)
-                            }
-                            onClick={(event) => event.stopPropagation()}
-                            onKeyDown={(event) => {
-                              if (event.key === 'ArrowUp') {
-                                event.preventDefault()
-                                moveCustomSource(source.id, 1)
-                              } else if (event.key === 'ArrowDown') {
-                                event.preventDefault()
-                                moveCustomSource(source.id, -1)
-                              }
-                            }}
-                            aria-label={`${tx('Перетащить слой', 'Drag layer')} ${source.name}`}
-                            title={tx(
-                              'Перетащите или используйте ↑/↓',
-                              'Drag or use ↑/↓',
-                            )}
-                          >
-                            <GripVertical size={14} />
-                          </button>
-                          <strong>{source.name}</strong>
-                          <span>
-                            {source.kind === 'wms'
-                              ? 'WMS'
-                              : source.scheme.toUpperCase()}{' '}
-                            · {source.format}
-                          </span>
-                        </div>
-                        <div className="pack-meta">
-                          z{source.minZoom}–z{source.maxZoom} · {source.url}
-                          {source.attribution ? ` · ${source.attribution}` : ''}
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          value={layer.opacity}
-                          onChange={(event) =>
-                            setCustomLayerOpacity(
-                              source.id,
-                              Number(event.target.value),
-                            )
-                          }
-                          aria-label={tx(
-                                        'Прозрачность {p0}',
-                                        'Opacity of {p0}',
-                                        { p0: source.name },
-                                      )}
-                        />
-                      </div>
-                      <span className="layer-opacity">
-                        {Math.round(layer.opacity * 100)}%
-                      </span>
-                      <button
-                        type="button"
-                        className="icon-button pack-close"
-                        onClick={() => editSource(source)}
-                        aria-label={tx(
-                                      'Изменить {p0}',
-                                      'Edit {p0}',
-                                      { p0: source.name },
-                                    )}
-                        title={tx('Изменить источник', 'Edit source')}
-                      >
-                        <PenLine size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        className="icon-button pack-close"
-                        onClick={() => void removeSource(source.id, source.name)}
-                        aria-label={tx(
-                                      'Удалить {p0}',
-                                      'Delete {p0}',
-                                      { p0: source.name },
-                                    )}
-                        title={tx('Удалить источник', 'Delete source')}
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  )
-                })}
+                      </section>
+
+          <section className="section">
+            <div className="section-heading">
+              <span>{tx('Покрытие кэша', 'Cache coverage')}</span>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => setCoverageVisible(!coverageVisible)}
+                disabled={!isNative}
+                title={
+                  isNative
+                    ? tx(
+                        'Показать скачанные тайлы активной подложки',
+                        'Show cached tiles of the active basemap',
+                      )
+                    : tx(
+                        'Доступно в нативном приложении',
+                        'Available in the native app',
+                      )
+                }
+              >
+                {coverageVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                {coverageVisible ? tx('Скрыть', 'Hide') : tx('Показать', 'Show')}
+              </button>
+            </div>
+            {coverageVisible && (
+              <div className="coverage-controls">
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => void refreshCoverage(providerId)}
+                  disabled={coverageBusy}
+                >
+                  {coverageBusy ? (
+                    <Loader2 size={14} className="spin" />
+                  ) : (
+                    <RefreshCw size={14} />
+                  )}
+                  {tx('Обновить', 'Refresh')}
+                </button>
+                <span className="mono">
+                  {formatCount(coverageTiles.length)}
+                  {coverageTruncated ? '+' : ''} {tx('тайлов', 'tiles')}
+                </span>
               </div>
+            )}
+            {coverageVisible && (
+              <p className="settings-hint">
+                {tx(
+                  'Полупрозрачные квадраты показывают тайлы активной подложки в текущем виде. Обновляется после остановки карты.',
+                  'Translucent squares show cached tiles of the active basemap in the current view. Refreshes after the map stops moving.',
+                )}
+                {coverageTruncated &&
+                  tx(
+                    ' Показаны первые 50 000 тайлов.',
+                    ' Showing the first 50,000 tiles.',
+                  )}
+                {coverageError &&
+                  tx(
+                    ' Ошибка: {p0}',
+                    ' Error: {p0}',
+                    { p0: coverageError },
+                  )}
+              </p>
             )}
           </section>
 
