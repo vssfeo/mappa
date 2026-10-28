@@ -151,7 +151,6 @@ test('drawing a circle stores a round polygon with its radius', () => {
 test('basemap order accepts only a full provider permutation', () => {
   const order = [
     'osm',
-    'osm-de',
     'topo',
     'carto',
     'usgs',
@@ -163,25 +162,23 @@ test('basemap order accepts only a full provider permutation', () => {
   store.moveProvider('nasa', -1)
   assert.deepEqual(useAppStore.getState().providerOrder, [
     'osm',
-    'osm-de',
     'topo',
     'carto',
     'usgs',
     'nasa',
     'esri',
   ])
-  store.reorderProviders(['nasa', 'esri', 'osm', 'osm-de', 'topo', 'carto', 'usgs'])
+  store.reorderProviders(['nasa', 'esri', 'osm', 'topo', 'carto', 'usgs'])
   assert.deepEqual(useAppStore.getState().providerOrder, [
     'nasa',
     'esri',
     'osm',
-    'osm-de',
     'topo',
     'carto',
     'usgs',
   ])
   store.reorderProviders(['nasa', 'esri'])
-  assert.equal(useAppStore.getState().providerOrder.length, 7)
+  assert.equal(useAppStore.getState().providerOrder.length, 6)
   store.reorderProviders([...order])
   assert.deepEqual(useAppStore.getState().providerOrder, [...order])
 })

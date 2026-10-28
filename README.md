@@ -71,7 +71,7 @@ SAS.Planet — это про «скачать район и посмотреть
 - `crates/mappa-net` — HTTP-клиент, retry, rate limit, auth, conditional GET.
 - `src-tauri` — нативное окно, raw-IPC, `mappa://tiles` и `mappa://pack`,
   команды кэша/загрузок, реестр паков, настройки кэша и прокси.
-- `ui/` — React + MapLibre: семь подложек (включая спутниковые Esri
+- `ui/` — React + MapLibre: шесть подложек (включая спутниковые Esri
   World Imagery и NASA Blue Marble), тёмная/светлая тема,
   командная палитра с поиском мест (локальный кэш + Photon/Nominatim),
   inspector, download sheet, рисование области и

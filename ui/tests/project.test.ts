@@ -88,7 +88,7 @@ test('project round-trips through the .mappa format', () => {
   assert.equal(parsed.name, 'Demo region')
   assert.equal(parsed.providerId, 'topo')
   assert.equal(parsed.providerOrder[0], 'osm')
-  assert.equal(parsed.providerOrder.length, 7)
+  assert.equal(parsed.providerOrder.length, 6)
   assert.deepEqual(parsed.view, { center: [34.1, 44.9], zoom: 9 })
   assert.equal(parsed.packPaths.length, 1)
   assert.equal(parsed.demPath, '/home/user/dem/N45E034.hgt')
@@ -158,7 +158,7 @@ test('sanitizes untrusted fields and clamps collections', () => {
   const parsed = parseProject(JSON.stringify(raw)).file
   assert.equal(parsed.providerId, 'osm')
   assert.equal(parsed.providerOrder[0], 'nasa')
-  assert.equal(parsed.providerOrder.length, 7)
+  assert.equal(parsed.providerOrder.length, 6)
   assert.deepEqual(parsed.view.center, [37.6173, 55.7558])
   assert.equal(parsed.view.zoom, 24)
   assert.deepEqual(parsed.packPaths, ['/valid.mbtiles'])

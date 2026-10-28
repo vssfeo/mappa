@@ -14,7 +14,7 @@
 - `Bbox`: валидация, объединение, пересечения, центр.
 - Каталог провайдеров: YAML, валидация, URL-шаблоны, TMS, `{-y}`,
   rate limit, auth-описание, флаг `offline_allowed`.
-- Встроены OSM, OSM Germany, OpenTopoMap, CARTO Dark, USGS Imagery,
+- Встроены OSM, OpenTopoMap, CARTO Dark, USGS Imagery,
   Esri World Imagery и NASA Blue Marble.
 - 36 unit-тестов ядра (CRS: round-trip, Web Mercator, СК-42/Пуля,
   произвольный proj4; полигоны: point-in-ring, пересечение тайла,
@@ -131,7 +131,7 @@
 ### UI
 
 - React 19 + TypeScript + Vite 8 + MapLibre GL JS.
-- Семь подложек (OSM, OSM Germany, CARTO, OpenTopoMap, USGS,
+- Шесть подложек (OSM, CARTO, OpenTopoMap, USGS,
   Esri World Imagery, NASA Blue Marble),
   тёмная/светлая темы.
 - Командная палитра `Ctrl+K`, шпаргалка `?`.
@@ -518,8 +518,9 @@ npm run dev -- --host 127.0.0.1 --port 4173
   или передать заголовком.
 - С домашней сети `tile.openstreetmap.org` отдаёт `x-blocked`
   (HTTP 200 + заглушка), CARTO также отдаёт одноцветную заглушку;
-  рабочие для проверки — OpenTopoMap и `tile.openstreetmap.de`.
-  Поэтому для тестов собран пак из OpenTopoMap.
+  рабочие для проверки — OpenTopoMap и `tile.openstreetmap.de`
+  (напрямую, без встроенного провайдера). Поэтому для тестов собран
+  пак из OpenTopoMap.
 - Автосохранение `.mappa` идёт в recovery-слот раз в 12 секунд;
   метки и объекты дополнительно живут в localStorage (лимит 20 000).
 - Точность пресетов СК-42/МСК зависит от proj4-строки региона;

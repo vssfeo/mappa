@@ -305,7 +305,6 @@ impl ProviderCatalog {
             include_str!("../../../providers/opentopomap.yaml"),
             include_str!("../../../providers/carto-dark.yaml"),
             include_str!("../../../providers/usgs-imagery.yaml"),
-            include_str!("../../../providers/osm-de.yaml"),
             include_str!("../../../providers/esri-imagery.yaml"),
             include_str!("../../../providers/nasa-blue-marble.yaml"),
         ] {
@@ -465,7 +464,6 @@ mod tests {
     use super::*;
 
     const OSM: &str = include_str!("../../../providers/osm.yaml");
-    const OSM_DE: &str = include_str!("../../../providers/osm-de.yaml");
     const TOPO: &str = include_str!("../../../providers/opentopomap.yaml");
     const CARTO: &str = include_str!("../../../providers/carto-dark.yaml");
     const USGS: &str = include_str!("../../../providers/usgs-imagery.yaml");
@@ -475,12 +473,12 @@ mod tests {
     #[test]
     fn parses_shipped_providers() {
         let mut catalog = ProviderCatalog::new();
-        for yaml in [OSM, OSM_DE, TOPO, CARTO, USGS, ESRI, NASA] {
+        for yaml in [OSM, TOPO, CARTO, USGS, ESRI, NASA] {
             catalog
                 .insert(Provider::from_yaml(yaml).expect("valid provider"))
                 .unwrap();
         }
-        assert_eq!(catalog.len(), 7);
+        assert_eq!(catalog.len(), 6);
         assert_eq!(catalog.get("osm").unwrap().max_zoom, 19);
         assert_eq!(catalog.get("carto").unwrap().max_zoom, 20);
         assert_eq!(catalog.get("esri").unwrap().format, "jpg");

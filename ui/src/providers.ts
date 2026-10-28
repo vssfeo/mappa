@@ -2,7 +2,6 @@ import { tr } from './locale.ts'
 
 export type ProviderId =
   | 'osm'
-  | 'osm-de'
   | 'topo'
   | 'carto'
   | 'usgs'
@@ -35,23 +34,6 @@ export const PROVIDERS: Provider[] = [
       )
     },
     tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-    attribution: '© OpenStreetMap contributors',
-    terms: 'https://www.openstreetmap.org/copyright',
-    maxZoom: 19,
-    tileSize: 256,
-    offlineAllowed: false,
-  },
-  {
-    id: 'osm-de',
-    label: 'OSM Germany',
-    short: 'OSM-DE',
-    get description() {
-      return tr(
-        'Зеркало OSM от немецкого сообщества. Выручает, когда основной сервер блокирует запросы.',
-        'An OSM mirror run by the German community. Useful when the main server blocks requests.',
-      )
-    },
-    tiles: ['https://tile.openstreetmap.de/{z}/{x}/{y}.png'],
     attribution: '© OpenStreetMap contributors',
     terms: 'https://www.openstreetmap.org/copyright',
     maxZoom: 19,

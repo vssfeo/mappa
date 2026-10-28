@@ -2173,7 +2173,7 @@ checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 
 [[package]]
 name = "mappa"
-version = "1.19.0"
+version = "1.19.1"
 dependencies = [
  "blake3",
  "image",
@@ -2195,7 +2195,7 @@ dependencies = [
 
 [[package]]
 name = "mappa-cli"
-version = "1.19.0"
+version = "1.19.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2211,7 +2211,7 @@ dependencies = [
 
 [[package]]
 name = "mappa-core"
-version = "1.19.0"
+version = "1.19.1"
 dependencies = [
  "proj4rs",
  "serde",
@@ -2220,7 +2220,7 @@ dependencies = [
 
 [[package]]
 name = "mappa-net"
-version = "1.19.0"
+version = "1.19.1"
 dependencies = [
  "base64 0.22.1",
  "httpdate",
@@ -2233,7 +2233,7 @@ dependencies = [
 
 [[package]]
 name = "mappa-storage"
-version = "1.19.0"
+version = "1.19.1"
 dependencies = [
  "blake3",
  "image",

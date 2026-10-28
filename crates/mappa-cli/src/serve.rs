@@ -1281,7 +1281,7 @@ mod tests {
         assert_eq!(status.status, 200);
         let status = String::from_utf8(status.body).unwrap();
         assert!(status.contains("\"name\":\"mappa\""));
-        assert!(status.contains("\"providers\":7"));
+        assert!(status.contains("\"providers\":6"));
 
         let providers = handle_request(&state, "GET", "/api/providers", &[]).await;
         let providers = String::from_utf8(providers.body).unwrap();
