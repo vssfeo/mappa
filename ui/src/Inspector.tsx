@@ -4627,7 +4627,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
       const layers = await importSasLayers()
       if (!layers) return
       setSasLayers(layers)
-      setSasSelected(new Set(layers.map((layer) => layer.id)))
+      setSasSelected(new Set())
       setPresetOpen(false)
       setSourceForm(false)
     } catch (error) {
@@ -5218,6 +5218,24 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                     'Layer definitions are imported from .zmp. For NSPD, TLS verification is disabled: its certificate chains to a Russian root missing from the system store. Data stays on the server and offline downloads are disabled.',
                   )}
                 </p>
+                <div className="marker-actions">
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() =>
+                      setSasSelected(new Set(sasLayers.map((layer) => layer.id)))
+                    }
+                  >
+                    {tx('Выбрать все', 'Select all')}
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => setSasSelected(new Set())}
+                  >
+                    {tx('Снять все', 'Clear all')}
+                  </button>
+                </div>
                 <div className="preset-groups">
                   {[
                     ...new Set(
