@@ -91,6 +91,9 @@ pub struct CustomSource {
     /// Whether the source permits offline pre-fetching.
     #[serde(default)]
     pub offline_allowed: bool,
+    /// Skip TLS certificate verification for this source.
+    #[serde(default)]
+    pub insecure_tls: bool,
 }
 
 impl CustomSource {
@@ -160,6 +163,7 @@ impl CustomSource {
             headers,
             auth: None,
             offline_allowed: self.offline_allowed,
+            insecure_tls: self.insecure_tls,
         };
         provider
             .validate()
@@ -195,6 +199,7 @@ impl CustomSource {
                 .rate_limit
                 .map_or(DEFAULT_BURST, |limit| limit.burst),
             offline_allowed: provider.offline_allowed,
+            insecure_tls: provider.insecure_tls,
         }
     }
 }
@@ -271,6 +276,7 @@ mod tests {
             rps: 4.0,
             burst: 8,
             offline_allowed: true,
+            insecure_tls: false,
         }
     }
 

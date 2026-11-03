@@ -313,6 +313,7 @@ mod tests {
             rps: 4.0,
             burst: 8,
             offline_allowed: true,
+            insecure_tls: false,
         }
     }
 

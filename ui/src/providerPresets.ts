@@ -33,6 +33,7 @@ const google = (name: string, layer: string, format: string): ProviderPreset => 
     rps: 4,
     burst: 8,
     offlineAllowed: false,
+    insecureTls: false,
   },
 })
 
@@ -54,6 +55,7 @@ const esri = (name: string, service: string): ProviderPreset => ({
     rps: 4,
     burst: 8,
     offlineAllowed: false,
+    insecureTls: false,
   },
 })
 
@@ -76,6 +78,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
       rps: 4,
       burst: 8,
       offlineAllowed: false,
+      insecureTls: false,
     },
   },
   {
@@ -96,6 +99,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
       rps: 4,
       burst: 8,
       offlineAllowed: false,
+      insecureTls: false,
     },
   },
   google('Google Map', 'm', 'png'),

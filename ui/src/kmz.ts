@@ -151,7 +151,7 @@ type DecompressionStreamConstructor = new (
   format: string,
 ) => TransformStream<Uint8Array, Uint8Array>
 
-async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
+export async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
   const Constructor = (
     globalThis as { DecompressionStream?: DecompressionStreamConstructor }
   ).DecompressionStream

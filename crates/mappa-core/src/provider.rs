@@ -117,6 +117,13 @@ pub struct Provider {
     /// grants it.
     #[serde(default)]
     pub offline_allowed: bool,
+    /// Skip TLS certificate verification for this provider.
+    ///
+    /// Some government services use a national root CA that is not present
+    /// in the system store. Only user-added sources may set this; it is
+    /// shown as a warning in the UI.
+    #[serde(default)]
+    pub insecure_tls: bool,
 }
 
 fn default_min_zoom() -> u8 {

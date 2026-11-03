@@ -22,6 +22,7 @@ export interface CustomSource {
   rps: number
   burst: number
   offlineAllowed: boolean
+  insecureTls: boolean
 }
 
 export interface CustomSourceDraft {
@@ -39,6 +40,7 @@ export interface CustomSourceDraft {
   rps: number
   burst: number
   offlineAllowed: boolean
+  insecureTls: boolean
 }
 
 export function newSourceId(): string {
@@ -82,6 +84,7 @@ export async function saveCustomSource(
       rps: draft.rps,
       burst: draft.burst,
       offlineAllowed: draft.offlineAllowed,
+      insecureTls: draft.insecureTls,
     },
   })
 }

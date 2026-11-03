@@ -61,6 +61,7 @@ import {
   type CustomSourceDraft,
 } from './customSources'
 import { PROVIDER_PRESETS } from './providerPresets'
+import { importSasLayers, type SasLayer } from './sasLayers'
 import { useCoverageStore } from './coverage'
 import { closeDem, demContours, demProfile, importDem } from './dem'
 import { deleteCrash, listCrashes, readCrash, type CrashReport } from './crash'
@@ -4237,6 +4238,9 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const [presetAccepted, setPresetAccepted] = useState(false)
   const [presetBusy, setPresetBusy] = useState<string | null>(null)
   const [presetSelected, setPresetSelected] = useState<Set<string>>(new Set())
+  const [sasLayers, setSasLayers] = useState<SasLayer[] | null>(null)
+  const [sasSelected, setSasSelected] = useState<Set<string>>(new Set())
+  const [sasBusy, setSasBusy] = useState(false)
   const [sourceBusy, setSourceBusy] = useState(false)
   const [sourceError, setSourceError] = useState<string | null>(null)
   const [sourceDraft, setSourceDraft] = useState<CustomSourceDraft>({
@@ -4253,6 +4257,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
     rps: 4,
     burst: 8,
     offlineAllowed: false,
+    insecureTls: false,
   })
   const [headerText, setHeaderText] = useState('')
   const [wmtsLayers, setWmtsLayers] = useState<WmtsLayer[]>([])
@@ -4572,6 +4577,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
       rps: source.rps,
       burst: source.burst,
       offlineAllowed: source.offlineAllowed,
+      insecureTls: source.insecureTls,
     })
     setHeaderText(formatHeaders(source.headers))
     setWmtsLayers([])
@@ -4612,6 +4618,60 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
       setSourceError(String(error))
     } finally {
       setPresetBusy(null)
+    }
+  }
+
+  const openSasImport = async () => {
+    setSourceError(null)
+    try {
+      const layers = await importSasLayers()
+      if (!layers) return
+      setSasLayers(layers)
+      setSasSelected(new Set(layers.map((layer) => layer.id)))
+      setPresetOpen(false)
+      setSourceForm(false)
+    } catch (error) {
+      setSourceError(String(error))
+    }
+  }
+
+  const addSasLayers = async () => {
+    if (!sasLayers) return
+    const picked = sasLayers.filter((layer) => sasSelected.has(layer.id))
+    if (picked.length === 0) return
+    setSasBusy(true)
+    setSourceError(null)
+    try {
+      for (const layer of picked) {
+        await saveCustomSource({
+          name: layer.group ? `${layer.group}: ${layer.name}` : layer.name,
+          kind: 'wms',
+          url: layer.url,
+          scheme: 'xyz',
+          minZoom: 0,
+          maxZoom: 19,
+          tileSize: 256,
+          format: layer.format,
+          attribution: layer.attribution,
+          headers: layer.headers,
+          rps: 4,
+          burst: 8,
+          offlineAllowed: false,
+          insecureTls: layer.insecureTls,
+        })
+      }
+      setCustomSources(await listCustomSources())
+      showToast(
+        tx('Добавлено слоёв: {p0}', 'Layers added: {p0}', {
+          p0: picked.length,
+        }),
+      )
+      setSasLayers(null)
+      setSasSelected(new Set())
+    } catch (error) {
+      setSourceError(String(error))
+    } finally {
+      setSasBusy(false)
     }
   }
 
@@ -5053,6 +5113,19 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                   <Plus size={14} />
                   {tx('Добавить', 'Add')}
                 </button>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => void openSasImport()}
+                  disabled={!isNative}
+                  title={tx(
+                    'Импорт слоёв SAS.Planet из ZIP',
+                    'Import SAS.Planet layers from a ZIP',
+                  )}
+                >
+                  <FolderOpen size={14} />
+                  {tx('SAS .zmp', 'SAS .zmp')}
+                </button>
               </div>
             </div>
 
@@ -5132,6 +5205,76 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
               </div>
             )}
 
+
+            {sasLayers && (
+              <div className="source-form">
+                <div className="section-heading">
+                  <span>{tx('Слои SAS.Planet', 'SAS.Planet layers')}</span>
+                  <span className="mono">{sasLayers.length}</span>
+                </div>
+                <p className="settings-hint">
+                  {tx(
+                    'Импортируются определения слоёв из .zmp. Для НСПД отключается проверка TLS: сертификат подписан российским корнем, которого нет в системном хранилище. Данные остаются на сервере, офлайн-скачивание выключено.',
+                    'Layer definitions are imported from .zmp. For NSPD, TLS verification is disabled: its certificate chains to a Russian root missing from the system store. Data stays on the server and offline downloads are disabled.',
+                  )}
+                </p>
+                <div className="preset-groups">
+                  {[
+                    ...new Set(
+                      sasLayers.map((layer) => layer.group || 'SAS'),
+                    ),
+                  ].map((group) => (
+                    <div key={group} className="preset-group">
+                      <span className="muted">{group || 'SAS'}</span>
+                      {sasLayers
+                        .filter((layer) => (layer.group || 'SAS') === group)
+                        .map((layer) => (
+                          <label key={layer.id} className="source-check">
+                            <input
+                              type="checkbox"
+                              checked={sasSelected.has(layer.id)}
+                              onChange={() =>
+                                setSasSelected((current) => {
+                                  const next = new Set(current)
+                                  if (next.has(layer.id)) next.delete(layer.id)
+                                  else next.add(layer.id)
+                                  return next
+                                })
+                              }
+                            />
+                            {layer.name}
+                          </label>
+                        ))}
+                    </div>
+                  ))}
+                </div>
+                <div className="marker-actions">
+                  <button
+                    type="button"
+                    className="primary-button"
+                    disabled={sasBusy || sasSelected.size === 0}
+                    onClick={() => void addSasLayers()}
+                  >
+                    {sasBusy ? (
+                      <Loader2 size={14} className="spin" />
+                    ) : (
+                      <Plus size={14} />
+                    )}
+                    {tx('Добавить выбранные: {p0}', 'Add selected: {p0}', {
+                      p0: sasSelected.size,
+                    })}
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => setSasLayers(null)}
+                  >
+                    {tx('Отмена', 'Cancel')}
+                  </button>
+                </div>
+                {sourceError && <p className="georef-error">{sourceError}</p>}
+              </div>
+            )}
             {sourceForm && (
               <div className="source-form">
                 <div className="section-heading">
@@ -5470,6 +5613,22 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                   {tx(
                     'Разрешить офлайн-скачивание',
                     'Allow offline downloads',
+                  )}
+                </label>
+                <label className="source-check">
+                  <input
+                    type="checkbox"
+                    checked={sourceDraft.insecureTls}
+                    onChange={(event) =>
+                      setSourceDraft((draft) => ({
+                        ...draft,
+                        insecureTls: event.target.checked,
+                      }))
+                    }
+                  />
+                  {tx(
+                    'Не проверять TLS-сертификат (для госуслуг с российским корнем)',
+                    'Skip TLS certificate verification (for services with a national root CA)',
                   )}
                 </label>
                 <div className="marker-actions">

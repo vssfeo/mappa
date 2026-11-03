@@ -127,32 +127,53 @@ pub enum FetchOutcome {
 #[derive(Debug)]
 pub struct TileClient {
     client: reqwest::Client,
+    insecure_client: Mutex<Option<reqwest::Client>>,
     config: NetConfig,
     buckets: Mutex<HashMap<String, std::sync::Arc<Mutex<TokenBucket>>>>,
     semaphores: Mutex<HashMap<String, std::sync::Arc<Semaphore>>>,
 }
 
+fn build_client(config: &NetConfig, insecure: bool) -> Result<reqwest::Client, NetError> {
+    let mut builder = reqwest::Client::builder()
+        .user_agent(&config.user_agent)
+        .timeout(config.timeout)
+        .connect_timeout(config.connect_timeout)
+        .pool_idle_timeout(Duration::from_secs(90))
+        .gzip(true)
+        .brotli(true)
+        .deflate(true);
+    if insecure {
+        builder = builder.danger_accept_invalid_certs(true);
+    }
+    if let Some(proxy) = &config.proxy {
+        builder = builder.proxy(reqwest::Proxy::all(proxy).map_err(NetError::Client)?);
+    }
+    builder.build().map_err(NetError::Client)
+}
+
 impl TileClient {
     /// Builds the underlying connection pool.
     pub fn new(config: NetConfig) -> Result<Self, NetError> {
-        let mut builder = reqwest::Client::builder()
-            .user_agent(&config.user_agent)
-            .timeout(config.timeout)
-            .connect_timeout(config.connect_timeout)
-            .pool_idle_timeout(Duration::from_secs(90))
-            .gzip(true)
-            .brotli(true)
-            .deflate(true);
-        if let Some(proxy) = &config.proxy {
-            builder = builder.proxy(reqwest::Proxy::all(proxy).map_err(NetError::Client)?);
-        }
-        let client = builder.build().map_err(NetError::Client)?;
+        let client = build_client(&config, false)?;
         Ok(Self {
             client,
+            insecure_client: Mutex::new(None),
             config,
             buckets: Mutex::new(HashMap::new()),
             semaphores: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Returns a client that matches the provider's TLS policy.
+    async fn client_for(&self, provider: &Provider) -> Result<reqwest::Client, NetError> {
+        if !provider.insecure_tls {
+            return Ok(self.client.clone());
+        }
+        let mut guard = self.insecure_client.lock().await;
+        if guard.is_none() {
+            *guard = Some(build_client(&self.config, true)?);
+        }
+        Ok(guard.as_ref().expect("insecure client is set").clone())
     }
 
     /// Returns the tuning this client was built with.
@@ -369,7 +390,8 @@ impl TileClient {
         headers: &HeaderMap,
         conditional: &Conditional,
     ) -> Result<FetchOutcome, NetError> {
-        let mut request = self.client.get(url).headers(headers.clone());
+        let client = self.client_for(provider).await?;
+        let mut request = client.get(url).headers(headers.clone());
         if let Some(etag) = &conditional.etag
             && let Ok(value) = HeaderValue::from_str(etag)
         {
