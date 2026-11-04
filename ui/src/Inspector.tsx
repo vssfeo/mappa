@@ -4638,7 +4638,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
       setPresetOpen(false)
       setSourceForm(false)
     } catch (error) {
-      setSourceError(String(error))
+      setSasError(String(error))
     }
   }
 

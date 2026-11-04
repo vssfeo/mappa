@@ -10,7 +10,7 @@ const MAX_WRITE_BYTES: usize = 128 * 1024 * 1024;
 /// Only user documents cross this bridge; never app state or SSH keys.
 const ALLOWED_EXTENSIONS: &[&str] = &[
     "csv", "dbf", "geojson", "gpkg", "gpx", "jpeg", "jpg", "json", "kml", "kmz", "mappa", "pdf",
-    "pgw", "png", "prj", "shp", "tfw", "tif", "tiff", "txt", "wld",
+    "pgw", "png", "prj", "shp", "tfw", "tif", "tiff", "txt", "wld", "zip",
 ];
 
 fn allowed_extension(path: &Path) -> bool {
@@ -241,6 +241,11 @@ mod tests {
         let error =
             tauri::async_runtime::block_on(read_text_file(path.display().to_string())).unwrap_err();
         assert!(!error.is_empty());
+    }
+
+    #[test]
+    fn allows_zip_archives_for_layer_imports() {
+        assert!(allowed_extension(Path::new("layers.zip")));
     }
 
     #[test]
