@@ -3922,3 +3922,9 @@ body.is-layer-dragging {
   display: flex;
   align-items: center;
 }
+
+.sas-groups {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}

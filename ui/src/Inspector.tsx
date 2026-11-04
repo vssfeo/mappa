@@ -4241,6 +4241,12 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const [sasLayers, setSasLayers] = useState<SasLayer[] | null>(null)
   const [sasSelected, setSasSelected] = useState<Set<string>>(new Set())
   const [sasBusy, setSasBusy] = useState(false)
+  const [sasError, setSasError] = useState<string | null>(null)
+  const sasPanelRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (sasLayers) sasPanelRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [sasLayers])
   const [sourceBusy, setSourceBusy] = useState(false)
   const [sourceError, setSourceError] = useState<string | null>(null)
   const [sourceDraft, setSourceDraft] = useState<CustomSourceDraft>({
@@ -4623,6 +4629,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
 
   const openSasImport = async () => {
     setSourceError(null)
+    setSasError(null)
     try {
       const layers = await importSasLayers()
       if (!layers) return
@@ -4669,7 +4676,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
       setSasLayers(null)
       setSasSelected(new Set())
     } catch (error) {
-      setSourceError(String(error))
+      setSasError(String(error))
     } finally {
       setSasBusy(false)
     }
@@ -5207,7 +5214,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
 
 
             {sasLayers && (
-              <div className="source-form">
+              <div className="source-form" ref={sasPanelRef}>
                 <div className="section-heading">
                   <span>{tx('Слои SAS.Planet', 'SAS.Planet layers')}</span>
                   <span className="mono">{sasLayers.length}</span>
@@ -5236,7 +5243,31 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                     {tx('Снять все', 'Clear all')}
                   </button>
                 </div>
-                <div className="preset-groups">
+                <div className="marker-actions">
+                  <button
+                    type="button"
+                    className="primary-button"
+                    disabled={sasBusy || sasSelected.size === 0}
+                    onClick={() => void addSasLayers()}
+                  >
+                    {sasBusy ? (
+                      <Loader2 size={14} className="spin" />
+                    ) : (
+                      <Plus size={14} />
+                    )}
+                    {tx('Добавить выбранные: {p0}', 'Add selected: {p0}', {
+                      p0: sasSelected.size,
+                    })}
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => setSasLayers(null)}
+                  >
+                    {tx('Отмена', 'Cancel')}
+                  </button>
+                </div>
+                <div className="preset-groups sas-groups">
                   {[
                     ...new Set(
                       sasLayers.map((layer) => layer.group || 'SAS'),
@@ -5266,32 +5297,11 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                     </div>
                   ))}
                 </div>
-                <div className="marker-actions">
-                  <button
-                    type="button"
-                    className="primary-button"
-                    disabled={sasBusy || sasSelected.size === 0}
-                    onClick={() => void addSasLayers()}
-                  >
-                    {sasBusy ? (
-                      <Loader2 size={14} className="spin" />
-                    ) : (
-                      <Plus size={14} />
-                    )}
-                    {tx('Добавить выбранные: {p0}', 'Add selected: {p0}', {
-                      p0: sasSelected.size,
-                    })}
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={() => setSasLayers(null)}
-                  >
-                    {tx('Отмена', 'Cancel')}
-                  </button>
-                </div>
-                {sourceError && <p className="georef-error">{sourceError}</p>}
+                {sasError && <p className="georef-error">{sasError}</p>}
               </div>
+            )}
+            {sasError && !sasLayers && (
+              <p className="georef-error">{sasError}</p>
             )}
             {sourceForm && (
               <div className="source-form">
