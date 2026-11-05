@@ -120,6 +120,12 @@ jobs:
       - name: Install UI dependencies
         run: npm ci --prefix ui
 
+      - name: Build the CLI sidecar
+        run: |
+          cargo build --release -p mappa-cli
+          mkdir -p src-tauri/binaries
+          cp target/release/mappa-cli src-tauri/binaries/mappa-cli
+
       - name: Build packages
         run: ./ui/node_modules/.bin/tauri build --bundles deb,appimage
 
@@ -193,6 +199,12 @@ jobs:
       - name: Install UI dependencies
         run: npm ci --prefix ui
 
+      - name: Build the CLI sidecar
+        run: |
+          cargo build --release -p mappa-cli
+          mkdir -p src-tauri/binaries
+          cp target/release/mappa-cli src-tauri/binaries/mappa-cli
+
       - name: Build the app for ARM64
         run: ./ui/node_modules/.bin/tauri build --no-bundle
 
@@ -233,6 +245,13 @@ jobs:
 
       - name: Test the CLI
         run: cargo test -p mappa-cli
+
+      - name: Build the CLI sidecar
+        shell: pwsh
+        run: |
+          cargo build --release -p mappa-cli
+          New-Item -ItemType Directory -Force src-tauri/binaries | Out-Null
+          Copy-Item target/release/mappa-cli.exe src-tauri/binaries/mappa-cli.exe
 
       - name: Check the app
         run: cargo check -p mappa --lib

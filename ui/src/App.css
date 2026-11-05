@@ -4048,3 +4048,34 @@ body.is-layer-dragging {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.mobile-qr-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mobile-qr {
+  align-self: center;
+  width: 220px;
+  height: 220px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.mobile-qr svg {
+  width: 100%;
+  height: 100%;
+}
+
+.mobile-url {
+  overflow: hidden;
+  max-width: 220px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

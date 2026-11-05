@@ -16,6 +16,7 @@ mod geotiff;
 mod gnss;
 mod gpkg;
 mod inflate;
+mod mobile;
 mod packs;
 mod power;
 mod routing;
@@ -39,6 +40,7 @@ use crate::state::AppState;
 pub fn run() {
     tauri::Builder::default()
         .manage(downloads::Exports::default())
+        .manage(mobile::MobileServer::default())
         .manage(power::ScreenAwake::default())
         .manage(telemetry::Telemetry::default())
         .on_permission_request(|_, kind| match kind {
@@ -143,6 +145,9 @@ pub fn run() {
             downloads::clear_finished_downloads,
             downloads::export_job_pack,
             fieldkit::export_field_kit,
+            fieldkit::verify_field_kit,
+            mobile::start_mobile_server,
+            mobile::stop_mobile_server,
             fieldkit::verify_field_kit,
             downloads::cancel_export_pack,
             packs::open_pack,

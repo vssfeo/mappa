@@ -55,6 +55,7 @@ import { parseTracksFromGpx } from './featureTransfer'
 import { SyncPanel } from './SyncPanel'
 import { TracksPanel } from './TracksPanel'
 import { FieldKitPanel } from './FieldKitPanel'
+import { MobilePanel } from './MobilePanel'
 import { Rail } from './Rail'
 import { Shortcuts } from './Shortcuts'
 import { StatusBar } from './StatusBar'
@@ -190,6 +191,7 @@ function App() {
   const [syncOpen, setSyncOpen] = useState(false)
   const [tracksOpen, setTracksOpen] = useState(false)
   const [fieldKitOpen, setFieldKitOpen] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
 
   useEffect(() => {
@@ -1342,6 +1344,13 @@ function App() {
         action: () => setAlmanacOpen(true),
       },
       {
+        id: 'mobile',
+        label: tx('Телефон', 'Phone'),
+        group: tx('Инструменты', 'Tools'),
+        icon: Globe2,
+        action: () => setMobileOpen(true),
+      },
+      {
         id: 'field-kit',
         label: tx('Полевой комплект', 'Field kit'),
         group: tx('Проект', 'Project'),
@@ -1531,6 +1540,7 @@ function App() {
       {syncOpen && <SyncPanel map={map} onClose={() => setSyncOpen(false)} />}
       {tracksOpen && <TracksPanel onClose={() => setTracksOpen(false)} />}
       {fieldKitOpen && <FieldKitPanel onClose={() => setFieldKitOpen(false)} />}
+      {mobileOpen && <MobilePanel onClose={() => setMobileOpen(false)} />}
       {losOpen && <LosPanel onClose={() => setLosOpen(false)} />}
       {missionOpen && <MissionPanel onClose={() => setMissionOpen(false)} />}
       {telemetryOpen && (

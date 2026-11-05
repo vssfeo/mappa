@@ -12,3 +12,5 @@
 /ui/coverage
 /.claude
 /dist/
+src-tauri/binaries/mappa-cli
+src-tauri/binaries/mappa-cli.exe
