@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { FolderOpen, Loader2, PackageOpen, X } from 'lucide-react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
@@ -7,6 +7,10 @@ import { useAppStore } from './store'
 import { currentProjectSnapshot } from './projectTransfer'
 import { serializeProject } from './projectFile'
 import { useDialogFocus } from './useDialogFocus'
+import { useViewStore } from './viewStore'
+import { MAX_JOB_TILES, useDownloadsStore } from './downloads'
+import { providerById } from './providers'
+import { estimateDownload, formatBytes, formatCount } from './format'
 
 interface FieldKitResult {
   directory: string
@@ -23,7 +27,10 @@ export function FieldKitPanel({ onClose }: FieldKitPanelProps) {
   const projectName = useAppStore((state) => state.projectName)
   const packs = useAppStore((state) => state.packs)
   const demPath = useAppStore((state) => state.demPath)
+  const providerId = useAppStore((state) => state.providerId)
   const showToast = useAppStore((state) => state.showToast)
+  const bounds = useViewStore((state) => state.mapView.bounds)
+  const zoom = useViewStore((state) => state.mapView.zoom)
   const dialogRef = useRef<HTMLElement | null>(null)
   useDialogFocus(dialogRef, onClose)
   const [directory, setDirectory] = useState('')
@@ -35,6 +42,13 @@ export function FieldKitPanel({ onClose }: FieldKitPanelProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<FieldKitResult | null>(null)
+  const [minZoom, setMinZoom] = useState(Math.max(0, Math.floor(zoom)))
+  const [maxZoom, setMaxZoom] = useState(Math.min(19, Math.ceil(zoom) + 2))
+  const [progress, setProgress] = useState<string | null>(null)
+  const estimate = useMemo(
+    () => estimateDownload(bounds, minZoom, maxZoom),
+    [bounds, minZoom, maxZoom],
+  )
 
   const chooseDirectory = async () => {
     const picked = await open({
@@ -46,34 +60,88 @@ export function FieldKitPanel({ onClose }: FieldKitPanelProps) {
     if (typeof path === 'string') setDirectory(path)
   }
 
+  const buildKit = async (extraPacks: string[] = []) => {
+    const project = includeProject
+      ? serializeProject(currentProjectSnapshot(projectName || 'Field kit'))
+      : null
+    const summary = await invoke<FieldKitResult>('export_field_kit', {
+      request: {
+        directory,
+        project,
+        packs: [
+          ...packs
+            .filter((pack) => selected.has(pack.path))
+            .map((pack) => pack.path),
+          ...extraPacks,
+        ],
+        dem: includeDem && demPath ? demPath : null,
+      },
+    })
+    setResult(summary)
+    showToast(
+      tx('Полевой комплект собран: {p0}', 'Field kit built: {p0}', {
+        p0: summary.directory,
+      }),
+    )
+    return summary
+  }
+
   const run = async () => {
     if (!directory) return
     setBusy(true)
     setError(null)
     try {
-      const project = includeProject
-        ? serializeProject(currentProjectSnapshot(projectName || 'Field kit'))
-        : null
-      const summary = await invoke<FieldKitResult>('export_field_kit', {
-        request: {
-          directory,
-          project,
-          packs: packs
-            .filter((pack) => selected.has(pack.path))
-            .map((pack) => pack.path),
-          dem: includeDem && demPath ? demPath : null,
-        },
-      })
-      setResult(summary)
-      showToast(
-        tx('Полевой комплект собран: {p0}', 'Field kit built: {p0}', {
-          p0: summary.directory,
-        }),
-      )
+      await buildKit()
     } catch (cause) {
       setError(String(cause))
     } finally {
       setBusy(false)
+    }
+  }
+
+  const runDownload = async () => {
+    if (!directory || !bounds) return
+    setBusy(true)
+    setError(null)
+    setProgress(tx('Создаю задание…', 'Creating the job…'))
+    try {
+      const [[west, south], [east, north]] = bounds
+      const store = useDownloadsStore.getState()
+      const job = await store.create({
+        name: `${providerId} ${new Date().toISOString().slice(0, 10)}`,
+        providerId,
+        west,
+        south,
+        east,
+        north,
+        minZoom,
+        maxZoom,
+      })
+      const deadline = Date.now() + 2 * 60 * 60 * 1000
+      for (;;) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1000))
+        const current = useDownloadsStore
+          .getState()
+          .jobs.find((item) => item.id === job.id)
+        if (!current) throw new Error('download job disappeared')
+        setProgress(
+          `${formatCount(current.doneTiles)} / ${formatCount(current.totalTiles)}`,
+        )
+        if (current.status === 'completed') break
+        if (current.status === 'failed' || current.status === 'cancelled') {
+          throw new Error(current.error || current.status)
+        }
+        if (Date.now() > deadline) throw new Error('download timed out')
+      }
+      setProgress(tx('Собираю пак…', 'Building the pack…'))
+      const report = await store.exportJob(job.id, 'mbtiles')
+      setProgress(tx('Собираю комплект…', 'Building the kit…'))
+      await buildKit([report.path])
+    } catch (cause) {
+      setError(String(cause))
+    } finally {
+      setBusy(false)
+      setProgress(null)
     }
   }
 
@@ -119,6 +187,62 @@ export function FieldKitPanel({ onClose }: FieldKitPanelProps) {
             {tx('Выбрать папку', 'Choose folder')}
           </button>
           <span className="source-hint">{directory || tx('Папка не выбрана', 'No folder selected')}</span>
+        </div>
+
+        <div className="section-heading">
+          <span>{tx('Скачать текущий вид', 'Download the current view')}</span>
+          <span className="mono">{providerById(providerId)?.short ?? providerId}</span>
+        </div>
+        <div className="source-grid">
+          <label>
+            {tx('Мин. зум', 'Min zoom')}
+            <input
+              type="number"
+              min="0"
+              max="19"
+              value={minZoom}
+              onChange={(event) => setMinZoom(Number(event.target.value))}
+            />
+          </label>
+          <label>
+            {tx('Макс. зум', 'Max zoom')}
+            <input
+              type="number"
+              min="0"
+              max="19"
+              value={maxZoom}
+              onChange={(event) => setMaxZoom(Number(event.target.value))}
+            />
+          </label>
+        </div>
+        <p className="settings-hint">
+          {tx(
+            '{p0} тайлов · ≈ {p1}',
+            '{p0} tiles · ≈ {p1}',
+            { p0: formatCount(estimate.tiles), p1: formatBytes(estimate.bytes) },
+          )}
+        </p>
+        <div className="marker-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={
+              busy ||
+              !directory ||
+              !bounds ||
+              estimate.tiles === 0 ||
+              estimate.tiles > MAX_JOB_TILES
+            }
+            onClick={() => void runDownload()}
+          >
+            {busy && progress ? (
+              <Loader2 size={14} className="spin" />
+            ) : (
+              <PackageOpen size={14} />
+            )}
+            {tx('Скачать и собрать', 'Download and build')}
+          </button>
+          {progress && <span className="source-hint">{progress}</span>}
         </div>
 
         <label className="source-check">
