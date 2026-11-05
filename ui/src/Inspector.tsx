@@ -161,7 +161,7 @@ import {
   type VectorFeature,
   type VectorLayer,
 } from './vectorLayers'
-import { PROVIDERS, providerById, type ProviderId } from './providers'
+import { PROVIDERS, providerById, type Provider, type ProviderId } from './providers'
 import { useT, useText, type Locale, type MessageKey } from './i18n'
 import { LOCALES, LOCALE_NAMES } from './locale.ts'
 import { useDialogFocus } from './useDialogFocus'
@@ -4242,7 +4242,38 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const [sasSelected, setSasSelected] = useState<Set<string>>(new Set())
   const [sasBusy, setSasBusy] = useState(false)
   const [sasError, setSasError] = useState<string | null>(null)
+  const [sasQuery, setSasQuery] = useState('')
   const sasPanelRef = useRef<HTMLDivElement | null>(null)
+  const [layerQuery, setLayerQuery] = useState('')
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [manageLayers, setManageLayers] = useState(false)
+  const [selectedLayers, setSelectedLayers] = useState<Set<string>>(new Set())
+  const [pinnedLayers, setPinnedLayers] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('mappa-pinned-layers') ?? '[]')
+    } catch {
+      return []
+    }
+  })
+
+  const togglePinned = (id: string) => {
+    setPinnedLayers((current) => {
+      const next = current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id]
+      localStorage.setItem('mappa-pinned-layers', JSON.stringify(next))
+      return next
+    })
+  }
+
+  const toggleGroupCollapsed = (group: string) => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current)
+      if (next.has(group)) next.delete(group)
+      else next.add(group)
+      return next
+    })
+  }
 
   useEffect(() => {
     if (sasLayers) sasPanelRef.current?.scrollIntoView({ block: 'nearest' })
@@ -4251,6 +4282,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const [sourceError, setSourceError] = useState<string | null>(null)
   const [sourceDraft, setSourceDraft] = useState<CustomSourceDraft>({
     name: '',
+    group: '',
     kind: 'xyz',
     url: '',
     scheme: 'xyz',
@@ -4571,6 +4603,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
     setSourceDraft({
       id: source.id,
       name: source.name,
+      group: source.group,
       kind: source.kind,
       url: source.url,
       scheme: source.scheme,
@@ -4651,7 +4684,8 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
     try {
       for (const layer of picked) {
         await saveCustomSource({
-          name: layer.group ? `${layer.group}: ${layer.name}` : layer.name,
+          name: layer.name,
+          group: layer.group,
           kind: 'wms',
           url: layer.url,
           scheme: 'xyz',
@@ -4891,6 +4925,184 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
         ),
     ) ?? []
 
+
+  const layerQueryText = layerQuery.trim().toLowerCase()
+  const layerMatches = (name: string, kind: string, group: string) =>
+    !layerQueryText ||
+    `${name} ${kind} ${group}`.toLowerCase().includes(layerQueryText)
+
+  const isProviderId = (id: string) => PROVIDERS.some((item) => item.id === id)
+
+  const setLayerVisible = (id: string, visible: boolean) => {
+    if (isProviderId(id)) {
+      if (layers[id as ProviderId].visible !== visible) toggleLayer(id as ProviderId)
+    } else {
+      const layer = customLayers[id] ?? { visible: true, opacity: 1 }
+      if (layer.visible !== visible) toggleCustomLayer(id)
+    }
+  }
+
+  const toggleSelected = (id: string) => {
+    setSelectedLayers((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const customRow = (source: CustomSource) => {
+    const layer = customLayers[source.id] ?? { visible: true, opacity: 1 }
+    return (
+      <LayerRow
+        key={source.id}
+        id={source.id}
+        name={source.name}
+        kind={source.kind === 'wms' ? 'WMS' : source.scheme.toUpperCase()}
+        badges={[
+          ...(source.insecureTls ? ['TLS'] : []),
+          ...(source.offlineAllowed ? ['offline'] : []),
+        ]}
+        visible={layer.visible}
+        opacity={layer.opacity}
+        dragging={customDrag.dragId === source.id}
+        drop={
+          customDrag.dropTarget?.id === source.id
+            ? customDrag.dropTarget.after
+              ? 'after'
+              : 'before'
+            : null
+        }
+        pinned={pinnedLayers.includes(source.id)}
+        onPin={() => togglePinned(source.id)}
+        selectable={manageLayers}
+        selected={selectedLayers.has(source.id)}
+        onSelect={() => toggleSelected(source.id)}
+        onToggle={() => toggleCustomLayer(source.id)}
+        onOpacity={(value) => setCustomLayerOpacity(source.id, value)}
+        onDragStart={(event) => customDrag.start(event, source.id)}
+        onMove={(delta) => moveCustomSource(source.id, delta)}
+        onEdit={() => editSource(source)}
+      />
+    )
+  }
+
+  const providerRow = (item: Provider) => {
+    const state = layers[item.id]
+    return (
+      <LayerRow
+        key={item.id}
+        id={item.id}
+        name={item.label}
+        kind={item.short}
+        visible={state.visible}
+        opacity={state.opacity}
+        dragging={providerDrag.dragId === item.id}
+        drop={
+          providerDrag.dropTarget?.id === item.id
+            ? providerDrag.dropTarget.after
+              ? 'after'
+              : 'before'
+            : null
+        }
+        pinned={pinnedLayers.includes(item.id)}
+        onPin={() => togglePinned(item.id)}
+        selectable={manageLayers}
+        selected={selectedLayers.has(item.id)}
+        onSelect={() => toggleSelected(item.id)}
+        onToggle={() => toggleLayer(item.id)}
+        onOpacity={(value) => setLayerOpacity(item.id, value)}
+        onDragStart={(event) => providerDrag.start(event, item.id)}
+        onMove={(delta) => moveProvider(item.id, delta)}
+      />
+    )
+  }
+
+  const pinnedCustom = customSources.filter(
+    (source) =>
+      pinnedLayers.includes(source.id) &&
+      layerMatches(source.name, source.kind, source.group),
+  )
+  const pinnedProviders = providerOrder
+    .map(providerById)
+    .filter(
+      (item) =>
+        pinnedLayers.includes(item.id) &&
+        layerMatches(item.label, item.short, ''),
+    )
+  const customGroups = new Map<string, CustomSource[]>()
+  for (const id of [...customSourceOrder].reverse()) {
+    const source = customSources.find((item) => item.id === id)
+    if (!source || pinnedLayers.includes(source.id)) continue
+    if (!layerMatches(source.name, source.kind, source.group)) continue
+    const group = source.group.trim() || tx('Без группы', 'Ungrouped')
+    const list = customGroups.get(group) ?? []
+    list.push(source)
+    customGroups.set(group, list)
+  }
+  const providerRows = providerOrder
+    .map(providerById)
+    .filter(
+      (item) =>
+        !pinnedLayers.includes(item.id) &&
+        layerMatches(item.label, item.short, ''),
+    )
+  const setCustomGroupVisible = (sources: CustomSource[], visible: boolean) => {
+    for (const source of sources) {
+      const layer = customLayers[source.id] ?? { visible: true, opacity: 1 }
+      if (layer.visible !== visible) toggleCustomLayer(source.id)
+    }
+  }
+  const setProviderGroupVisible = (items: Provider[], visible: boolean) => {
+    for (const item of items) {
+      if (layers[item.id].visible !== visible) toggleLayer(item.id)
+    }
+  }
+  const groupHeader = (
+    group: string,
+    count: number,
+    visible: boolean,
+    collapsed: boolean,
+    onCollapse?: () => void,
+    onToggle?: () => void,
+  ) => (
+    <div className="layer-group-head">
+      {onCollapse && (
+        <button
+          type="button"
+          className="layer-group-toggle"
+          onClick={onCollapse}
+          aria-expanded={!collapsed}
+        >
+          {collapsed ? '▸' : '▾'}
+        </button>
+      )}
+      <span>{group}</span>
+      <span className="muted">{count}</span>
+      {onToggle && (
+        <button
+          type="button"
+          className="icon-button"
+          onClick={onToggle}
+          title={visible ? tx('Скрыть группу', 'Hide group') : tx('Показать группу', 'Show group')}
+        >
+          {visible ? <Eye size={14} /> : <EyeOff size={14} />}
+        </button>
+      )}
+    </div>
+  )
+
+  const sasFiltered = (sasLayers ?? []).filter((layer) =>
+    layerMatches(layer.name, 'wms', layer.group),
+  )
+  const sasGroups = new Map<string, SasLayer[]>()
+  for (const layer of sasFiltered) {
+    const group = layer.group || tx('Без группы', 'Ungrouped')
+    const list = sasGroups.get(group) ?? []
+    list.push(layer)
+    sasGroups.set(group, list)
+  }
+
   return (
     <>
       <aside className="inspector" aria-label={t(titles[panel])}>
@@ -5005,6 +5217,16 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
           <section className="section">
             <div className="section-heading">
               <span>{tx('Слои', 'Layers')}</span>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => {
+                  setManageLayers((open) => !open)
+                  setSelectedLayers(new Set())
+                }}
+              >
+                {manageLayers ? tx('Готово', 'Done') : tx('Управление', 'Manage')}
+              </button>
             </div>
 
             <p className="layer-hint">
@@ -5013,74 +5235,131 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                 'Drag a layer by its ⋮⋮ handle to change the order. The top layer draws above.',
               )}
             </p>
-            <div className="layer-list">
-              {customSourceOrder
-              .slice()
-              .reverse()
-              .map((id) => {
-                const source = customSources.find((item) => item.id === id)
-                if (!source) return null
-                const layer = customLayers[source.id] ?? {
-                  visible: true,
-                  opacity: 1,
-                }
-                return (
-                  <LayerRow
-                    key={source.id}
-                    id={source.id}
-                    name={source.name}
-                    kind={
-                      source.kind === 'wms'
-                        ? 'WMS'
-                        : source.scheme.toUpperCase()
-                    }
-                    visible={layer.visible}
-                    opacity={layer.opacity}
-                    dragging={customDrag.dragId === source.id}
-                    drop={
-                      customDrag.dropTarget?.id === source.id
-                        ? customDrag.dropTarget.after
-                          ? 'after'
-                          : 'before'
-                        : null
-                    }
-                    onToggle={() => toggleCustomLayer(source.id)}
-                    onOpacity={(value) =>
-                      setCustomLayerOpacity(source.id, value)
-                    }
-                    onDragStart={(event) => customDrag.start(event, source.id)}
-                    onMove={(delta) => moveCustomSource(source.id, delta)}
-                    onEdit={() => editSource(source)}
-                  />
-                )
-              })}
-            {[...providerOrder].reverse().map((id) => {
-              const item = providerById(id)
-              const state = layers[item.id]
-              return (
-                <LayerRow
-                  key={item.id}
-                  id={item.id}
-                  name={item.label}
-                  kind={item.short}
-                  visible={state.visible}
-                  opacity={state.opacity}
-                  dragging={providerDrag.dragId === item.id}
-                  drop={
-                    providerDrag.dropTarget?.id === item.id
-                      ? providerDrag.dropTarget.after
-                        ? 'after'
-                        : 'before'
-                      : null
+                        <div className="layer-search">
+              <Search size={14} />
+              <input
+                value={layerQuery}
+                onChange={(event) => setLayerQuery(event.target.value)}
+                placeholder={tx('Поиск слоя', 'Search layers')}
+                aria-label={tx('Поиск слоя', 'Search layers')}
+              />
+              {layerQuery && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => setLayerQuery('')}
+                  aria-label={tx('Очистить поиск', 'Clear search')}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            {manageLayers && (
+              <div className="layer-bulk">
+                <span>{tx('Выбрано: {p0}', 'Selected: {p0}', { p0: selectedLayers.size })}</span>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  disabled={selectedLayers.size === 0}
+                  onClick={() => {
+                    for (const id of selectedLayers) setLayerVisible(id, true)
+                  }}
+                >
+                  {tx('Включить', 'Show')}
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  disabled={selectedLayers.size === 0}
+                  onClick={() => {
+                    for (const id of selectedLayers) setLayerVisible(id, false)
+                  }}
+                >
+                  {tx('Выключить', 'Hide')}
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button is-danger"
+                  disabled={
+                    [...selectedLayers].filter((id) => !isProviderId(id)).length === 0
                   }
-                  onToggle={() => toggleLayer(item.id)}
-                  onOpacity={(value) => setLayerOpacity(item.id, value)}
-                  onDragStart={(event) => providerDrag.start(event, item.id)}
-                  onMove={(delta) => moveProvider(item.id, delta)}
-                />
+                  onClick={() => {
+                    const ids = [...selectedLayers].filter((id) => !isProviderId(id))
+                    if (ids.length === 0) return
+                    if (!window.confirm(tx('Удалить выбранные слои?', 'Delete selected layers?'))) return
+                    void (async () => {
+                      for (const id of ids) await deleteCustomSource(id)
+                      setCustomSources(await listCustomSources())
+                      setSelectedLayers(new Set())
+                    })()
+                  }}
+                >
+                  {tx('Удалить', 'Delete')}
+                </button>
+              </div>
+            )}
+            {pinnedCustom.length + pinnedProviders.length > 0 && (
+              <div className="layer-group">
+                {groupHeader(
+                  tx('Избранное', 'Pinned'),
+                  pinnedCustom.length + pinnedProviders.length,
+                  true,
+                  false,
+                  undefined,
+                )}
+                {pinnedCustom.map(customRow)}
+                {pinnedProviders.map(providerRow)}
+              </div>
+            )}
+            {[...customGroups.entries()].map(([group, sources]) => {
+              const collapsed = collapsedGroups.has(group) && !layerQueryText
+              const visible = sources.some(
+                (source) => (customLayers[source.id] ?? { visible: true }).visible,
+              )
+              return (
+                <div className="layer-group" key={group}>
+                  {groupHeader(
+                    group,
+                    sources.length,
+                    visible,
+                    collapsed,
+                    () => toggleGroupCollapsed(group),
+                    () => setCustomGroupVisible(sources, !visible),
+                  )}
+                  {!collapsed && sources.map(customRow)}
+                </div>
               )
             })}
-            </div>
+            {providerRows.length > 0 && (
+              <div className="layer-group">
+                {groupHeader(
+                  tx('Подложки', 'Basemaps'),
+                  providerRows.length,
+                  providerRows.some((item) => layers[item.id].visible),
+                  collapsedGroups.has('__basemaps') && !layerQueryText,
+                  () => toggleGroupCollapsed('__basemaps'),
+                  () =>
+                    setProviderGroupVisible(
+                      providerRows,
+                      !providerRows.some((item) => layers[item.id].visible),
+                    ),
+                )}
+                {!(collapsedGroups.has('__basemaps') && !layerQueryText) &&
+                  providerRows.map(providerRow)}
+              </div>
+            )}
+            {pinnedCustom.length +
+              pinnedProviders.length +
+              providerRows.length +
+              [...customGroups.values()].reduce(
+                (total, list) => total + list.length,
+                0,
+              ) ===
+              0 && (
+              <p className="pack-empty">
+                {tx('Ничего не найдено', 'Nothing found')}
+              </p>
+            )}
           </section>
 
           <section className="section">
@@ -5267,17 +5546,40 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                     {tx('Отмена', 'Cancel')}
                   </button>
                 </div>
+                <div className="layer-search">
+                  <Search size={14} />
+                  <input
+                    value={sasQuery}
+                    onChange={(event) => setSasQuery(event.target.value)}
+                    placeholder={tx('Поиск слоя', 'Search layers')}
+                    aria-label={tx('Поиск слоя', 'Search layers')}
+                  />
+                </div>
                 <div className="preset-groups sas-groups">
-                  {[
-                    ...new Set(
-                      sasLayers.map((layer) => layer.group || 'SAS'),
-                    ),
-                  ].map((group) => (
-                    <div key={group} className="preset-group">
-                      <span className="muted">{group || 'SAS'}</span>
-                      {sasLayers
-                        .filter((layer) => (layer.group || 'SAS') === group)
-                        .map((layer) => (
+                  {[...sasGroups.entries()].map(([group, layers]) => {
+                    const allSelected = layers.every((layer) =>
+                      sasSelected.has(layer.id),
+                    )
+                    return (
+                      <div key={group} className="preset-group">
+                        <label className="sas-group-head">
+                          <input
+                            type="checkbox"
+                            checked={allSelected}
+                            onChange={() =>
+                              setSasSelected((current) => {
+                                const next = new Set(current)
+                                for (const layer of layers) {
+                                  if (allSelected) next.delete(layer.id)
+                                  else next.add(layer.id)
+                                }
+                                return next
+                              })
+                            }
+                          />
+                          <span>{group}</span>
+                        </label>
+                        {layers.map((layer) => (
                           <label key={layer.id} className="source-check">
                             <input
                               type="checkbox"
@@ -5294,8 +5596,9 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                             {layer.name}
                           </label>
                         ))}
-                    </div>
-                  ))}
+                      </div>
+                    )
+                  })}
                 </div>
                 {sasError && <p className="georef-error">{sasError}</p>}
               </div>

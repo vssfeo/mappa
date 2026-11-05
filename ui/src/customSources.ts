@@ -9,6 +9,7 @@ export type CustomSourceKind = 'xyz' | 'wms' | 'wmts'
 export interface CustomSource {
   id: string
   name: string
+  group: string
   kind: CustomSourceKind
   url: string
   scheme: 'xyz' | 'tms'
@@ -28,6 +29,7 @@ export interface CustomSource {
 export interface CustomSourceDraft {
   id?: string
   name: string
+  group: string
   kind: CustomSourceKind
   url: string
   scheme: 'xyz' | 'tms'
@@ -71,6 +73,7 @@ export async function saveCustomSource(
     source: {
       id: draft.id ?? newSourceId(),
       name: draft.name.trim(),
+      group: draft.group.trim(),
       kind: draft.kind,
       url: draft.url.trim(),
       scheme: draft.scheme,

@@ -1,11 +1,12 @@
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import { Eye, EyeOff, GripVertical, PenLine } from 'lucide-react'
+import { Eye, EyeOff, GripVertical, PenLine, Star } from 'lucide-react'
 import { useText } from './i18n'
 
 interface LayerRowProps {
   id: string
   name: string
   kind: string
+  badges?: string[]
   visible: boolean
   opacity: number
   dragging: boolean
@@ -17,6 +18,11 @@ interface LayerRowProps {
     id: string,
   ) => void
   onMove: (delta: number) => void
+  pinned?: boolean
+  onPin?: () => void
+  selectable?: boolean
+  selected?: boolean
+  onSelect?: () => void
   onEdit?: () => void
 }
 
@@ -25,6 +31,7 @@ export function LayerRow({
   id,
   name,
   kind,
+  badges = [],
   visible,
   opacity,
   dragging,
@@ -33,16 +40,32 @@ export function LayerRow({
   onOpacity,
   onDragStart,
   onMove,
+  pinned = false,
+  onPin,
+  selectable = false,
+  selected = false,
+  onSelect,
   onEdit,
 }: LayerRowProps) {
   const tx = useText()
   return (
     <div
-      className={`layer-row compact${visible ? ' is-visible' : ''}${
+      className={`layer-row compact${selectable ? ' selectable' : ''}${
+        visible ? ' is-visible' : ''
+      }${
         dragging ? ' is-dragging' : ''
       }${drop ? ` drop-${drop}` : ''}`}
       data-layer-id={id}
     >
+      {selectable && (
+        <input
+          type="checkbox"
+          className="layer-select"
+          checked={selected}
+          onChange={onSelect}
+          aria-label={tx('Выбрать {p0}', 'Select {p0}', { p0: name })}
+        />
+      )}
       <button
         type="button"
         className="layer-eye"
@@ -78,6 +101,11 @@ export function LayerRow({
         </button>
         <strong title={name}>{name}</strong>
         <span className="layer-kind">{kind}</span>
+        {badges.map((badge) => (
+          <span key={badge} className="layer-badge">
+            {badge}
+          </span>
+        ))}
         <input
           type="range"
           min="0"
@@ -89,17 +117,31 @@ export function LayerRow({
         />
         <span className="layer-opacity">{Math.round(opacity * 100)}%</span>
       </div>
-      {onEdit && (
+      {(onEdit || onPin) && (
         <div className="layer-actions">
-          <button
-            type="button"
-            className="icon-button"
-            onClick={onEdit}
-            aria-label={tx('Изменить {p0}', 'Edit {p0}', { p0: name })}
-            title={tx('Параметры слоя', 'Layer settings')}
-          >
-            <PenLine size={14} />
-          </button>
+          {onPin && (
+            <button
+              type="button"
+              className="icon-button"
+              onClick={onPin}
+              aria-pressed={pinned}
+              aria-label={tx('Закрепить {p0}', 'Pin {p0}', { p0: name })}
+              title={tx('Закрепить слой', 'Pin layer')}
+            >
+              <Star size={14} fill={pinned ? 'currentColor' : 'none'} />
+            </button>
+          )}
+          {onEdit && (
+            <button
+              type="button"
+              className="icon-button"
+              onClick={onEdit}
+              aria-label={tx('Изменить {p0}', 'Edit {p0}', { p0: name })}
+              title={tx('Параметры слоя', 'Layer settings')}
+            >
+              <PenLine size={14} />
+            </button>
+          )}
         </div>
       )}
     </div>

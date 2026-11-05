@@ -299,6 +299,7 @@ mod tests {
         CustomSource {
             id: "custom-test".to_owned(),
             name: "Test API".to_owned(),
+            group: String::new(),
             kind: "xyz".to_owned(),
             url: "https://tiles.example.org/{z}/{x}/{y}.png".to_owned(),
             scheme: "xyz".to_owned(),

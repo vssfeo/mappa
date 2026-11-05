@@ -49,6 +49,9 @@ pub struct CustomSource {
     pub id: String,
     /// Display name.
     pub name: String,
+    /// Optional group shown in the layer list.
+    #[serde(default)]
+    pub group: String,
     /// `xyz` (default) or `wms`.
     #[serde(default = "default_kind")]
     pub kind: String,
@@ -176,6 +179,7 @@ impl CustomSource {
         Self {
             id: provider.id.clone(),
             name: provider.name.clone(),
+            group: String::new(),
             kind: match provider.kind {
                 ProviderKind::Wms => "wms".to_owned(),
                 ProviderKind::Wmts => "wmts".to_owned(),
@@ -262,6 +266,7 @@ mod tests {
         CustomSource {
             id: "custom-demo".to_owned(),
             name: "Demo".to_owned(),
+            group: String::new(),
             kind: "xyz".to_owned(),
             url: "https://tiles.example.org/{z}/{x}/{y}.png".to_owned(),
             scheme: "xyz".to_owned(),
@@ -342,6 +347,18 @@ mod tests {
         bad.headers
             .insert("X-Test".to_owned(), "value\r\nInjected: yes".to_owned());
         assert!(bad.to_provider().is_err());
+    }
+
+    #[test]
+    fn preserves_layer_groups() {
+        let file =
+            std::env::temp_dir().join(format!("mappa-custom-group-{}.json", std::process::id()));
+        let mut source = source();
+        source.group = "Samples".to_owned();
+        save(&file, &[source]).unwrap();
+        let loaded = load(&file);
+        assert_eq!(loaded[0].group, "Samples");
+        let _ = std::fs::remove_file(&file);
     }
 
     #[test]

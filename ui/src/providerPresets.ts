@@ -21,6 +21,7 @@ const google = (name: string, layer: string, format: string): ProviderPreset => 
   group: 'Google',
   draft: {
     name,
+    group: '',
     kind: 'xyz',
     url: `https://mt1.google.com/vt/lyrs=${layer}&x={x}&y={y}&z={z}`,
     scheme: 'xyz',
@@ -43,6 +44,7 @@ const esri = (name: string, service: string): ProviderPreset => ({
   group: 'Esri',
   draft: {
     name,
+    group: '',
     kind: 'xyz',
     url: `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`,
     scheme: 'xyz',
@@ -66,6 +68,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     group: 'Yandex',
     draft: {
       name: 'Yandex Map',
+      group: '',
       kind: 'xyz',
       url: 'https://core-renderer-tiles.maps.yandex.net/tiles?l=map&x={x}&y={y}&z={z}&scale=1&lang=ru_RU',
       scheme: 'xyz',
@@ -87,6 +90,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     group: 'Yandex',
     draft: {
       name: 'Yandex Satellite',
+      group: '',
       kind: 'xyz',
       url: 'https://sat01.maps.yandex.net/tiles?l=sat&v=3.0.0&x={x}&y={y}&z={z}&lang=ru_RU',
       scheme: 'xyz',
