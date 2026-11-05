@@ -4158,7 +4158,6 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const packs = useAppStore((state) => state.packs)
   const toggleLayer = useAppStore((state) => state.toggleLayer)
   const setLayerOpacity = useAppStore((state) => state.setLayerOpacity)
-  const moveProvider = useAppStore((state) => state.moveProvider)
   const reorderProviders = useAppStore((state) => state.reorderProviders)
   const customSources = useAppStore((state) => state.customSources)
   const customSourceOrder = useAppStore((state) => state.customSourceOrder)
@@ -4168,7 +4167,6 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const setCustomLayerOpacity = useAppStore(
     (state) => state.setCustomLayerOpacity,
   )
-  const moveCustomSource = useAppStore((state) => state.moveCustomSource)
   const reorderCustomSources = useAppStore(
     (state) => state.reorderCustomSources,
   )
@@ -4244,6 +4242,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const [sasError, setSasError] = useState<string | null>(null)
   const [sasQuery, setSasQuery] = useState('')
   const sasPanelRef = useRef<HTMLDivElement | null>(null)
+
   const [layerQuery, setLayerQuery] = useState('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [manageLayers, setManageLayers] = useState(false)
@@ -4297,6 +4296,13 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
     offlineAllowed: false,
     insecureTls: false,
   })
+  const sourceFormRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (sourceForm) {
+      sourceFormRef.current?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [sourceForm, sourceDraft.id])
   const [headerText, setHeaderText] = useState('')
   const [wmtsLayers, setWmtsLayers] = useState<WmtsLayer[]>([])
   const [wmtsBusy, setWmtsBusy] = useState(false)
@@ -4958,11 +4964,6 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
         key={source.id}
         id={source.id}
         name={source.name}
-        kind={source.kind === 'wms' ? 'WMS' : source.scheme.toUpperCase()}
-        badges={[
-          ...(source.insecureTls ? ['TLS'] : []),
-          ...(source.offlineAllowed ? ['offline'] : []),
-        ]}
         visible={layer.visible}
         opacity={layer.opacity}
         dragging={customDrag.dragId === source.id}
@@ -4981,7 +4982,6 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
         onToggle={() => toggleCustomLayer(source.id)}
         onOpacity={(value) => setCustomLayerOpacity(source.id, value)}
         onDragStart={(event) => customDrag.start(event, source.id)}
-        onMove={(delta) => moveCustomSource(source.id, delta)}
         onEdit={() => editSource(source)}
       />
     )
@@ -4994,7 +4994,6 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
         key={item.id}
         id={item.id}
         name={item.label}
-        kind={item.short}
         visible={state.visible}
         opacity={state.opacity}
         dragging={providerDrag.dragId === item.id}
@@ -5013,7 +5012,6 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
         onToggle={() => toggleLayer(item.id)}
         onOpacity={(value) => setLayerOpacity(item.id, value)}
         onDragStart={(event) => providerDrag.start(event, item.id)}
-        onMove={(delta) => moveProvider(item.id, delta)}
       />
     )
   }
@@ -5021,7 +5019,13 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const pinnedCustom = customSources.filter(
     (source) =>
       pinnedLayers.includes(source.id) &&
-      layerMatches(source.name, source.kind, source.group),
+      layerMatches(
+        source.name,
+        `${source.kind} ${source.scheme} ${source.insecureTls ? 'TLS' : ''} ${
+          source.offlineAllowed ? 'offline' : 'online'
+        }`,
+        source.group,
+      ),
   )
   const pinnedProviders = providerOrder
     .map(providerById)
@@ -5034,7 +5038,17 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   for (const id of [...customSourceOrder].reverse()) {
     const source = customSources.find((item) => item.id === id)
     if (!source || pinnedLayers.includes(source.id)) continue
-    if (!layerMatches(source.name, source.kind, source.group)) continue
+    if (
+      !layerMatches(
+        source.name,
+        `${source.kind} ${source.scheme} ${source.insecureTls ? 'TLS' : ''} ${
+          source.offlineAllowed ? 'offline' : 'online'
+        }`,
+        source.group,
+      )
+    ) {
+      continue
+    }
     const group = source.group.trim() || tx('Без группы', 'Ungrouped')
     const list = customGroups.get(group) ?? []
     list.push(source)
@@ -5607,7 +5621,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
               <p className="georef-error">{sasError}</p>
             )}
             {sourceForm && (
-              <div className="source-form">
+              <div className="source-form" ref={sourceFormRef}>
                 <div className="section-heading">
                   <span>
                     {sourceDraft.id

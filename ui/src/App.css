@@ -3888,7 +3888,8 @@ body.is-layer-dragging {
 }
 
 .layer-line strong {
-  max-width: 44%;
+  flex: 1;
+  max-width: none;
   overflow: hidden;
   font-size: 12px;
   font-weight: 550;
@@ -3904,9 +3905,9 @@ body.is-layer-dragging {
 }
 
 .layer-line input[type='range'] {
-  flex: 1 1 44px;
-  width: auto;
-  min-width: 40px;
+  flex: 0 1 84px;
+  width: 84px;
+  min-width: 56px;
   height: 3px;
 }
 
