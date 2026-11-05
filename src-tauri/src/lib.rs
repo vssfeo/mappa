@@ -8,6 +8,7 @@ mod dem;
 mod demo;
 mod downloads;
 mod export;
+mod fieldkit;
 mod files;
 mod geocode;
 mod georef;
@@ -141,6 +142,7 @@ pub fn run() {
             downloads::delete_download,
             downloads::clear_finished_downloads,
             downloads::export_job_pack,
+            fieldkit::export_field_kit,
             downloads::cancel_export_pack,
             packs::open_pack,
             packs::list_packs,
