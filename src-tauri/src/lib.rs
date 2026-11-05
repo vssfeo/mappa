@@ -143,6 +143,7 @@ pub fn run() {
             downloads::clear_finished_downloads,
             downloads::export_job_pack,
             fieldkit::export_field_kit,
+            fieldkit::verify_field_kit,
             downloads::cancel_export_pack,
             packs::open_pack,
             packs::list_packs,

@@ -17,6 +17,21 @@ interface FieldKitResult {
   files: { path: string; bytes: number; blake3: string }[]
 }
 
+interface VerifyFile {
+  path: string
+  ok: boolean
+  error: string | null
+}
+
+interface VerifyResult {
+  directory: string
+  ok: boolean
+  files: VerifyFile[]
+  project: string | null
+  packs: string[]
+  dem: string | null
+}
+
 interface FieldKitPanelProps {
   onClose: () => void
 }
@@ -45,6 +60,8 @@ export function FieldKitPanel({ onClose }: FieldKitPanelProps) {
   const [minZoom, setMinZoom] = useState(Math.max(0, Math.floor(zoom)))
   const [maxZoom, setMaxZoom] = useState(Math.min(19, Math.ceil(zoom) + 2))
   const [progress, setProgress] = useState<string | null>(null)
+  const [verifyBusy, setVerifyBusy] = useState(false)
+  const [verified, setVerified] = useState<VerifyResult | null>(null)
   const estimate = useMemo(
     () => estimateDownload(bounds, minZoom, maxZoom),
     [bounds, minZoom, maxZoom],
@@ -84,6 +101,27 @@ export function FieldKitPanel({ onClose }: FieldKitPanelProps) {
       }),
     )
     return summary
+  }
+
+  const verifyKit = async () => {
+    const picked = await open({
+      directory: true,
+      multiple: false,
+      title: tx('Выберите папку полевого комплекта', 'Choose the field-kit folder'),
+    })
+    const path = Array.isArray(picked) ? picked[0] : picked
+    if (typeof path !== 'string') return
+    setVerifyBusy(true)
+    setError(null)
+    try {
+      setVerified(
+        await invoke<VerifyResult>('verify_field_kit', { directory: path }),
+      )
+    } catch (cause) {
+      setError(String(cause))
+    } finally {
+      setVerifyBusy(false)
+    }
   }
 
   const run = async () => {
@@ -188,6 +226,37 @@ export function FieldKitPanel({ onClose }: FieldKitPanelProps) {
           </button>
           <span className="source-hint">{directory || tx('Папка не выбрана', 'No folder selected')}</span>
         </div>
+
+        <div className="marker-actions">
+          <button
+            type="button"
+            className="ghost-button"
+            disabled={verifyBusy}
+            onClick={() => void verifyKit()}
+          >
+            {verifyBusy ? (
+              <Loader2 size={14} className="spin" />
+            ) : (
+              <FolderOpen size={14} />
+            )}
+            {tx('Проверить комплект', 'Verify kit')}
+          </button>
+        </div>
+        {verified && (
+          <div className="field-kit-result">
+            <strong>
+              {verified.ok
+                ? tx('Комплект цел', 'Kit is intact')
+                : tx('Есть расхождения', 'Checksum mismatch')}
+            </strong>
+            {verified.files.map((file) => (
+              <span key={file.path} className={file.ok ? 'muted' : 'georef-error'}>
+                {file.ok ? '✓' : '✕'} {file.path}
+                {file.error ? ` — ${file.error}` : ''}
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className="section-heading">
           <span>{tx('Скачать текущий вид', 'Download the current view')}</span>

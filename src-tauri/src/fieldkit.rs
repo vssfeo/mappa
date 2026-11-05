@@ -62,6 +62,22 @@ fn file_name(path: &Path) -> Result<String, String> {
         .ok_or_else(|| format!("invalid file name: {}", path.display()))
 }
 
+fn hash_file(path: &Path) -> Result<String, String> {
+    let mut file =
+        fs::File::open(path).map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buffer = vec![0_u8; 64 * 1024];
+    loop {
+        let read = std::io::Read::read(&mut file, &mut buffer)
+            .map_err(|error| format!("cannot hash {}: {error}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hasher.finalize().to_hex().to_string())
+}
+
 fn copy_one(source: &Path, target: &Path, relative: &str) -> Result<FieldKitFile, String> {
     if !source.is_file() {
         return Err(format!("not a file: {}", source.display()));
@@ -146,6 +162,108 @@ pub async fn export_field_kit(request: FieldKitRequest) -> Result<FieldKitSummar
         .map_err(|error| error.to_string())?
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifyFile {
+    pub path: String,
+    pub expected: String,
+    pub actual: Option<String>,
+    pub ok: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifySummary {
+    pub directory: String,
+    pub ok: bool,
+    pub files: Vec<VerifyFile>,
+    pub project: Option<String>,
+    pub packs: Vec<String>,
+    pub dem: Option<String>,
+}
+
+fn verify(directory: &Path) -> Result<VerifySummary, String> {
+    let manifest_path = directory.join("manifest.json");
+    let text = fs::read_to_string(&manifest_path)
+        .map_err(|error| format!("cannot read manifest.json: {error}"))?;
+    let manifest: serde_json::Value =
+        serde_json::from_str(&text).map_err(|error| format!("invalid manifest: {error}"))?;
+    let root = fs::canonicalize(directory)
+        .map_err(|error| format!("cannot resolve {}: {error}", directory.display()))?;
+    let mut files = Vec::new();
+    let mut project = None;
+    let mut packs = Vec::new();
+    let mut dem = None;
+    if let Some(items) = manifest.get("files").and_then(|value| value.as_array()) {
+        for item in items {
+            let relative = item
+                .get("path")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default();
+            let expected = item
+                .get("blake3")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_owned();
+            if relative.is_empty() || Path::new(relative).is_absolute() {
+                continue;
+            }
+            let target = root.join(relative);
+            let resolved = match fs::canonicalize(&target) {
+                Ok(path) if path.starts_with(&root) => path,
+                _ => {
+                    files.push(VerifyFile {
+                        path: relative.to_owned(),
+                        expected,
+                        actual: None,
+                        ok: false,
+                        error: Some("missing or outside the kit".to_owned()),
+                    });
+                    continue;
+                }
+            };
+            let actual = hash_file(&resolved);
+            let (actual, error) = match actual {
+                Ok(value) => (Some(value), None),
+                Err(error) => (None, Some(error)),
+            };
+            let ok = actual.as_deref() == Some(expected.as_str());
+            if ok {
+                if relative == "project.mappa" {
+                    project = Some(target.display().to_string());
+                } else if relative.starts_with("packs/") {
+                    packs.push(target.display().to_string());
+                } else if relative.starts_with("dem/") {
+                    dem = Some(target.display().to_string());
+                }
+            }
+            files.push(VerifyFile {
+                path: relative.to_owned(),
+                expected,
+                actual,
+                ok,
+                error,
+            });
+        }
+    }
+    Ok(VerifySummary {
+        directory: directory.display().to_string(),
+        ok: files.iter().all(|file| file.ok),
+        files,
+        project,
+        packs,
+        dem,
+    })
+}
+
+#[tauri::command]
+pub async fn verify_field_kit(directory: String) -> Result<VerifySummary, String> {
+    tauri::async_runtime::spawn_blocking(move || verify(Path::new(&directory)))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,6 +292,29 @@ mod tests {
             fs::read_to_string(Path::new(&summary.directory).join("manifest.json")).unwrap();
         assert!(manifest.contains("mappa-field-kit"));
         assert!(manifest.contains("packs/00-region.mbtiles"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn verifies_the_manifest_and_detects_tampering() {
+        let root = temp_dir("verify");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let pack = root.join("region.mbtiles");
+        fs::write(&pack, b"pack-bytes").unwrap();
+        let summary = build(FieldKitRequest {
+            directory: root.display().to_string(),
+            project: Some("{}".to_owned()),
+            packs: vec![pack.display().to_string()],
+            dem: None,
+        })
+        .unwrap();
+        let kit = PathBuf::from(&summary.directory);
+        assert!(verify(&kit).unwrap().ok);
+        fs::write(kit.join("packs/00-region.mbtiles"), b"tampered").unwrap();
+        let checked = verify(&kit).unwrap();
+        assert!(!checked.ok);
+        assert!(checked.files.iter().any(|file| !file.ok));
         let _ = fs::remove_dir_all(&root);
     }
 
