@@ -217,6 +217,19 @@ function App() {
         try {
           const parsed = parseTracksFromGpx(await readTextFile(file.path))
           if (parsed.features.length === 0) continue
+          const feature = parsed.features[0]
+          if (
+            new Set(feature.coordinates.map(([lon, lat]) => `${lon},${lat}`))
+              .size < 2
+          ) {
+            showToast(
+              tx(
+                'Трек с телефона без движения: точки совпадают',
+                'Phone track has no movement: its points are identical',
+              ),
+            )
+            continue
+          }
           useAppStore.getState().addFeatures(parsed.features)
           showToast(
             tx('Трек с телефона: {p0}', 'Track from the phone: {p0}', {

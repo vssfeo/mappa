@@ -47,6 +47,8 @@ export function TracksPanel({ onClose }: TracksPanelProps) {
 
   useEffect(() => {
     void load()
+    const timer = window.setInterval(() => void load(), 5000)
+    return () => window.clearInterval(timer)
   }, [])
 
   const importFile = async (file: TrackFile) => {
@@ -55,6 +57,17 @@ export function TracksPanel({ onClose }: TracksPanelProps) {
       const parsed = parseTracksFromGpx(await readTextFile(file.path))
       if (parsed.features.length === 0) {
         showToast(tx('В файле нет трека', 'No track in this file'))
+        return
+      }
+      const feature = parsed.features[0]
+      if (new Set(feature.coordinates.map(([lon, lat]) => `${lon},${lat}`)).size < 2) {
+        markTrackImported(file.path)
+        showToast(
+          tx(
+            'Трек без движения: все точки совпадают, линия не видна на карте',
+            'The track has no movement: every point is identical, so the line is invisible',
+          ),
+        )
         return
       }
       addFeatures(parsed.features)
