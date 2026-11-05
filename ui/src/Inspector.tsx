@@ -113,6 +113,7 @@ import type {
 import { readMarkerIcon } from './markerIcons'
 import { sk42Epsg, sk42Zone, sk42ZoneFromY } from './sk42'
 import { useLayerDrag } from './useLayerDrag'
+import { rangeSelection } from './layerSelection'
 import { LayerRow } from './LayerRow'
 import {
   exportKey,
@@ -4247,6 +4248,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [manageLayers, setManageLayers] = useState(false)
   const [selectedLayers, setSelectedLayers] = useState<Set<string>>(new Set())
+  const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null)
   const [pinnedLayers, setPinnedLayers] = useState<string[]>(() => {
     try {
       return JSON.parse(localStorage.getItem('mappa-pinned-layers') ?? '[]')
@@ -4949,6 +4951,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
   }
 
   const toggleSelected = (id: string) => {
+    setSelectionAnchor(id)
     setSelectedLayers((current) => {
       const next = new Set(current)
       if (next.has(id)) next.delete(id)
@@ -4978,7 +4981,9 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
         onPin={() => togglePinned(source.id)}
         selectable={manageLayers}
         selected={selectedLayers.has(source.id)}
+        draggable={!manageLayers}
         onSelect={() => toggleSelected(source.id)}
+        onClick={(event) => handleLayerClick(source.id, event)}
         onToggle={() => toggleCustomLayer(source.id)}
         onOpacity={(value) => setCustomLayerOpacity(source.id, value)}
         onDragStart={(event) => customDrag.start(event, source.id)}
@@ -5008,7 +5013,9 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
         onPin={() => togglePinned(item.id)}
         selectable={manageLayers}
         selected={selectedLayers.has(item.id)}
+        draggable={!manageLayers}
         onSelect={() => toggleSelected(item.id)}
+        onClick={(event) => handleLayerClick(item.id, event)}
         onToggle={() => toggleLayer(item.id)}
         onOpacity={(value) => setLayerOpacity(item.id, value)}
         onDragStart={(event) => providerDrag.start(event, item.id)}
@@ -5061,6 +5068,41 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
         !pinnedLayers.includes(item.id) &&
         layerMatches(item.label, item.short, ''),
     )
+  const groupCollapsed = (group: string) =>
+    collapsedGroups.has(group) && !layerQueryText
+  const visibleLayerIds = [
+    ...pinnedCustom.map((source) => source.id),
+    ...pinnedProviders.map((item) => item.id),
+    ...[...customGroups.entries()].flatMap(([group, sources]) =>
+      groupCollapsed(group) ? [] : sources.map((source) => source.id),
+    ),
+    ...(groupCollapsed('__basemaps')
+      ? []
+      : providerRows.map((item) => item.id)),
+  ]
+  const handleLayerClick = (
+    id: string,
+    event: React.MouseEvent<HTMLDivElement>,
+  ) => {
+    const target = event.target as HTMLElement
+    if (target.closest('button, input, label')) return
+    const modified = event.ctrlKey || event.metaKey || event.shiftKey
+    if (!manageLayers && !modified) return
+    if (!manageLayers) setManageLayers(true)
+    if (event.shiftKey) {
+      setSelectedLayers(
+        new Set(rangeSelection(visibleLayerIds, selectionAnchor, id)),
+      )
+      setSelectionAnchor(id)
+      return
+    }
+    if (event.ctrlKey || event.metaKey) {
+      toggleSelected(id)
+      return
+    }
+    setSelectedLayers(new Set([id]))
+    setSelectionAnchor(id)
+  }
   const setCustomGroupVisible = (sources: CustomSource[], visible: boolean) => {
     for (const source of sources) {
       const layer = customLayers[source.id] ?? { visible: true, opacity: 1 }
@@ -5237,6 +5279,7 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
                 onClick={() => {
                   setManageLayers((open) => !open)
                   setSelectedLayers(new Set())
+                  setSelectionAnchor(null)
                 }}
               >
                 {manageLayers ? tx('Готово', 'Done') : tx('Управление', 'Manage')}

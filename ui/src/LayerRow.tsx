@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
+import type {
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+} from 'react'
 import { Eye, EyeOff, PenLine, Star } from 'lucide-react'
 import { useText } from './i18n'
 
@@ -20,7 +23,9 @@ interface LayerRowProps {
   onPin?: () => void
   selectable?: boolean
   selected?: boolean
+  draggable?: boolean
   onSelect?: () => void
+  onClick?: (event: ReactMouseEvent<HTMLDivElement>) => void
   onEdit?: () => void
 }
 
@@ -39,7 +44,9 @@ export function LayerRow({
   onPin,
   selectable = false,
   selected = false,
+  draggable = true,
   onSelect,
+  onClick,
   onEdit,
 }: LayerRowProps) {
   const tx = useText()
@@ -63,7 +70,9 @@ export function LayerRow({
         visible ? ' is-visible' : ''
       }${dragging ? ' is-dragging' : ''}${drop ? ` drop-${drop}` : ''}`}
       data-layer-id={id}
+      onClick={onClick}
       onPointerDown={(event) => {
+        if (!draggable) return
         const target = event.target as HTMLElement
         if (target.closest('button, input, label')) return
         onDragStart(event, id)
