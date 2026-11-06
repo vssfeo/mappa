@@ -3,8 +3,8 @@ import { Copy, ExternalLink, Loader2, Share2, X } from 'lucide-react'
 import { save } from '@tauri-apps/plugin-dialog'
 import { useText } from './i18n'
 import { useAppStore } from './store'
-import { createPackTorrent, openMagnet, type TorrentInfo } from './torrent'
-import { catalogEntry } from './catalog'
+import { createPackTorrent, openMagnet, openUrl, type TorrentInfo } from './torrent'
+import { catalogEntry, catalogIssueUrl } from './catalog'
 import { useDialogFocus } from './useDialogFocus'
 
 interface SharePanelProps {
@@ -25,6 +25,20 @@ export function SharePanel({ onClose }: SharePanelProps) {
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<TorrentInfo | null>(null)
   const [license, setLicense] = useState('')
+
+  const buildEntry = () => {
+    if (!info || !license.trim()) return null
+    const pack = packs.find((item) => item.path === selected)
+    if (!pack) return null
+    return catalogEntry({
+      pack: { ...pack, bytes: info.bytes },
+      provider: providerId,
+      infoHash: info.infoHash,
+      magnet: info.magnet,
+      license: license.trim(),
+      publisher: projectName || 'mappa',
+    })
+  }
 
   const create = async () => {
     if (!selected) return
@@ -178,16 +192,8 @@ export function SharePanel({ onClose }: SharePanelProps) {
               className="ghost-button"
               disabled={license.trim().length === 0}
               onClick={() => {
-                const pack = packs.find((item) => item.path === selected)
-                if (!pack) return
-                const entry = catalogEntry({
-                  pack: { ...pack, bytes: info.bytes },
-                  provider: providerId,
-                  infoHash: info.infoHash,
-                  magnet: info.magnet,
-                  license: license.trim(),
-                  publisher: projectName || 'mappa',
-                })
+                const entry = buildEntry()
+                if (!entry) return
                 void navigator.clipboard.writeText(
                   JSON.stringify(entry, null, 2),
                 )
@@ -201,6 +207,22 @@ export function SharePanel({ onClose }: SharePanelProps) {
             >
               <Copy size={14} />
               {tx('Скопировать запись каталога', 'Copy catalog entry')}
+            </button>
+            <button
+              type="button"
+              className="ghost-button"
+              disabled={license.trim().length === 0}
+              onClick={() => {
+                const entry = buildEntry()
+                if (entry) {
+                  void openUrl(catalogIssueUrl(entry)).catch((cause) =>
+                    setError(String(cause)),
+                  )
+                }
+              }}
+            >
+              <ExternalLink size={14} />
+              {tx('Открыть issue каталога', 'Open catalog issue')}
             </button>
           </div>
         )}

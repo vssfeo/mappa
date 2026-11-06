@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { catalogEntry, filterPacks, type CatalogPack } from '../src/catalog.ts'
+import { catalogEntry, catalogIssueUrl, filterPacks, type CatalogPack } from '../src/catalog.ts'
 
 const base: CatalogPack = {
   id: 'crimea-osm',
@@ -53,4 +53,12 @@ test('catalog entry keeps the torrent hash and bbox', () => {
   assert.deepEqual(entry.zoom, [10, 16])
   assert.equal(entry.infoHash, 'b'.repeat(40))
   assert.match(entry.id, /^crimea-osm-bbbbbbbb$/)
+})
+
+
+test('builds an issue URL with the encoded entry', () => {
+  const url = catalogIssueUrl(base)
+  assert.ok(url.startsWith('https://github.com/vssfeo/mappa/issues/new?'))
+  assert.ok(url.includes('title=catalog%3A%20Crimea%20OSM'))
+  assert.ok(url.includes('body='))
 })

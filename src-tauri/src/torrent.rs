@@ -174,6 +174,22 @@ pub async fn create_pack_torrent(
 }
 
 #[tauri::command]
+pub fn open_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) || url.len() > 8192 {
+        return Err("invalid URL".to_owned());
+    }
+    #[cfg(windows)]
+    let status = Command::new("cmd").args(["/C", "start", "", &url]).status();
+    #[cfg(not(windows))]
+    let status = Command::new("xdg-open").arg(&url).status();
+    status
+        .map_err(|error| format!("cannot open the browser: {error}"))?
+        .success()
+        .then_some(())
+        .ok_or_else(|| "the browser rejected the URL".to_owned())
+}
+
+#[tauri::command]
 pub fn open_magnet(magnet: String) -> Result<(), String> {
     if !magnet.starts_with("magnet:?") || magnet.len() > 4096 {
         return Err("invalid magnet link".to_owned());

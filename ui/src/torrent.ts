@@ -19,3 +19,7 @@ export async function createPackTorrent(
 export async function openMagnet(magnet: string): Promise<void> {
   return invoke('open_magnet', { magnet })
 }
+
+export async function openUrl(url: string): Promise<void> {
+  return invoke('open_url', { url })
+}

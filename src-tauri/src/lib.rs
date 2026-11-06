@@ -148,6 +148,7 @@ pub fn run() {
             fieldkit::export_field_kit,
             torrent::create_pack_torrent,
             torrent::open_magnet,
+            torrent::open_url,
             fieldkit::verify_field_kit,
             mobile::start_mobile_server,
             mobile::stop_mobile_server,

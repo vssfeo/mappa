@@ -110,3 +110,24 @@ export function catalogEntry(options: CatalogEntryOptions): CatalogPack {
     publishedAt: new Date().toISOString(),
   }
 }
+
+
+/** GitHub issue URL with the entry prefilled, for the catalog PR workflow. */
+export function catalogIssueUrl(
+  entry: CatalogPack,
+  repository = 'vssfeo/mappa',
+): string {
+  const title = `catalog: ${entry.name}`
+  const body = [
+    'Добавить пак в статический каталог.',
+    '',
+    '`catalog/catalog.json` → `packs[]`:',
+    '',
+    '```json',
+    JSON.stringify(entry, null, 2),
+    '```',
+    '',
+    'Проверьте лицензию и что торрент сидируется.',
+  ].join('\n')
+  return `https://github.com/${repository}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`
+}

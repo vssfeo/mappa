@@ -147,6 +147,7 @@ export const de: Record<string, string> = {
   'Open a map scan': 'Kartenscan öffnen',
   'Open a map scan, place at least three control points and save a GeoTIFF/COG for QGIS.': 'Kartenscan öffnen, mindestens drei Passpunkte setzen und ein GeoTIFF/COG für QGIS speichern.',
   'Open a scan': 'Scan öffnen',
+  'Open catalog issue': 'Katalog-Issue öffnen',
   'Open in torrent client': 'Im Torrent-Client öffnen',
   'Open the demo pack': 'Demo-Paket öffnen',
   'Opening the demo pack…': 'Demo-Paket wird geöffnet…',

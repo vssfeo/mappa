@@ -147,6 +147,7 @@ export const es: Record<string, string> = {
   'Open a map scan': 'Abrir un escaneo de mapa',
   'Open a map scan, place at least three control points and save a GeoTIFF/COG for QGIS.': 'Abra un escaneo de mapa, coloque al menos tres puntos de control y guarde un GeoTIFF/COG para QGIS.',
   'Open a scan': 'Abrir un escaneo',
+  'Open catalog issue': 'Abrir incidencia del catálogo',
   'Open in torrent client': 'Abrir en el cliente de torrents',
   'Open the demo pack': 'Abrir el paquete de demostración',
   'Opening the demo pack…': 'Abriendo el paquete de demostración…',
