@@ -3,6 +3,20 @@
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версии — [SemVer](https://semver.org/lang/ru/).
 
+## [1.32.0] — 2026-11-07
+
+### Добавлено
+
+- «Поделиться паком» принимает один или несколько трекеров; они пишутся
+  в `.torrent` (`announce`/`announce-list`) и в magnet (`tr=`).
+- По умолчанию — `udp://tracker.opentrackr.org:1337/announce`; поле можно
+  очистить, тогда остаются DHT/LSD.
+
+### Изменено
+
+- Info hash не меняется при добавлении трекеров.
+- `make check`: 259 Rust-тестов, 139 UI-тестов.
+
 ## [1.31.0] — 2026-11-07
 
 ### Добавлено

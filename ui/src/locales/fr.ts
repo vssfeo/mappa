@@ -247,6 +247,7 @@ export const fr: Record<string, string> = {
   'Track on the map': 'Trace sur la carte',
   'Track points': 'Points de trace',
   'Track saved: {p0}': 'Trace enregistrée : {p0}',
+  'Tracker (optional)': 'Tracker (facultatif)',
   'Tracks from the phone': 'Traces du téléphone',
   'Transform': 'Transformation',
   'Try the demo pack': 'Essayez le pack de démonstration',

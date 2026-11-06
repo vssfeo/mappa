@@ -25,6 +25,7 @@ export function SharePanel({ onClose }: SharePanelProps) {
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<TorrentInfo | null>(null)
   const [license, setLicense] = useState('')
+  const [tracker, setTracker] = useState('udp://tracker.opentrackr.org:1337/announce')
 
   const buildEntry = () => {
     if (!info || !license.trim()) return null
@@ -52,7 +53,11 @@ export function SharePanel({ onClose }: SharePanelProps) {
     setBusy(true)
     setError(null)
     try {
-      setInfo(await createPackTorrent(selected, destination))
+      const trackers = tracker
+        .split(/[\s,]+/)
+        .map((value) => value.trim())
+        .filter(Boolean)
+      setInfo(await createPackTorrent(selected, destination, trackers))
     } catch (cause) {
       setError(String(cause))
     } finally {
@@ -179,6 +184,15 @@ export function SharePanel({ onClose }: SharePanelProps) {
               </button>
             </div>
             <span className="muted">{info.torrent}</span>
+            <label>
+              {tx('Трекер (необязательно)', 'Tracker (optional)')}
+              <input
+                value={tracker}
+                onChange={(event) => setTracker(event.target.value)}
+                spellCheck={false}
+                placeholder="udp://tracker.example:1337/announce"
+              />
+            </label>
             <label>
               {tx('Лицензия / источник', 'Licence / source')}
               <input

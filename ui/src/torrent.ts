@@ -12,8 +12,13 @@ export interface TorrentInfo {
 export async function createPackTorrent(
   source: string,
   destination: string,
+  trackers: string[] = [],
 ): Promise<TorrentInfo> {
-  return invoke<TorrentInfo>('create_pack_torrent', { source, destination })
+  return invoke<TorrentInfo>('create_pack_torrent', {
+    source,
+    destination,
+    trackers,
+  })
 }
 
 export async function openMagnet(magnet: string): Promise<void> {

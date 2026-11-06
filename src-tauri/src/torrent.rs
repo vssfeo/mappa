@@ -51,7 +51,32 @@ fn piece_length(size: u64) -> u32 {
     }
 }
 
-fn create(source: &Path, destination: &Path) -> Result<TorrentInfo, String> {
+fn normalize_trackers(trackers: &[String]) -> Result<Vec<String>, String> {
+    let mut result: Vec<String> = Vec::new();
+    for tracker in trackers {
+        let tracker = tracker.trim();
+        if tracker.is_empty() {
+            continue;
+        }
+        if tracker.len() > 512
+            || tracker
+                .chars()
+                .any(|value| value.is_control() || value.is_whitespace())
+            || !(tracker.starts_with("udp://")
+                || tracker.starts_with("http://")
+                || tracker.starts_with("https://"))
+        {
+            return Err(format!("invalid tracker: {tracker}"));
+        }
+        if !result.iter().any(|existing| existing == tracker) {
+            result.push(tracker.to_owned());
+        }
+    }
+    Ok(result)
+}
+
+fn create(source: &Path, destination: &Path, trackers: &[String]) -> Result<TorrentInfo, String> {
+    let trackers = normalize_trackers(trackers)?;
     if !source.is_file() {
         return Err(format!("not a file: {}", source.display()));
     }
@@ -131,6 +156,20 @@ fn create(source: &Path, destination: &Path) -> Result<TorrentInfo, String> {
 
     let mut torrent = Vec::new();
     torrent.push(b'd');
+    if let Some(first) = trackers.first() {
+        be_bytes(&mut torrent, b"announce");
+        be_bytes(&mut torrent, first.as_bytes());
+    }
+    if trackers.len() > 1 {
+        be_bytes(&mut torrent, b"announce-list");
+        torrent.push(b'l');
+        for tracker in &trackers {
+            torrent.push(b'l');
+            be_bytes(&mut torrent, tracker.as_bytes());
+            torrent.push(b'e');
+        }
+        torrent.push(b'e');
+    }
     be_bytes(&mut torrent, b"created by");
     be_bytes(&mut torrent, b"Mappa");
     be_bytes(&mut torrent, b"info");
@@ -147,10 +186,14 @@ fn create(source: &Path, destination: &Path) -> Result<TorrentInfo, String> {
         .write_all(&torrent)
         .map_err(|error| format!("cannot write {}: {error}", destination.display()))?;
 
-    let magnet = format!(
+    let mut magnet = format!(
         "magnet:?xt=urn:btih:{info_hash}&dn={}&xl={bytes}",
         percent_encode(&name)
     );
+    for tracker in &trackers {
+        magnet.push_str("&tr=");
+        magnet.push_str(&percent_encode(tracker));
+    }
     Ok(TorrentInfo {
         name,
         bytes,
@@ -165,10 +208,11 @@ fn create(source: &Path, destination: &Path) -> Result<TorrentInfo, String> {
 pub async fn create_pack_torrent(
     source: String,
     destination: String,
+    trackers: Vec<String>,
 ) -> Result<TorrentInfo, String> {
     let source = PathBuf::from(source);
     let destination = PathBuf::from(destination);
-    tauri::async_runtime::spawn_blocking(move || create(&source, &destination))
+    tauri::async_runtime::spawn_blocking(move || create(&source, &destination, &trackers))
         .await
         .map_err(|error| error.to_string())?
 }
@@ -223,7 +267,7 @@ mod tests {
         let pack = root.join("region.mbtiles");
         fs::write(&pack, b"0123456789").unwrap();
         let target = root.join("region.torrent");
-        let info = create(&pack, &target).unwrap();
+        let info = create(&pack, &target, &[]).unwrap();
         assert_eq!(info.info_hash.len(), 40);
         assert_eq!(info.bytes, 10);
         assert!(info.magnet.starts_with("magnet:?xt=urn:btih:"));
@@ -235,13 +279,38 @@ mod tests {
     }
 
     #[test]
+    fn adds_trackers_without_changing_the_info_hash() {
+        let root = temp("trackers");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let pack = root.join("region.mbtiles");
+        fs::write(&pack, b"0123456789").unwrap();
+        let plain = create(&pack, &root.join("plain.torrent"), &[]).unwrap();
+        let tracked = create(
+            &pack,
+            &root.join("tracked.torrent"),
+            &[
+                "udp://tracker.example:1337/announce".to_owned(),
+                "https://tracker.example/announce".to_owned(),
+            ],
+        )
+        .unwrap();
+        assert_eq!(plain.info_hash, tracked.info_hash);
+        assert!(tracked.magnet.contains("&tr=udp%3A%2F%2Ftracker.example"));
+        let data = fs::read(root.join("tracked.torrent")).unwrap();
+        assert!(data.windows(8).any(|window| window == b"announce"));
+        assert!(data.windows(13).any(|window| window == b"announce-list"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn rejects_non_pack_files() {
         let root = temp("reject");
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
         let file = root.join("notes.txt");
         fs::write(&file, b"x").unwrap();
-        assert!(create(&file, &root.join("notes.torrent")).is_err());
+        assert!(create(&file, &root.join("notes.torrent"), &[]).is_err());
         let _ = fs::remove_dir_all(&root);
     }
 }
