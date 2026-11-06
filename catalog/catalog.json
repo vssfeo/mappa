@@ -1,6 +1,28 @@
 {
   "format": "mappa-catalog",
   "version": 1,
-  "updatedAt": "2026-11-06T00:00:00Z",
-  "packs": []
+  "updatedAt": "2026-11-06T20:40:59.428Z",
+  "packs": [
+    {
+      "id": "workflow-test-a0000001",
+      "name": "Workflow test pack",
+      "bbox": [
+        0,
+        0,
+        1,
+        1
+      ],
+      "zoom": [
+        10,
+        14
+      ],
+      "provider": "osm",
+      "bytes": 1024,
+      "infoHash": "a000000000000000000000000000000000000001",
+      "magnet": "magnet:?xt=urn:btih:a000000000000000000000000000000000000001",
+      "license": "test-only",
+      "publisher": "workflow-test",
+      "publishedAt": "2026-11-06T00:00:00Z"
+    }
+  ]
 }
