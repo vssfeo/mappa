@@ -25,7 +25,9 @@ export function SharePanel({ onClose }: SharePanelProps) {
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<TorrentInfo | null>(null)
   const [license, setLicense] = useState('')
-  const [tracker, setTracker] = useState('udp://tracker.opentrackr.org:1337/announce')
+  const [tracker, setTracker] = useState(
+    'udp://tracker.opentrackr.org:1337/announce,udp://open.stealth.si:80/announce',
+  )
 
   const buildEntry = () => {
     if (!info || !license.trim()) return null

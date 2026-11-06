@@ -19,7 +19,7 @@
       "provider": "usgs",
       "bytes": 1605632,
       "infoHash": "e003df20b08413b528419e2ecbff3ee0c450dceb",
-      "magnet": "magnet:?xt=urn:btih:e003df20b08413b528419e2ecbff3ee0c450dceb&dn=denver-usgs-z12-14.mbtiles&xl=1605632&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce",
+      "magnet": "magnet:?xt=urn:btih:e003df20b08413b528419e2ecbff3ee0c450dceb&dn=denver-usgs-z12-14.mbtiles&xl=1605632&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce",
       "license": "USGS public domain",
       "publisher": "vssfeo",
       "publishedAt": "2026-11-06T20:48:22Z"
