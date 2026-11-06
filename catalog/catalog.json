@@ -1,6 +1,28 @@
 {
   "format": "mappa-catalog",
   "version": 1,
-  "updatedAt": "2026-11-06T00:00:00Z",
-  "packs": []
+  "updatedAt": "2026-11-06T20:48:35.561Z",
+  "packs": [
+    {
+      "id": "denver-usgs-e003df20",
+      "name": "Denver USGS z12-14",
+      "bbox": [
+        -105.05,
+        39.7,
+        -104.95,
+        39.8
+      ],
+      "zoom": [
+        12,
+        14
+      ],
+      "provider": "usgs",
+      "bytes": 1605632,
+      "infoHash": "e003df20b08413b528419e2ecbff3ee0c450dceb",
+      "magnet": "magnet:?xt=urn:btih:e003df20b08413b528419e2ecbff3ee0c450dceb&dn=denver-usgs-z12-14.mbtiles&xl=1605632",
+      "license": "USGS public domain",
+      "publisher": "vssfeo",
+      "publishedAt": "2026-11-06T20:48:22Z"
+    }
+  ]
 }
