@@ -88,6 +88,34 @@ fn delete_in(dir: &Path, path: &Path) -> Result<(), String> {
     std::fs::remove_file(&target).map_err(|error| format!("cannot delete track: {error}"))
 }
 
+fn read_track_in(dir: &Path, path: &Path) -> Result<String, String> {
+    if path.extension().and_then(|value| value.to_str()) != Some("gpx") {
+        return Err("only .gpx tracks can be read".to_owned());
+    }
+    let root = dir
+        .canonicalize()
+        .map_err(|error| format!("cannot resolve {}: {error}", dir.display()))?;
+    let target = path
+        .canonicalize()
+        .map_err(|error| format!("cannot resolve {}: {error}", path.display()))?;
+    if !target.starts_with(&root) {
+        return Err("track is outside the inbox".to_owned());
+    }
+    let size = std::fs::metadata(&target)
+        .map_err(|error| format!("cannot read track: {error}"))?
+        .len();
+    if size > 32 * 1024 * 1024 {
+        return Err("track is larger than 32 MiB".to_owned());
+    }
+    std::fs::read_to_string(&target).map_err(|error| format!("cannot read track: {error}"))
+}
+
+/// Reads a GPX track from the inbox without exposing the whole cache.
+#[tauri::command]
+pub fn read_track(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    read_track_in(&tracks_dir(&app)?, Path::new(&path))
+}
+
 /// Deletes a GPX track from the inbox.
 #[tauri::command]
 pub fn delete_track(app: tauri::AppHandle, path: String) -> Result<(), String> {
@@ -136,6 +164,27 @@ mod tests {
         assert!(delete_in(&dir, &outside).is_err());
         assert!(delete_in(&dir, &track).is_ok());
         assert!(!track.exists());
+        let _ = std::fs::remove_file(&outside);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reads_only_tracks_inside_the_inbox() {
+        let dir = std::env::temp_dir().join(format!(
+            "mappa-read-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let track = dir.join("track.gpx");
+        std::fs::write(&track, b"<gpx/>").unwrap();
+        let outside = dir.with_extension("outside.gpx");
+        std::fs::write(&outside, b"<gpx/>").unwrap();
+        assert_eq!(read_track_in(&dir, &track).unwrap(), "<gpx/>");
+        assert!(read_track_in(&dir, &outside).is_err());
         let _ = std::fs::remove_file(&outside);
         let _ = std::fs::remove_dir_all(&dir);
     }

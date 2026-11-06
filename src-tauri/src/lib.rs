@@ -176,6 +176,7 @@ pub fn run() {
             telemetry::mavlink_track,
             telemetry::mavlink_clear,
             tracks::list_tracks,
+            tracks::read_track,
             tracks::tracks_folder,
             tracks::delete_track,
             gnss::start_nmea_tcp,

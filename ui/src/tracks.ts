@@ -43,6 +43,12 @@ export const listTracks = async (): Promise<TrackFile[]> => {
   }
 }
 
+/** Reads a GPX from the inbox through its dedicated bridge. */
+export const readTrack = async (path: string): Promise<string> => {
+  if (!isNative) return ''
+  return invoke<string>('read_track', { path })
+}
+
 /** Path of the inbox shown in the UI. */
 export const tracksFolder = async (): Promise<string> => {
   if (!isNative) return ''

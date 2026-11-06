@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Download, RefreshCw, Trash2, X } from 'lucide-react'
 import { useText } from './i18n'
-import { readTextFile } from './native'
 import { parseTracksFromGpx } from './featureTransfer'
 import { useAppStore } from './store'
 import {
@@ -9,6 +8,7 @@ import {
   forgetTrack,
   listTracks,
   markTrackImported,
+  readTrack,
   tracksFolder,
   type TrackFile,
 } from './tracks'
@@ -54,7 +54,7 @@ export function TracksPanel({ onClose }: TracksPanelProps) {
   const importFile = async (file: TrackFile) => {
     setBusy(true)
     try {
-      const parsed = parseTracksFromGpx(await readTextFile(file.path))
+      const parsed = parseTracksFromGpx(await readTrack(file.path))
       if (parsed.features.length === 0) {
         showToast(tx('В файле нет трека', 'No track in this file'))
         return

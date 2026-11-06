@@ -50,7 +50,7 @@ import { LosPanel } from './LosPanel'
 import { MissionPanel } from './MissionPanel'
 import { TelemetryPanel } from './TelemetryPanel'
 import { AlmanacPanel } from './AlmanacPanel'
-import { importedTracks, listTracks, markTrackImported } from './tracks'
+import { importedTracks, listTracks, markTrackImported, readTrack } from './tracks'
 import { parseTracksFromGpx } from './featureTransfer'
 import { SyncPanel } from './SyncPanel'
 import { TracksPanel } from './TracksPanel'
@@ -65,7 +65,7 @@ import type { Command } from './commands'
 import { listCustomSources } from './customSources'
 import { transformPoints } from './native'
 import { importPack, openDemoPack, restorePacks } from './packs'
-import { isNative, readTextFile } from './native'
+import { isNative } from './native'
 import { listCrashes } from './crash'
 import { restoreDem } from './dem'
 import {
@@ -215,7 +215,7 @@ function App() {
         if (!alive || importedTracks().has(file.path) || file.modified < weekAgo) continue
         markTrackImported(file.path)
         try {
-          const parsed = parseTracksFromGpx(await readTextFile(file.path))
+          const parsed = parseTracksFromGpx(await readTrack(file.path))
           if (parsed.features.length === 0) continue
           const feature = parsed.features[0]
           if (
