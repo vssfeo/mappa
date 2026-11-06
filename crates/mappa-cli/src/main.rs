@@ -4,6 +4,8 @@ mod batch;
 mod mcp;
 mod qr;
 mod sas;
+#[cfg(feature = "seed")]
+mod seed;
 mod serve;
 mod sync;
 mod track;
@@ -62,6 +64,9 @@ enum Command {
     ImportSas(sas::SasArgs),
     /// Запустить MCP-сервер (JSON-RPC по stdio).
     Mcp,
+    /// Сидировать опубликованный пак (сборка с --features seed).
+    #[cfg(feature = "seed")]
+    Seed(seed::SeedArgs),
 }
 
 #[derive(Debug, Args)]
@@ -167,6 +172,13 @@ async fn main() -> Result<()> {
                 bail!("--json не поддерживается командой mcp");
             }
             mcp::run().await
+        }
+        #[cfg(feature = "seed")]
+        Command::Seed(args) => {
+            if json {
+                bail!("--json не поддерживается командой seed");
+            }
+            seed::run(args).await
         }
     }
 }

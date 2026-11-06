@@ -3,6 +3,16 @@
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версии — [SemVer](https://semver.org/lang/ru/).
 
+## [1.31.0] — 2026-11-07
+
+### Добавлено
+
+- `mappa-cli seed --torrent … --data … --port …` — опциональная команда
+  сидирования через librqbit (feature `seed`). Обычная сборка CLI не
+  тянет librqbit и не растёт.
+- `deploy/mappa-seed.service.example` и `docs/SEEDING.md` для постоянного
+  сидирования.
+
 ## [1.30.0] — 2026-11-06
 
 ### Добавлено
