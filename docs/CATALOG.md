@@ -32,6 +32,10 @@
 открывает PR; модератор только проверяет и мержит. Ручное копирование
 осталось для зеркал и своего каталога.
 
+Workflow требует включённой настройки репозитория
+**Settings → Actions → General → Allow GitHub Actions to create and approve
+pull requests**. Без неё `gh pr create` падает с `createPullRequest`.
+
 ## Клиент
 
 `Ctrl+K` → «Каталог паков». По умолчанию читается

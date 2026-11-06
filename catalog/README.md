@@ -15,6 +15,10 @@ workflow validates the JSON, appends the entry and opens a pull request
 automatically. CI also validates `catalog.json` with
 `scripts/catalog-check.mjs`.
 
+The repository must allow **Settings → Actions → General → Allow GitHub
+Actions to create and approve pull requests**; otherwise the workflow can
+append the entry but cannot open the PR.
+
 The entry must keep `id` unique, `infoHash` matching the magnet, a valid
 `bbox` (west, south, east, north), `zoom` (min, max), `bytes`, `license`
 and `publisher`. See `schema.json`.
