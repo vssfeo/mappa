@@ -51,7 +51,24 @@ export function LayerRow({
 }: LayerRowProps) {
   const tx = useText()
   const [opacityHint, setOpacityHint] = useState(false)
+  const rowRef = useRef<HTMLDivElement | null>(null)
   const hideTimer = useRef<number | undefined>(undefined)
+
+  useEffect(() => {
+    const node = rowRef.current
+    if (!node || !draggable) return
+    const handler = (event: PointerEvent) => {
+      if (event.button !== 0) return
+      const target = event.target as HTMLElement
+      if (target.closest('button, input, label')) return
+      onDragStart(
+        event as unknown as ReactPointerEvent<HTMLElement>,
+        id,
+      )
+    }
+    node.addEventListener('pointerdown', handler)
+    return () => node.removeEventListener('pointerdown', handler)
+  }, [draggable, id, onDragStart])
 
   useEffect(() => {
     return () => window.clearTimeout(hideTimer.current)
@@ -66,17 +83,12 @@ export function LayerRow({
 
   return (
     <div
+      ref={rowRef}
       className={`layer-row compact${selectable ? ' selectable' : ''}${
         visible ? ' is-visible' : ''
       }${dragging ? ' is-dragging' : ''}${drop ? ` drop-${drop}` : ''}`}
       data-layer-id={id}
       onClick={onClick}
-      onPointerDown={(event) => {
-        if (!draggable) return
-        const target = event.target as HTMLElement
-        if (target.closest('button, input, label')) return
-        onDragStart(event, id)
-      }}
     >
       {selectable && (
         <input

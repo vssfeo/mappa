@@ -5061,7 +5061,8 @@ export function Inspector({ map }: { map: MapLibreMap | null }) {
     list.push(source)
     customGroups.set(group, list)
   }
-  const providerRows = providerOrder
+  const providerRows = [...providerOrder]
+    .reverse()
     .map(providerById)
     .filter(
       (item) =>

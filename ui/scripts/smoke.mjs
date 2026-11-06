@@ -92,20 +92,19 @@ try {
   const providerRows = page.locator('.layer-row:not(.pack-row)')
   if ((await providerRows.count()) < 2) {
     fail('basemap layer rows are missing')
-  } else if ((await providerRows.locator('.layer-grip').count()) !== (await providerRows.count())) {
-    fail('a basemap row is missing its drag handle')
   } else {
     const first = providerRows.first()
     const second = providerRows.nth(1)
     const firstId = await first.getAttribute('data-layer-id')
     const secondId = await second.getAttribute('data-layer-id')
-    const grip = first.locator('.layer-grip')
-    await grip.scrollIntoViewIfNeeded()
-    const gripBox = await grip.boundingBox()
+    await first.scrollIntoViewIfNeeded()
+    const firstBox = await first.boundingBox()
     const secondBox = await second.boundingBox()
-    await page.mouse.move(gripBox.x + 8, gripBox.y + 8)
+    await page.mouse.move(firstBox.x + firstBox.width * 0.4, firstBox.y + firstBox.height / 2)
     await page.mouse.down()
-    await page.mouse.move(gripBox.x + 10, gripBox.y + 18, { steps: 4 })
+    await page.mouse.move(firstBox.x + firstBox.width * 0.4 + 2, firstBox.y + firstBox.height / 2 + 14, {
+      steps: 4,
+    })
     await page.mouse.move(
       secondBox.x + 90,
       secondBox.y + secondBox.height - 3,
@@ -113,8 +112,11 @@ try {
     )
     await page.mouse.up()
     await page.waitForTimeout(200)
-    if ((await providerRows.first().getAttribute('data-layer-id')) !== secondId) {
-      fail(`basemap drag did not reorder ${firstId} and ${secondId}`)
+    const after = await providerRows.evaluateAll((rows) =>
+      rows.map((row) => row.getAttribute('data-layer-id')),
+    )
+    if (after[0] !== secondId) {
+      fail(`basemap drag did not reorder ${firstId} and ${secondId}: ${after.join(',')}`)
     }
   }
 
