@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Mappa pack catalog",
+  "type": "object",
+  "required": ["format", "version", "updatedAt", "packs"],
+  "properties": {
+    "format": { "const": "mappa-catalog" },
+    "version": { "const": 1 },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "packs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "bbox", "zoom", "provider", "bytes", "infoHash", "magnet", "license", "publisher", "publishedAt"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$" },
+          "name": { "type": "string", "minLength": 1 },
+          "bbox": {
+            "type": "array", "minItems": 4, "maxItems": 4,
+            "items": { "type": "number" }
+          },
+          "zoom": {
+            "type": "array", "minItems": 2, "maxItems": 2,
+            "items": { "type": "integer", "minimum": 0, "maximum": 22 }
+          },
+          "provider": { "type": "string", "minLength": 1 },
+          "bytes": { "type": "integer", "minimum": 1 },
+          "infoHash": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+          "magnet": { "type": "string", "pattern": "^magnet:\\?xt=urn:btih:[0-9a-fA-F]{40}" },
+          "license": { "type": "string", "minLength": 1 },
+          "publisher": { "type": "string", "minLength": 1 },
+          "publishedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}

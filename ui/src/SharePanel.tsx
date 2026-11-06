@@ -4,6 +4,7 @@ import { save } from '@tauri-apps/plugin-dialog'
 import { useText } from './i18n'
 import { useAppStore } from './store'
 import { createPackTorrent, openMagnet, type TorrentInfo } from './torrent'
+import { catalogEntry } from './catalog'
 import { useDialogFocus } from './useDialogFocus'
 
 interface SharePanelProps {
@@ -14,6 +15,8 @@ interface SharePanelProps {
 export function SharePanel({ onClose }: SharePanelProps) {
   const tx = useText()
   const packs = useAppStore((state) => state.packs)
+  const providerId = useAppStore((state) => state.providerId)
+  const projectName = useAppStore((state) => state.projectName)
   const showToast = useAppStore((state) => state.showToast)
   const dialogRef = useRef<HTMLElement | null>(null)
   useDialogFocus(dialogRef, onClose)
@@ -21,6 +24,7 @@ export function SharePanel({ onClose }: SharePanelProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<TorrentInfo | null>(null)
+  const [license, setLicense] = useState('')
 
   const create = async () => {
     if (!selected) return
@@ -161,6 +165,43 @@ export function SharePanel({ onClose }: SharePanelProps) {
               </button>
             </div>
             <span className="muted">{info.torrent}</span>
+            <label>
+              {tx('Лицензия / источник', 'Licence / source')}
+              <input
+                value={license}
+                onChange={(event) => setLicense(event.target.value)}
+                placeholder="ODbL, public domain, own data…"
+              />
+            </label>
+            <button
+              type="button"
+              className="ghost-button"
+              disabled={license.trim().length === 0}
+              onClick={() => {
+                const pack = packs.find((item) => item.path === selected)
+                if (!pack) return
+                const entry = catalogEntry({
+                  pack: { ...pack, bytes: info.bytes },
+                  provider: providerId,
+                  infoHash: info.infoHash,
+                  magnet: info.magnet,
+                  license: license.trim(),
+                  publisher: projectName || 'mappa',
+                })
+                void navigator.clipboard.writeText(
+                  JSON.stringify(entry, null, 2),
+                )
+                showToast(
+                  tx(
+                    'Запись каталога скопирована — вставьте её в PR',
+                    'Catalog entry copied — paste it into a PR',
+                  ),
+                )
+              }}
+            >
+              <Copy size={14} />
+              {tx('Скопировать запись каталога', 'Copy catalog entry')}
+            </button>
           </div>
         )}
       </section>

@@ -82,6 +82,9 @@ ui-dev:
 ui-check:
 	cd ui && npm run lint && npm run test && npm run build
 
-check: fmt-check clippy test unicode-check ui-check
+catalog-check:
+	node scripts/catalog-check.mjs
+
+check: fmt-check clippy test unicode-check catalog-check ui-check
 
 ci: check deb-check
