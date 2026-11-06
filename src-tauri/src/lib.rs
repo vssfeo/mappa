@@ -24,6 +24,7 @@ mod settings;
 mod state;
 mod telemetry;
 mod tiles;
+mod torrent;
 mod tracks;
 mod viewshed;
 mod wmts;
@@ -145,6 +146,8 @@ pub fn run() {
             downloads::clear_finished_downloads,
             downloads::export_job_pack,
             fieldkit::export_field_kit,
+            torrent::create_pack_torrent,
+            torrent::open_magnet,
             fieldkit::verify_field_kit,
             mobile::start_mobile_server,
             mobile::stop_mobile_server,

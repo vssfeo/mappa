@@ -4079,3 +4079,27 @@ body.is-layer-dragging {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.torrent-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  font-size: 10px;
+}
+
+.torrent-result code {
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.torrent-magnet {
+  max-width: 100%;
+}

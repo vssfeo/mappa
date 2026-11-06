@@ -26,6 +26,7 @@ import {
   Plus,
   Ruler,
   Satellite,
+  Share2,
   Save,
   Spline,
   Sun,
@@ -56,6 +57,7 @@ import { SyncPanel } from './SyncPanel'
 import { TracksPanel } from './TracksPanel'
 import { FieldKitPanel } from './FieldKitPanel'
 import { MobilePanel } from './MobilePanel'
+import { SharePanel } from './SharePanel'
 import { Rail } from './Rail'
 import { Shortcuts } from './Shortcuts'
 import { StatusBar } from './StatusBar'
@@ -192,6 +194,7 @@ function App() {
   const [tracksOpen, setTracksOpen] = useState(false)
   const [fieldKitOpen, setFieldKitOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
 
   useEffect(() => {
@@ -1357,6 +1360,13 @@ function App() {
         action: () => setAlmanacOpen(true),
       },
       {
+        id: 'share',
+        label: tx('Поделиться паком', 'Share a pack'),
+        group: tx('Инструменты', 'Tools'),
+        icon: Share2,
+        action: () => setShareOpen(true),
+      },
+      {
         id: 'mobile',
         label: tx('Телефон', 'Phone'),
         group: tx('Инструменты', 'Tools'),
@@ -1554,6 +1564,7 @@ function App() {
       {tracksOpen && <TracksPanel onClose={() => setTracksOpen(false)} />}
       {fieldKitOpen && <FieldKitPanel onClose={() => setFieldKitOpen(false)} />}
       {mobileOpen && <MobilePanel onClose={() => setMobileOpen(false)} />}
+      {shareOpen && <SharePanel onClose={() => setShareOpen(false)} />}
       {losOpen && <LosPanel onClose={() => setLosOpen(false)} />}
       {missionOpen && <MissionPanel onClose={() => setMissionOpen(false)} />}
       {telemetryOpen && (
