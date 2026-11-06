@@ -4,8 +4,13 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Check 187.55.163.114:51413
+      - name: Fetch the catalog pack over BitTorrent
         run: |
-          set +e
-          timeout 10 bash -c '</dev/tcp/187.55.163.114/51413'
-          echo "tcp_exit=$?"
+          set -e
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq aria2 >/dev/null
+          mkdir -p /tmp/dl
+          magnet='magnet:?xt=urn:btih:e003df20b08413b528419e2ecbff3ee0c450dceb&dn=denver-usgs-z12-14.mbtiles&xl=1605632'
+          timeout 120 aria2c --dir=/tmp/dl --seed-time=0 --bt-stop-timeout=90 --console-log-level=warn --summary-interval=0 "$magnet" || true
+          ls -l /tmp/dl
+          sha256sum /tmp/dl/denver-usgs-z12-14.mbtiles || true
