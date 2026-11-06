@@ -10,7 +10,10 @@ transferred by BitTorrent. Clients read `catalog.json` with a plain HTTP GET.
 3. Open a pull request that appends the entry to `packs` and updates
    `updatedAt`.
 
-CI validates `catalog.json` with `scripts/catalog-check.mjs`.
+Open the issues with the `catalog:` title prefix; the `Catalog issue`
+workflow validates the JSON, appends the entry and opens a pull request
+automatically. CI also validates `catalog.json` with
+`scripts/catalog-check.mjs`.
 
 The entry must keep `id` unique, `infoHash` matching the magnet, a valid
 `bbox` (west, south, east, north), `zoom` (min, max), `bytes`, `license`

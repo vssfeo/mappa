@@ -3,6 +3,18 @@
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версии — [SemVer](https://semver.org/lang/ru/).
 
+## [1.30.0] — 2026-11-06
+
+### Добавлено
+
+- Workflow `Catalog issue`: Issue с заголовком `catalog:` автоматически
+  валидируется, дописывается в `catalog/catalog.json` и превращается в PR.
+- Общая библиотека валидации `scripts/catalog-lib.mjs` и тесты для неё.
+
+### Изменено
+
+- `make check` проверяет схему каталога и тесты библиотеки.
+
 ## [1.29.0] — 2026-11-06
 
 ### Добавлено

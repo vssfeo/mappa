@@ -83,6 +83,7 @@ ui-check:
 	cd ui && npm run lint && npm run test && npm run build
 
 catalog-check:
+	node --test scripts/catalog-lib.test.mjs
 	node scripts/catalog-check.mjs
 
 check: fmt-check clippy test unicode-check catalog-check ui-check
