@@ -1,0 +1,16 @@
+[Unit]
+Description=Mappa catalog BitTorrent seeder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Archive/mappa-catalog
+ExecStart=%h/Archive/mappa-catalog/bin/mappa-seed %h/Archive/mappa-catalog/denver.torrent %h/Archive/mappa-catalog
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
