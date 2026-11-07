@@ -3252,7 +3252,7 @@ function SettingsPanel() {
       setCustomProj('')
     }
     // oxlint-enable react/set-state-in-effect
-  }, [crs])
+  }, [crs, localPresets])
 
   const copyCrash = async (id: string) => {
     try {
