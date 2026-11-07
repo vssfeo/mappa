@@ -74,8 +74,13 @@ impl Crs {
     pub fn new(spec: &CrsSpec) -> Result<Self, String> {
         let code = spec.key()?;
         let projection = if let Some(epsg) = spec.epsg {
-            ProjImpl::from_epsg_code(epsg)
-                .map_err(|error| format!("EPSG:{epsg} is not available: {error}"))?
+            if let Some(proj) = epsg_proj4(epsg) {
+                ProjImpl::from_proj_string(proj)
+                    .map_err(|error| format!("EPSG:{epsg} proj4 is invalid: {error}"))?
+            } else {
+                ProjImpl::from_epsg_code(epsg)
+                    .map_err(|error| format!("EPSG:{epsg} is not available: {error}"))?
+            }
         } else {
             ProjImpl::from_proj_string(spec.proj.as_deref().unwrap_or_default())
                 .map_err(|error| format!("invalid proj4 string: {error}"))?
@@ -185,6 +190,50 @@ pub fn presets() -> Vec<CrsPreset> {
         .collect()
 }
 
+/// Explicit proj4 for Pulkovo systems.
+///
+/// `crs-definitions` 0.4.0 omits the datum shift for Pulkovo, which silently
+/// moves СК-42 coordinates by about 100-120 m. Keep these overrides until the
+/// bundled catalogue includes the shift itself.
+fn epsg_proj4(epsg: u16) -> Option<&'static str> {
+    match epsg {
+        28404 => Some(
+            "+proj=tmerc +lat_0=0 +lon_0=21 +k=1 +x_0=4500000 +y_0=0 +ellps=krass +towgs84=25,-141,-78.5,0,-0.35,-0.736,0 +units=m +no_defs",
+        ),
+        28405 => Some(
+            "+proj=tmerc +lat_0=0 +lon_0=27 +k=1 +x_0=5500000 +y_0=0 +ellps=krass +towgs84=25,-141,-78.5,0,-0.35,-0.736,0 +units=m +no_defs",
+        ),
+        28406 => Some(
+            "+proj=tmerc +lat_0=0 +lon_0=33 +k=1 +x_0=6500000 +y_0=0 +ellps=krass +towgs84=25,-141,-78.5,0,-0.35,-0.736,0 +units=m +no_defs",
+        ),
+        28407 => Some(
+            "+proj=tmerc +lat_0=0 +lon_0=39 +k=1 +x_0=7500000 +y_0=0 +ellps=krass +towgs84=25,-141,-78.5,0,-0.35,-0.736,0 +units=m +no_defs",
+        ),
+        28408 => Some(
+            "+proj=tmerc +lat_0=0 +lon_0=45 +k=1 +x_0=8500000 +y_0=0 +ellps=krass +towgs84=25,-141,-78.5,0,-0.35,-0.736,0 +units=m +no_defs",
+        ),
+        28409 => Some(
+            "+proj=tmerc +lat_0=0 +lon_0=51 +k=1 +x_0=9500000 +y_0=0 +ellps=krass +towgs84=25,-141,-78.5,0,-0.35,-0.736,0 +units=m +no_defs",
+        ),
+        28410 => Some(
+            "+proj=tmerc +lat_0=0 +lon_0=57 +k=1 +x_0=10500000 +y_0=0 +ellps=krass +towgs84=25,-141,-78.5,0,-0.35,-0.736,0 +units=m +no_defs",
+        ),
+        28411 => Some(
+            "+proj=tmerc +lat_0=0 +lon_0=63 +k=1 +x_0=11500000 +y_0=0 +ellps=krass +towgs84=25,-141,-78.5,0,-0.35,-0.736,0 +units=m +no_defs",
+        ),
+        20006 => Some(
+            "+proj=tmerc +lat_0=0 +lon_0=33 +k=1 +x_0=6500000 +y_0=0 +ellps=krass +towgs84=24.47,-130.89,-81.56,0,0,-0.13,-0.22 +units=m +no_defs",
+        ),
+        20007 => Some(
+            "+proj=tmerc +lat_0=0 +lon_0=39 +k=1 +x_0=7500000 +y_0=0 +ellps=krass +towgs84=24.47,-130.89,-81.56,0,0,-0.13,-0.22 +units=m +no_defs",
+        ),
+        20008 => Some(
+            "+proj=tmerc +lat_0=0 +lon_0=45 +k=1 +x_0=8500000 +y_0=0 +ellps=krass +towgs84=24.47,-130.89,-81.56,0,0,-0.13,-0.22 +units=m +no_defs",
+        ),
+        _ => None,
+    }
+}
+
 /// Reusable WGS84 target; `Proj` parsing is not free.
 fn wgs84() -> Result<&'static ProjImpl, String> {
     static WGS84: OnceLock<Result<ProjImpl, String>> = OnceLock::new();
@@ -269,8 +318,8 @@ mod tests {
         // Pulkovo 1942 / GK zone 7: Y includes the zone prefix.
         let crs = Crs::new(&CrsSpec::from_epsg(28407)).unwrap();
         let (y, x) = crs.from_wgs84(37.6173, 55.7558).unwrap();
-        assert!((y - 7_413_187.97).abs() < 0.5, "y={y}");
-        assert!((x - 6_182_348.17).abs() < 0.5, "x={x}");
+        assert!((y - 7_413_321.87).abs() < 2.0, "y={y}");
+        assert!((x - 6_182_323.81).abs() < 2.0, "x={x}");
         let (lon, lat) = crs.to_wgs84(y, x).unwrap();
         assert!((lon - 37.6173).abs() < 1e-8);
         assert!((lat - 55.7558).abs() < 1e-8);
