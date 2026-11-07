@@ -3,7 +3,9 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use mappa_core::{Bbox, Crs, CrsPreset, CrsSpec, Provider, ProviderKind, TileRange};
+use mappa_core::{
+    Bbox, Crs, CrsPreset, CrsSpec, LocalCrsPreset, Provider, ProviderKind, TileRange,
+};
 use mappa_storage::{CacheStats, ProviderCacheStats, TileKey, now_unix};
 use serde::Serialize;
 use tauri::State;
@@ -211,6 +213,12 @@ pub async fn open_log_directory(app: tauri::AppHandle) -> Result<String, String>
 #[tauri::command]
 pub fn crs_presets() -> Vec<CrsPreset> {
     mappa_core::crs::presets()
+}
+
+/// Local systems such as MSK-90 that have no EPSG code.
+#[tauri::command]
+pub fn local_crs_presets() -> Vec<LocalCrsPreset> {
+    mappa_core::crs::local_presets()
 }
 
 const CRS_CACHE_LIMIT: usize = 32;

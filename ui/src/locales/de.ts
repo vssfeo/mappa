@@ -253,6 +253,7 @@ export const de: Record<string, string> = {
   'Try the demo pack': 'Demo-Paket ausprobieren',
   'UDP port': 'UDP-Port',
   'Ungrouped': 'Ohne Gruppe',
+  'Unknown local CRS': 'Unbekanntes lokales Koordinatensystem',
   'Verify kit': 'Feldpaket prüfen',
   'version {p0}': 'Version {p0}',
   'Viewshed': 'Sichtzone',

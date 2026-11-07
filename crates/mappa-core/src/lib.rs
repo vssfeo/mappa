@@ -12,7 +12,7 @@ pub mod provider;
 pub mod tile;
 
 pub use bbox::Bbox;
-pub use crs::{Crs, CrsPreset, CrsSpec};
+pub use crs::{Crs, CrsPreset, CrsSpec, LocalCrsPreset};
 pub use polygon::{
     normalize_ring, point_in_ring, ring_bounds, tile_intersects_ring,
     tile_intersects_ring_with_bounds,

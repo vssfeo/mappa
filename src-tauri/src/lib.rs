@@ -119,6 +119,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::list_providers,
             commands::crs_presets,
+            commands::local_crs_presets,
             geocode::geocode_search,
             routing::route_remote,
             power::set_screen_awake,

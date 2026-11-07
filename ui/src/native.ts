@@ -208,12 +208,28 @@ export interface CrsPreset {
   geographic: boolean
 }
 
+export interface LocalCrsPreset {
+  id: string
+  label: string
+  proj: string
+}
+
 export async function crsPresets(): Promise<CrsPreset[]> {
   if (!isNative) return []
   try {
     return await invoke<CrsPreset[]>('crs_presets')
   } catch (error) {
     console.warn('crs_presets failed', error)
+    return []
+  }
+}
+
+export async function localCrsPresets(): Promise<LocalCrsPreset[]> {
+  if (!isNative) return []
+  try {
+    return await invoke<LocalCrsPreset[]>('local_crs_presets')
+  } catch (error) {
+    console.warn('local_crs_presets failed', error)
     return []
   }
 }

@@ -253,6 +253,7 @@ export const es: Record<string, string> = {
   'Try the demo pack': 'Pruebe el paquete de demostración',
   'UDP port': 'Puerto UDP',
   'Ungrouped': 'Sin grupo',
+  'Unknown local CRS': 'SCR local desconocido',
   'Verify kit': 'Verificar kit',
   'version {p0}': 'versión {p0}',
   'Viewshed': 'Zona de visibilidad',

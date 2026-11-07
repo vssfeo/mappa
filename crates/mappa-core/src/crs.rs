@@ -135,6 +135,37 @@ impl Crs {
     }
 }
 
+/// MSK-90 zone 1 (western Crimea).
+pub const MSK90_ZONE_1: &str = "+proj=tmerc +lat_0=0 +lon_0=32.5 +k=1 +x_0=4300000 +y_0=-9214.692 +ellps=krass +towgs84=23.57,-140.95,-79.8,0,0.35,0.79,-0.22 +units=m +no_defs";
+
+/// MSK-90 zone 2 (central/eastern Crimea).
+pub const MSK90_ZONE_2: &str = "+proj=tmerc +lat_0=0 +lon_0=35.5 +k=1 +x_0=5300000 +y_0=-9214.692 +ellps=krass +towgs84=23.57,-140.95,-79.8,0,0.35,0.79,-0.22 +units=m +no_defs";
+
+/// A local CRS that has no EPSG code but ships as a preset.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalCrsPreset {
+    pub id: String,
+    pub label: String,
+    pub proj: String,
+}
+
+/// Local systems that cannot be expressed as an EPSG code.
+pub fn local_presets() -> Vec<LocalCrsPreset> {
+    vec![
+        LocalCrsPreset {
+            id: "msk90-1".to_owned(),
+            label: "МСК-90 зона 1".to_owned(),
+            proj: MSK90_ZONE_1.to_owned(),
+        },
+        LocalCrsPreset {
+            id: "msk90-2".to_owned(),
+            label: "МСК-90 зона 2".to_owned(),
+            proj: MSK90_ZONE_2.to_owned(),
+        },
+    ]
+}
+
 /// One entry of the bundled CRS catalog.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -323,6 +354,24 @@ mod tests {
         let (lon, lat) = crs.to_wgs84(y, x).unwrap();
         assert!((lon - 37.6173).abs() < 1e-8);
         assert!((lat - 55.7558).abs() < 1e-8);
+    }
+
+    #[test]
+    fn msk90_zone_2_matches_reference() {
+        let crs = Crs::new(&CrsSpec::from_proj(MSK90_ZONE_2)).unwrap();
+        let (easting, northing) = crs.from_wgs84(34.1, 44.95).unwrap();
+        assert!((easting - 5_189_633.82).abs() < 2.0, "easting={easting}");
+        assert!((northing - 4_971_233.32).abs() < 2.0, "northing={northing}");
+        let (lon, lat) = crs.to_wgs84(easting, northing).unwrap();
+        assert!((lon - 34.1).abs() < 1e-8 && (lat - 44.95).abs() < 1e-8);
+    }
+
+    #[test]
+    fn msk90_zone_1_matches_reference() {
+        let crs = Crs::new(&CrsSpec::from_proj(MSK90_ZONE_1)).unwrap();
+        let (easting, northing) = crs.from_wgs84(33.5, 44.4).unwrap();
+        assert!((easting - 4_379_783.74).abs() < 2.0, "easting={easting}");
+        assert!((northing - 4_909_651.42).abs() < 2.0, "northing={northing}");
     }
 
     #[test]

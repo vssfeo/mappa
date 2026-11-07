@@ -128,6 +128,7 @@ import {
   cacheStatsByProvider,
   clearCache,
   crsPresets,
+  localCrsPresets,
   getSettings,
   isNative,
   importXyzFolder,
@@ -137,6 +138,7 @@ import {
   verifyCache,
   wmtsCapabilities,
   type CrsPreset,
+  type LocalCrsPreset,
   type GeoPackageLayer,
   type NativeCacheStats,
   type NativeSettings,
@@ -3212,6 +3214,7 @@ function SettingsPanel() {
   const [crashes, setCrashes] = useState<CrashReport[]>([])
   const [busy, setBusy] = useState(false)
   const [presets, setPresets] = useState<CrsPreset[]>([])
+  const [localPresets, setLocalPresets] = useState<LocalCrsPreset[]>([])
   const [crsChoice, setCrsChoice] = useState('wgs84')
   const [customProj, setCustomProj] = useState('')
   const [crsBusy, setCrsBusy] = useState(false)
@@ -3228,6 +3231,7 @@ function SettingsPanel() {
   useEffect(() => {
     if (!isNative) return
     void crsPresets().then(setPresets)
+    void localCrsPresets().then(setLocalPresets)
     void getVersion()
       .then(setAppVersion)
       .catch(() => setAppVersion(''))
@@ -3240,7 +3244,8 @@ function SettingsPanel() {
       setCrsChoice(String(crs.epsg))
       setCustomProj('')
     } else if (crs?.proj) {
-      setCrsChoice('custom')
+      const local = localPresets.find((item) => item.proj === crs.proj)
+      setCrsChoice(local ? `local:${local.id}` : 'custom')
       setCustomProj(crs.proj)
     } else {
       setCrsChoice('wgs84')
@@ -3280,7 +3285,19 @@ function SettingsPanel() {
     }
     setCrsBusy(true)
     try {
-      if (crsChoice === 'custom') {
+      if (crsChoice.startsWith('local:')) {
+        const preset = localPresets.find(
+          (item) => item.id === crsChoice.slice('local:'.length),
+        )
+        if (!preset) {
+          throw new Error(tx('Неизвестная местная СК', 'Unknown local CRS'))
+        }
+        await transformPoints({ epsg: 4326 }, { proj: preset.proj }, [[37.6, 55.7]])
+        setCrs({ proj: preset.proj }, preset.label)
+        showToast(
+          tx('Координаты: {p0}', 'Coordinates: {p0}', { p0: preset.label }),
+        )
+      } else if (crsChoice === 'custom') {
         const proj = customProj.trim()
         if (!proj.startsWith('+')) {
           throw new Error(
@@ -3912,6 +3929,11 @@ function SettingsPanel() {
             {presets.map((preset) => (
               <option key={preset.epsg} value={preset.epsg}>
                 EPSG:{preset.epsg} · {preset.label} ({preset.units})
+              </option>
+            ))}
+            {localPresets.map((preset) => (
+              <option key={preset.id} value={`local:${preset.id}`}>
+                {preset.label}
               </option>
             ))}
             <option value="custom">
