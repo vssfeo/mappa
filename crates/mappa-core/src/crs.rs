@@ -75,7 +75,7 @@ impl Crs {
         let code = spec.key()?;
         let projection = if let Some(epsg) = spec.epsg {
             if let Some(proj) = epsg_proj4(epsg) {
-                ProjImpl::from_proj_string(proj)
+                ProjImpl::from_proj_string(&proj)
                     .map_err(|error| format!("EPSG:{epsg} proj4 is invalid: {error}"))?
             } else {
                 ProjImpl::from_epsg_code(epsg)
@@ -226,43 +226,22 @@ pub fn presets() -> Vec<CrsPreset> {
 /// `crs-definitions` 0.4.0 omits the datum shift for Pulkovo, which silently
 /// moves СК-42 coordinates by about 100-120 m. Keep these overrides until the
 /// bundled catalogue includes the shift itself.
-fn epsg_proj4(epsg: u16) -> Option<&'static str> {
-    match epsg {
-        28404 => Some(
-            "+proj=tmerc +lat_0=0 +lon_0=21 +k=1 +x_0=4500000 +y_0=0 +ellps=krass +towgs84=23.57,-140.95,-79.8,0,-0.35,-0.79,-0.22 +units=m +no_defs",
-        ),
-        28405 => Some(
-            "+proj=tmerc +lat_0=0 +lon_0=27 +k=1 +x_0=5500000 +y_0=0 +ellps=krass +towgs84=23.57,-140.95,-79.8,0,-0.35,-0.79,-0.22 +units=m +no_defs",
-        ),
-        28406 => Some(
-            "+proj=tmerc +lat_0=0 +lon_0=33 +k=1 +x_0=6500000 +y_0=0 +ellps=krass +towgs84=23.57,-140.95,-79.8,0,-0.35,-0.79,-0.22 +units=m +no_defs",
-        ),
-        28407 => Some(
-            "+proj=tmerc +lat_0=0 +lon_0=39 +k=1 +x_0=7500000 +y_0=0 +ellps=krass +towgs84=23.57,-140.95,-79.8,0,-0.35,-0.79,-0.22 +units=m +no_defs",
-        ),
-        28408 => Some(
-            "+proj=tmerc +lat_0=0 +lon_0=45 +k=1 +x_0=8500000 +y_0=0 +ellps=krass +towgs84=23.57,-140.95,-79.8,0,-0.35,-0.79,-0.22 +units=m +no_defs",
-        ),
-        28409 => Some(
-            "+proj=tmerc +lat_0=0 +lon_0=51 +k=1 +x_0=9500000 +y_0=0 +ellps=krass +towgs84=23.57,-140.95,-79.8,0,-0.35,-0.79,-0.22 +units=m +no_defs",
-        ),
-        28410 => Some(
-            "+proj=tmerc +lat_0=0 +lon_0=57 +k=1 +x_0=10500000 +y_0=0 +ellps=krass +towgs84=23.57,-140.95,-79.8,0,-0.35,-0.79,-0.22 +units=m +no_defs",
-        ),
-        28411 => Some(
-            "+proj=tmerc +lat_0=0 +lon_0=63 +k=1 +x_0=11500000 +y_0=0 +ellps=krass +towgs84=23.57,-140.95,-79.8,0,-0.35,-0.79,-0.22 +units=m +no_defs",
-        ),
-        20006 => Some(
-            "+proj=tmerc +lat_0=0 +lon_0=33 +k=1 +x_0=6500000 +y_0=0 +ellps=krass +towgs84=24.47,-130.89,-81.56,0,0,-0.13,-0.22 +units=m +no_defs",
-        ),
-        20007 => Some(
-            "+proj=tmerc +lat_0=0 +lon_0=39 +k=1 +x_0=7500000 +y_0=0 +ellps=krass +towgs84=24.47,-130.89,-81.56,0,0,-0.13,-0.22 +units=m +no_defs",
-        ),
-        20008 => Some(
-            "+proj=tmerc +lat_0=0 +lon_0=45 +k=1 +x_0=8500000 +y_0=0 +ellps=krass +towgs84=24.47,-130.89,-81.56,0,0,-0.13,-0.22 +units=m +no_defs",
-        ),
-        _ => None,
-    }
+fn epsg_proj4(epsg: u16) -> Option<String> {
+    // EPSG:5044 uses coordinate-frame rotations. PROJ's +towgs84 uses
+    // position-vector rotations, which have the opposite signs.
+    const SK42: &str = "+ellps=krass +towgs84=23.57,-140.95,-79.8,0,0.35,0.79,-0.22";
+    const SK95: &str = "+ellps=krass +towgs84=24.47,-130.89,-81.56,0,0,-0.13,-0.22";
+    let (zone, datum) = match epsg {
+        4284 => return Some(format!("+proj=longlat {SK42} +no_defs")),
+        28402..=28432 => (epsg - 28400, SK42),
+        20006..=20008 => (epsg - 20000, SK95),
+        _ => return None,
+    };
+    let meridian = (i32::from(zone) * 6 + 177) % 360 - 180;
+    let easting = u32::from(zone) * 1_000_000 + 500_000;
+    Some(format!(
+        "+proj=tmerc +lat_0=0 +lon_0={meridian} +k=1 +x_0={easting} +y_0=0 {datum} +units=m +no_defs"
+    ))
 }
 
 /// Reusable WGS84 target; `Proj` parsing is not free.
@@ -349,8 +328,8 @@ mod tests {
         // Pulkovo 1942 / GK zone 7: Y includes the zone prefix.
         let crs = Crs::new(&CrsSpec::from_epsg(28407)).unwrap();
         let (y, x) = crs.from_wgs84(37.6173, 55.7558).unwrap();
-        assert!((y - 7_413_321.90).abs() < 2.0, "y={y}");
-        assert!((x - 6_182_323.63).abs() < 2.0, "x={x}");
+        assert!((y - 7_413_305.557).abs() < 2.0, "y={y}");
+        assert!((x - 6_182_341.067).abs() < 2.0, "x={x}");
         let (lon, lat) = crs.to_wgs84(y, x).unwrap();
         assert!((lon - 37.6173).abs() < 1e-8);
         assert!((lat - 55.7558).abs() < 1e-8);
