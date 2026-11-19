@@ -1,0 +1,166 @@
+name: CLI Integration Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: cli-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  cli-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo systemctl stop unattended-upgrades apt-daily.service apt-daily-upgrade.service || true
+          sudo apt-get -o DPkg::Lock::Timeout=180 -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=30 update
+          sudo apt-get install -y --no-install-recommends \
+            -o DPkg::Lock::Timeout=300 \
+            -o Dpkg::Options::=--force-confdef \
+            -o Dpkg::Options::=--force-confold \
+            libssl-dev pkg-config libsqlite3-dev
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Build CLI
+        run: cargo build --release -p mappa-cli
+
+      - name: Test CLI help
+        run: ./target/release/mappa-cli --help
+
+      - name: Test providers command
+        run: ./target/release/mappa-cli providers --json
+
+      - name: Test stats command
+        run: ./target/release/mappa-cli stats --json
+
+      - name: Test doctor command
+        run: ./target/release/mappa-cli doctor
+
+      - name: Test download (USGS, small area)
+        run: |
+          ./target/release/mappa-cli download \
+            --provider usgs \
+            --bbox=-122.50,37.70,-122.40,37.80 \
+            --zoom 12-13 \
+            --cache /tmp/mappa-test-cache
+
+      - name: Test pack from cache
+        run: |
+          ./target/release/mappa-cli pack \
+            --provider usgs \
+            --bbox=-122.50,37.70,-122.40,37.80 \
+            --zoom 12-13 \
+            --cache /tmp/mappa-test-cache \
+            --output /tmp/test.pmtiles
+
+      - name: Verify pack file exists
+        run: |
+          test -f /tmp/test.pmtiles
+          ls -lh /tmp/test.pmtiles
+
+      - name: Test pack info
+        run: |
+          ./target/release/mappa-cli pack --info /tmp/test.pmtiles
+
+      - name: Test batch JSON job
+        run: |
+          cat > /tmp/batch.json << 'EOF'
+          {
+            "jobs": [
+              {
+                "kind": "download",
+                "provider_id": "usgs",
+                "bbox": [-122.50, 37.70, -122.40, 37.80],
+                "min_zoom": 12,
+                "max_zoom": 12
+              },
+              {
+                "kind": "pack",
+                "provider_id": "usgs",
+                "bbox": [-122.50, 37.70, -122.40, 37.80],
+                "min_zoom": 12,
+                "max_zoom": 12,
+                "output": "/tmp/batch.pmtiles"
+              }
+            ]
+          }
+          EOF
+          ./target/release/mappa-cli batch /tmp/batch.json --cache /tmp/mappa-test-cache
+
+      - name: Test serve command (background + health check)
+        run: |
+          ./target/release/mappa-cli serve --port 8080 --cache /tmp/mappa-test-cache &
+          SERVE_PID=$!
+          sleep 3
+          curl -sf http://localhost:8080/api/status | jq .
+          curl -sf "http://localhost:8080/tiles/usgs/12/655/1582.png" -o /dev/null
+          kill $SERVE_PID
+
+      - name: Cleanup
+        run: |
+          rm -rf /tmp/mappa-test-cache /tmp/test.pmtiles /tmp/batch.pmtiles /tmp/batch.json
+          test ! -d /tmp/mappa-test-cache
+
+  cli-integration-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo systemctl stop unattended-upgrades apt-daily.service apt-daily-upgrade.service || true
+          sudo apt-get -o DPkg::Lock::Timeout=180 -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=30 update
+          sudo apt-get install -y --no-install-recommends \
+            -o DPkg::Lock::Timeout=300 \
+            -o Dpkg::Options::=--force-confdef \
+            -o Dpkg::Options::=--force-confold \
+            libssl-dev pkg-config libsqlite3-dev
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          key: arm64
+
+      - name: Build CLI
+        run: cargo build --release -p mappa-cli
+
+      - name: Test CLI help
+        run: ./target/release/mappa-cli --help
+
+      - name: Test providers command
+        run: ./target/release/mappa-cli providers --json
+
+      - name: Test stats command
+        run: ./target/release/mappa-cli stats --json
+
+      - name: Test doctor command
+        run: ./target/release/mappa-cli doctor
