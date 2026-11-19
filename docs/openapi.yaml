@@ -1,0 +1,690 @@
+openapi: 3.0.3
+info:
+  title: Mappa Tile Server API
+  version: 1.33.0
+  description: |
+    REST API for Mappa local tile server.
+    Provides tile serving, provider catalog, pack management, and job control.
+  contact:
+    name: Mappa Contributors
+    url: https://github.com/vssfeo/mappa
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+  - url: http://{host}:8080
+    variables:
+      host:
+        default: localhost
+        description: Server hostname or IP
+paths:
+  /api/status:
+    get:
+      summary: Server health and cache statistics
+      operationId: getStatus
+      tags: [Status]
+      responses:
+        '200':
+          description: Server status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+      summary: Get server health and cache stats
+  /api/providers:
+    get:
+      summary: List all available tile providers
+      operationId: listProviders
+      tags: [Providers]
+      responses:
+        '200':
+          description: List of providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Provider'
+      summary: List tile providers
+  /api/packs:
+    get:
+      summary: List registered offline packs
+      operationId: listPacks
+      tags: [Packs]
+      responses:
+        '200':
+          description: List of registered packs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PackInfo'
+      summary: List offline packs
+  /api/packs/{packId}:
+    get:
+      summary: Get pack metadata
+      operationId: getPack
+      tags: [Packs]
+      parameters:
+        - name: packId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Pack identifier
+      responses:
+        '200':
+          description: Pack metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackInfo'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      summary: Get pack details
+  /api/jobs:
+    get:
+      summary: List all jobs
+      operationId: listJobs
+      tags: [Jobs]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, running, completed, failed]
+          description: Filter by job status
+      responses:
+        '200':
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Job'
+      summary: List jobs
+    post:
+      summary: Create a new job
+      operationId: createJob
+      tags: [Jobs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobCreate'
+      responses:
+        '201':
+          description: Job created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      summary: Create job
+  /api/jobs/{jobId}:
+    get:
+      summary: Get job status
+      operationId: getJob
+      tags: [Jobs]
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      summary: Get job status
+    delete:
+      summary: Cancel a running job
+      operationId: cancelJob
+      tags: [Jobs]
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Job cancelled
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      summary: Cancel job
+  /api/sync:
+    post:
+      summary: Synchronize project with peer
+      operationId: syncProject
+      tags: [Sync]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRequest'
+      responses:
+        '200':
+          description: Sync completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      summary: Sync project
+  /tiles/{provider}/{z}/{x}/{y}:
+    get:
+      summary: Get a tile image
+      operationId: getTile
+      tags: [Tiles]
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Provider ID
+        - name: z
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 30
+          description: Zoom level
+        - name: x
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+          description: Tile X coordinate
+        - name: y
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+          description: Tile Y coordinate
+      responses:
+        '200':
+          description: Tile image
+          content:
+            image/png: {}
+            image/jpeg: {}
+            image/webp: {}
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: "public, max-age=31536000, immutable"
+            ETag:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      summary: Get tile image
+  /packs/{packId}/{z}/{x}/{y}:
+    get:
+      summary: Get a tile from an offline pack
+      operationId: getPackTile
+      tags: [Packs]
+      parameters:
+        - name: packId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Pack identifier
+        - name: z
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 30
+        - name: x
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+        - name: y
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: Tile image from pack
+          content:
+            image/png: {}
+            image/jpeg: {}
+            image/webp: {}
+        '404':
+          $ref: '#/components/responses/NotFound'
+      summary: Get pack tile
+components:
+  schemas:
+    StatusResponse:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "mappa"
+        version:
+          type: string
+          example: "1.33.0"
+        uptimeSeconds:
+          type: integer
+          example: 3600
+        cache:
+          type: object
+          properties:
+            path:
+              type: string
+              example: "/home/user/.cache/dev.mappa.desktop/tiles.sqlite3"
+            tiles:
+              type: integer
+              example: 15420
+            bytes:
+              type: integer
+              example: 123456789
+            hits:
+              type: integer
+              example: 8523
+            misses:
+              type: integer
+              example: 1247
+        providers:
+          type: integer
+          example: 6
+        packs:
+          type: integer
+          example: 2
+        jobs:
+          type: object
+          properties:
+            total:
+              type: integer
+              example: 42
+            running:
+              type: integer
+              example: 1
+      required: [name, version, uptimeSeconds, cache, providers, packs, jobs]
+    Provider:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z0-9_-]+$'
+          example: "usgs"
+        name:
+          type: string
+          example: "USGS Imagery"
+        type:
+          type: string
+          enum: [xyz, tms, wmts, wms]
+          example: "xyz"
+        url:
+          type: string
+          format: uri
+          example: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}"
+        scheme:
+          type: string
+          enum: [xyz, tms]
+          default: xyz
+        min_zoom:
+          type: integer
+          minimum: 0
+          maximum: 30
+          default: 0
+          example: 0
+        max_zoom:
+          type: integer
+          minimum: 0
+          maximum: 30
+          default: 19
+          example: 19
+        tile_size:
+          type: integer
+          enum: [256, 512]
+          default: 256
+          example: 256
+        format:
+          type: string
+          enum: [png, jpg, jpeg, webp]
+          default: png
+          example: "jpg"
+        attribution:
+          type: string
+          example: "USGS The National Map"
+        terms:
+          type: string
+          format: uri
+          nullable: true
+        offline_allowed:
+          type: boolean
+          default: false
+          example: true
+        rate_limit:
+          type: object
+          nullable: true
+          properties:
+            rps:
+              type: number
+              minimum: 0.1
+              example: 12
+            burst:
+              type: integer
+              minimum: 1
+              example: 24
+          nullable: true
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          nullable: true
+        auth:
+          type: object
+          nullable: true
+          properties:
+            kind:
+              type: string
+              enum: [none, header, query, basic]
+              example: "header"
+            name:
+              type: string
+              nullable: true
+              example: "Authorization"
+      required: [id, name, type, url, attribution]
+    PackInfo:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "crimea-usgs-12-14"
+        name:
+          type: string
+          example: "Crimea USGS"
+        provider:
+          type: string
+          example: "usgs"
+        min_zoom:
+          type: integer
+          example: 12
+        max_zoom:
+          type: integer
+          example: 14
+        tiles:
+          type: integer
+          example: 1842
+        bytes:
+          type: integer
+          example: 45231104
+        format:
+          type: string
+          enum: [mbtiles, pmtiles]
+          example: "pmtiles"
+        created_at:
+          type: integer
+          example: 1704067200
+        attribution:
+          type: string
+          nullable: true
+        license:
+          type: string
+          nullable: true
+      required: [id, name, provider, min_zoom, max_zoom, tiles, bytes, format]
+    Job:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "job_abc123"
+        kind:
+          type: string
+          enum: [download, pack]
+          example: "download"
+        name:
+          type: string
+          example: "San Francisco USGS"
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+          example: "running"
+        provider:
+          type: string
+          example: "usgs"
+        bbox:
+          type: array
+          items:
+            type: number
+          minItems: 4
+          maxItems: 4
+          example: [-122.50, 37.70, -122.40, 37.80]
+        min_zoom:
+          type: integer
+          example: 12
+        max_zoom:
+          type: integer
+          example: 14
+        progress:
+          type: object
+          properties:
+            tiles_done:
+              type: integer
+              example: 142
+            tiles_total:
+              type: integer
+              example: 1842
+            bytes_downloaded:
+              type: integer
+              example: 1234567
+            tiles_per_second:
+              type: number
+              example: 45.2
+          nullable: true
+        output:
+          type: string
+          nullable: true
+          example: "/home/user/packs/sf.pmtiles"
+        error:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+          example: 1704067200
+        updated_at:
+          type: integer
+          example: 1704067260
+      required: [id, kind, name, status, provider, bbox, min_zoom, max_zoom]
+    JobCreate:
+      type: object
+      oneOf:
+        - $ref: '#/components/schemas/DownloadJobCreate'
+        - $ref: '#/components/schemas/PackJobCreate'
+      discriminator:
+        propertyName: kind
+        mapping:
+          download: '#/components/schemas/DownloadJobCreate'
+          pack: '#/components/schemas/PackJobCreate'
+    DownloadJobCreate:
+      type: object
+      properties:
+        kind:
+          type: string
+          const: download
+        provider:
+          type: string
+          example: "usgs"
+        bbox:
+          type: array
+          items:
+            type: number
+          minItems: 4
+          maxItems: 4
+          example: [-122.50, 37.70, -122.40, 37.80]
+        min_zoom:
+          type: integer
+          example: 12
+        max_zoom:
+          type: integer
+          example: 14
+        name:
+          type: string
+          example: "San Francisco USGS"
+        cache:
+          type: string
+          nullable: true
+          example: "/home/user/.cache/mappa"
+        providers_dir:
+          type: string
+          nullable: true
+        max_tiles:
+          type: integer
+          nullable: true
+          example: 50000
+        limit_mb:
+          type: integer
+          nullable: true
+          example: 500
+      required: [kind, provider, bbox, min_zoom, max_zoom]
+    PackJobCreate:
+      type: object
+      properties:
+        kind:
+          type: string
+          const: pack
+        provider:
+          type: string
+          example: "usgs"
+        bbox:
+          type: array
+          items:
+            type: number
+          minItems: 4
+          maxItems: 4
+          example: [-122.50, 37.70, -122.40, 37.80]
+        min_zoom:
+          type: integer
+          example: 12
+        max_zoom:
+          type: integer
+          example: 14
+        output:
+          type: string
+          format: uri
+          example: "/home/user/packs/sf.pmtiles"
+        name:
+          type: string
+          example: "San Francisco USGS Pack"
+        cache:
+          type: string
+          nullable: true
+          example: "/home/user/.cache/mappa"
+        providers_dir:
+          type: string
+          nullable: true
+      required: [kind, provider, bbox, min_zoom, max_zoom, output]
+    SyncRequest:
+      type: object
+      properties:
+        peer_url:
+          type: string
+          format: uri
+          example: "http://192.168.1.42:8080"
+        project_path:
+          type: string
+          example: "/home/user/projects/mappa-field.mappa"
+        direction:
+          type: string
+          enum: [push, pull, bidirectional]
+          default: bidirectional
+          example: "bidirectional"
+        token:
+          type: string
+          nullable: true
+      required: [peer_url, project_path]
+    SyncResponse:
+      type: object
+      properties:
+        synced:
+          type: boolean
+          example: true
+        tiles_synced:
+          type: integer
+          example: 1247
+        packs_synced:
+          type: integer
+          example: 1
+        conflicts:
+          type: array
+          items:
+            type: object
+          nullable: true
+      required: [synced, tiles_synced, packs_synced]
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Resource not found"
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Invalid request parameters"
+    Conflict:
+      description: Job cannot be cancelled
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Job already completed"
+tags:
+  - name: Status
+    description: Server health and cache statistics
+  - name: Providers
+    description: Tile provider catalog
+  - name: Packs
+    description: Offline pack management
+  - name: Jobs
+    description: Download and pack job control
+  - name: Sync
+    description: Peer-to-peer project synchronization
+  - name: Tiles
+    description: Tile image serving
+  - name: Packs
+    description: Offline pack tile serving

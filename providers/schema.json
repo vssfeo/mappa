@@ -1,0 +1,139 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://mappa.dev/schemas/provider-v1.json",
+  "title": "Mappa Provider Catalog",
+  "description": "JSON Schema for Mappa tile provider YAML definitions",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+$",
+      "description": "Stable identifier used in cache keys and URLs. Lowercase alphanumeric, hyphen, underscore only."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable display name"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["xyz", "tms", "wmts", "wms"],
+      "description": "Protocol family of the tile source"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Tile URL template with {z}, {x}, {y} (or {TileMatrix}, {TileCol}, {TileRow} for WMTS, or {bbox} for WMS)"
+    },
+    "scheme": {
+      "type": "string",
+      "enum": ["xyz", "tms"],
+      "default": "xyz",
+      "description": "Tile addressing scheme: xyz (Y north->south) or tms (Y south->north)"
+    },
+    "min_zoom": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 30,
+      "default": 0,
+      "description": "Lowest supported zoom level"
+    },
+    "max_zoom": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 30,
+      "default": 19,
+      "description": "Highest supported zoom level"
+    },
+    "tile_size": {
+      "type": "integer",
+      "enum": [256, 512],
+      "default": 256,
+      "description": "Tile edge length in pixels"
+    },
+    "format": {
+      "type": "string",
+      "enum": ["png", "jpg", "jpeg", "webp"],
+      "default": "png",
+      "description": "Tile image format"
+    },
+    "attribution": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Attribution text shown in UI and stored in packs"
+    },
+    "terms": {
+      "type": "string",
+      "format": "uri",
+      "description": "Link to provider's terms of service"
+    },
+    "offline_allowed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether provider permits pre-fetching tiles for offline use (OSM forbids this)"
+    },
+    "rate_limit": {
+      "type": "object",
+      "properties": {
+        "rps": {
+          "type": "number",
+          "minimum": 0.1,
+          "description": "Sustained requests per second"
+        },
+        "burst": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum burst size"
+        }
+      },
+      "required": ["rps", "burst"],
+      "description": "Optional request budget for polite fetching"
+    },
+    "headers": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Extra HTTP headers sent with each tile request"
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["none", "header", "query", "basic"],
+          "description": "Authentication mechanism"
+        },
+        "name": {
+          "type": "string",
+          "description": "Header or query parameter name for the API key"
+        }
+      },
+      "required": ["kind"],
+      "description": "Authentication description (secrets never stored in catalog)"
+    },
+    "insecure_tls": {
+      "type": "boolean",
+      "default": false,
+      "description": "Skip TLS certificate verification (only for user-added sources with national CAs)"
+    }
+  },
+  "required": ["id", "name", "type", "url", "attribution"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "id": "usgs",
+      "name": "USGS Imagery",
+      "type": "xyz",
+      "url": "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}",
+      "scheme": "xyz",
+      "min_zoom": 0,
+      "max_zoom": 19,
+      "tile_size": 256,
+      "format": "jpg",
+      "attribution": "USGS The National Map",
+      "terms": "https://www.usgs.gov/programs/national-geospatial-program/national-map",
+      "offline_allowed": true,
+      "rate_limit": { "rps": 12, "burst": 24 },
+      "headers": { "User-Agent": "Mappa/0.1 (https://example.invalid/mappa; contact@example.invalid)" }
+    }
+  ]
+}

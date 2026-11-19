@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, CornerDownLeft, Loader2, Search } from 'lucide-react'
+import Fuse from 'fuse.js'
+import type { IFuseOptions } from 'fuse.js'
 import type { Command } from './commands'
 import { useT, useText } from './i18n'
 import { useDialogFocus } from './useDialogFocus'
@@ -85,26 +87,34 @@ export function CommandPalette({
     }
   }, [dynamic, query, searchPlaces, tx])
 
+  // Build Fuse index once
+  const fuse = useMemo(() => {
+    const fuseOptions: IFuseOptions<Command> = {
+      keys: ['label', 'group', 'hint', 'keywords'],
+      threshold: 0.4,
+      includeScore: true,
+      includeMatches: true,
+      minMatchCharLength: 2,
+      ignoreLocation: true,
+      findAllMatches: false,
+    }
+    return new Fuse(commands, fuseOptions)
+  }, [commands])
+
+  // Fuzzy search using Fuse.js
+  const fuzzyMatches = useMemo(() => {
+    const needle = query.trim()
+    if (needle.length === 0) return commands
+    const results = fuse.search(needle)
+    return results.map((r) => r.item)
+  }, [fuse, query])
+
+  // Combine dynamic, remote, and fuzzy matches
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    const matches =
-      needle.length === 0
-        ? commands
-        : commands.filter((command) => {
-            const haystack = [
-              command.label,
-              command.group,
-              command.hint ?? '',
-              ...(command.keywords ?? []),
-            ]
-              .join(' ')
-              .toLowerCase()
-            return haystack.includes(needle)
-          })
     const merged = [
       ...(dynamic ? [dynamic] : []),
       ...(activeRemote?.commands ?? []),
-      ...matches,
+      ...fuzzyMatches,
     ]
     const seen = new Set<string>()
     return merged.filter((command) => {
@@ -112,7 +122,7 @@ export function CommandPalette({
       seen.add(command.id)
       return true
     })
-  }, [activeRemote, commands, dynamic, query])
+  }, [activeRemote, commands, dynamic, fuzzyMatches])
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -215,7 +225,7 @@ export function CommandPalette({
                 {activeRemote?.warning ??
                   tx(
                     'Попробуйте «Москва», «скачать» или координаты.',
-                    'Try “Moscow”, “download” or coordinates.',
+                    'Try "Moscow", "download" or coordinates.',
                   )}
               </span>
             </div>
