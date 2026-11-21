@@ -1,6 +1,6 @@
 # Продвижение
 
-**Дата:** 2026-10-25  
+**Дата:** 2026-11-21  
 **Задача:** превратить релиз в первых пользователей, а не в звёзды.
 
 ## Позиционирование
@@ -22,9 +22,15 @@ CalTopo (подписка, облако): у нас Linux, офлайн и од�
 | Геодезисты, картографы РФ | Telegram-каналы по ГИС/геодезии, форум ГИС-Ассоциации, VK-группы | СК-42/МСК, геореференсинг сканов, паки |
 | SAR и поле | профильные чаты, r/searchandrescue | офлайн, печать, трек, радиолинк |
 | Дроны | PX4/ArduPilot форумы, ROS Discourse, r/drones | QGC `.plan`, AGL, MAVLink |
-| Linux/FOSS | r/linux, r/rust, r/Flatpak, Hacker News, Lobsters, Mastodon | Rust/Tauri, 82 МБ AppImage, ARM64 |
+| Linux/FOSS | r/linux, r/rust, r/Flatpak, Hacker News, Lobsters, Mastodon | Rust/Tauri, 86 МБ AppImage, deb 11 МБ, ARM64 |
 | Arch/Debian | r/archlinux, r/debian, AUR, DistroWatch | репозиторий, установка одной командой |
 | SBC/роботы | Armbian forum, Rock Pi/NanoPi чаты | ARM64, `mappa serve`, LAN |
+
+## Готовые тексты
+
+Четыре поста под приоритетные аудитории (изыскатели, дроны, ПСО,
+Linux/SAS/Avenza), короткие версии для чатов и порядок публикаций —
+[docs/ADS.md](ADS.md).
 
 ## Материалы, без которых не идти
 
@@ -43,10 +49,10 @@ CalTopo (подписка, облако): у нас Linux, офлайн и од�
 
 ### Telegram / VK (короткий)
 
-> Mappa 1.5 — офлайн-карты для Linux. Собрал район в один файл-пак,
+> Mappa 1.33 — офлайн-карты для Linux. Собрал район в один файл-пак,
 > открыл без сети, посчитал радиолинк по DEM, привязал скан карты,
 > выгрузил миссию в QGC и принял телеметрию по MAVLink.
-> Rust + Tauri, `.deb` 8 МБ, AppImage 82 МБ, ARM64.
+> Rust + Tauri, `.deb` 11 МБ, AppImage 86 МБ, ARM64.
 > Демо-пак внутри. Скачать: github.com/vssfeo/mappa/releases/latest
 > Нужны тестеры и злые замечания — пишите в issues.
 
@@ -56,7 +62,7 @@ CalTopo (подписка, облако): у нас Linux, офлайн и од�
 2. Архитектура: Rust + Tauri + MapLibre, один бинарь, паки.
 3. Три инженерные истории: Меркатор и геореференсинг, зона Френеля,
    парсер MAVLink с CRC.
-4. Цифры: 227 тестов, старт 70 мс, 60 fps на 1440p.
+4. Цифры: 153 Rust-теста и 146 UI-тестов, старт 70 мс, 60 fps на 1440p.
 5. Что не получилось и что дальше.
 6. Призыв: тестеры, issues, Linux-пакеты.
 
