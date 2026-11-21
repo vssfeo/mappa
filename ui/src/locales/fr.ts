@@ -891,7 +891,7 @@ export const fr: Record<string, string> = {
   'Track position': 'Suivre la position',
   'Track recording': 'Enregistrement de trace',
   'Translucent squares show cached tiles of the active basemap in the current view. Refreshes after the map stops moving.': 'Des carrés translucides montrent les tuiles en cache du fond de carte actif dans la vue actuelle. Actualisé lorsque la carte s\'arrête.',
-  'Try “Moscow”, “download” or coordinates.': 'Essayez « Moscou », « download » ou des coordonnées.',
+  'Try "Moscow", "download" or coordinates.': 'Essayez « Moscou », « download » ou des coordonnées.',
   'Twelve seconds after an edit the workspace is written to a recovery slot. The project file is never overwritten.': 'Douze secondes après une modification, l\'espace de travail est écrit dans un emplacement de récupération. Le fichier de projet n\'est jamais écrasé.',
   'Unclosed attribute value': 'Valeur d\'attribut non fermée',
   'Unclosed CDATA section': 'Section CDATA non fermée',

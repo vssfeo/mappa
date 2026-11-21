@@ -891,7 +891,7 @@ export const de: Record<string, string> = {
   'Track position': 'Position verfolgen',
   'Track recording': 'Trackaufzeichnung',
   'Translucent squares show cached tiles of the active basemap in the current view. Refreshes after the map stops moving.': 'Halbtransparente Quadrate zeigen zwischengespeicherte Kacheln der aktiven Basiskarte in der aktuellen Ansicht. Aktualisiert sich, wenn die Karte aufhört zu bewegen.',
-  'Try “Moscow”, “download” or coordinates.': '„Moskau“, „download“ oder Koordinaten versuchen.',
+  'Try "Moscow", "download" or coordinates.': '„Moskau“, „download“ oder Koordinaten versuchen.',
   'Twelve seconds after an edit the workspace is written to a recovery slot. The project file is never overwritten.': 'Zwölf Sekunden nach einer Bearbeitung wird der Arbeitsbereich in einen Wiederherstellungsslot geschrieben. Die Projektdatei wird nie überschrieben.',
   'Unclosed attribute value': 'Nicht geschlossener Attributwert',
   'Unclosed CDATA section': 'Nicht geschlossener CDATA-Abschnitt',
