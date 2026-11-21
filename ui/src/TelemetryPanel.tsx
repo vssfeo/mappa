@@ -7,10 +7,11 @@ import { featureId } from './features'
 import { writeTextFile } from './native'
 import {
   mavlinkClear,
-  mavlinkStatus,
   mavlinkTrack,
   startMavlink,
-  stopMavlink,
+  startMqtt,
+  telemetryStatus,
+  telemetryStop,
   telemetryGpx,
   type TelemetryStatus,
 } from './telemetry'
@@ -29,6 +30,12 @@ export function TelemetryPanel({ onClose, onCenter }: TelemetryPanelProps) {
   const dialogRef = useRef<HTMLElement | null>(null)
   useDialogFocus(dialogRef, onClose)
   const [port, setPort] = useState(14550)
+  const [source, setSource] = useState<'mavlink' | 'mqtt'>('mavlink')
+  const [host, setHost] = useState('127.0.0.1')
+  const [brokerPort, setBrokerPort] = useState(1883)
+  const [topic, setTopic] = useState('mappa/telemetry')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
   const [status, setStatus] = useState<TelemetryStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -36,7 +43,7 @@ export function TelemetryPanel({ onClose, onCenter }: TelemetryPanelProps) {
   useEffect(() => {
     let alive = true
     const tick = async () => {
-      const next = await mavlinkStatus()
+      const next = await telemetryStatus()
       if (alive) setStatus(next)
     }
     void tick()
@@ -51,7 +58,17 @@ export function TelemetryPanel({ onClose, onCenter }: TelemetryPanelProps) {
     setBusy(true)
     setError(null)
     try {
-      await startMavlink(port)
+      if (source === 'mqtt') {
+        await startMqtt({
+          host,
+          port: brokerPort,
+          topic,
+          username: username.trim() || undefined,
+          password: password || undefined,
+        })
+      } else {
+        await startMavlink(port)
+      }
     } catch (cause) {
       setError(String(cause))
     } finally {
@@ -62,7 +79,7 @@ export function TelemetryPanel({ onClose, onCenter }: TelemetryPanelProps) {
   const stop = async () => {
     setBusy(true)
     try {
-      await stopMavlink()
+      await telemetryStop()
     } finally {
       setBusy(false)
     }
@@ -110,7 +127,7 @@ export function TelemetryPanel({ onClose, onCenter }: TelemetryPanelProps) {
 
   const clear = async () => {
     await mavlinkClear()
-    setStatus(await mavlinkStatus())
+    setStatus(await telemetryStatus())
   }
 
   const fix = status?.fix ?? null
@@ -126,14 +143,14 @@ export function TelemetryPanel({ onClose, onCenter }: TelemetryPanelProps) {
         className="mission-modal"
         role="dialog"
         aria-modal="true"
-        aria-label={tx('Телеметрия MAVLink', 'MAVLink telemetry')}
+        aria-label={tx('Телеметрия', 'Telemetry')}
         tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="modal-header">
           <div>
             <span className="eyebrow">{tx('Телеметрия', 'Telemetry')}</span>
-            <h2>{tx('Телеметрия MAVLink', 'MAVLink telemetry')}</h2>
+            <h2>{tx('Телеметрия', 'Telemetry')}</h2>
           </div>
           <button
             type="button"
@@ -147,16 +164,76 @@ export function TelemetryPanel({ onClose, onCenter }: TelemetryPanelProps) {
 
         <div className="los-grid">
           <label>
-            <span>{tx('UDP-порт', 'UDP port')}</span>
-            <input
-              type="number"
-              min={1024}
-              max={65535}
-              value={port}
+            <span>{tx('Источник', 'Source')}</span>
+            <select
+              value={source}
               disabled={status?.running}
-              onChange={(event) => setPort(Number(event.target.value))}
-            />
+              onChange={(event) => setSource(event.target.value as 'mavlink' | 'mqtt')}
+            >
+              <option value="mavlink">MAVLink UDP</option>
+              <option value="mqtt">MQTT</option>
+            </select>
           </label>
+          {source === 'mavlink' ? (
+            <label>
+              <span>{tx('UDP-порт', 'UDP port')}</span>
+              <input
+                type="number"
+                min={1024}
+                max={65535}
+                value={port}
+                disabled={status?.running}
+                onChange={(event) => setPort(Number(event.target.value))}
+              />
+            </label>
+          ) : (
+            <>
+              <label>
+                <span>{tx('Хост', 'Host')}</span>
+                <input
+                  value={host}
+                  disabled={status?.running}
+                  onChange={(event) => setHost(event.target.value)}
+                />
+              </label>
+              <label>
+                <span>{tx('Порт', 'Port')}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={brokerPort}
+                  disabled={status?.running}
+                  onChange={(event) => setBrokerPort(Number(event.target.value))}
+                />
+              </label>
+              <label>
+                <span>{tx('Топик', 'Topic')}</span>
+                <input
+                  value={topic}
+                  disabled={status?.running}
+                  onChange={(event) => setTopic(event.target.value)}
+                />
+              </label>
+              <label>
+                <span>{tx('Пользователь', 'Username')}</span>
+                <input
+                  value={username}
+                  disabled={status?.running}
+                  onChange={(event) => setUsername(event.target.value)}
+                />
+              </label>
+              <label>
+                <span>{tx('Пароль', 'Password')}</span>
+                <input
+                  type="password"
+                  value={password}
+                  disabled={status?.running}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+              </label>
+            </>
+          )}
           <label>
             <span>{tx('Состояние', 'State')}</span>
             <input
@@ -186,7 +263,9 @@ export function TelemetryPanel({ onClose, onCenter }: TelemetryPanelProps) {
             onClick={() => void start()}
           >
             <RadioTower size={15} />
-            {tx('Слушать UDP', 'Listen on UDP')}
+            {source === 'mqtt'
+              ? tx('Слушать MQTT', 'Listen on MQTT')
+              : tx('Слушать UDP', 'Listen on UDP')}
           </button>
           <button
             type="button"
@@ -217,7 +296,9 @@ export function TelemetryPanel({ onClose, onCenter }: TelemetryPanelProps) {
           </button>
         </div>
 
-        {error && <p className="georef-error">{error}</p>}
+        {(error || status?.error) && (
+          <p className="georef-error">{error ?? status?.error}</p>
+        )}
 
         {fix ? (
           <p className="georef-ok">
@@ -244,8 +325,8 @@ export function TelemetryPanel({ onClose, onCenter }: TelemetryPanelProps) {
 
         <p className="settings-hint">
           {tx(
-            'Только приём: команды на борт не отправляются. Поддерживаются MAVLink v1/v2, GLOBAL_POSITION_INT и HEARTBEAT; CRC проверяется.',
-            'Receive only: nothing is sent to the vehicle. MAVLink v1/v2, GLOBAL_POSITION_INT and HEARTBEAT are supported; the CRC is verified.',
+            'Только приём: команды на борт не отправляются. MAVLink v1/v2: GLOBAL_POSITION_INT и HEARTBEAT, CRC проверяется. MQTT: JSON с lat/lon/alt_m/heading_deg.',
+            'Receive only: nothing is sent to the vehicle. MAVLink v1/v2: GLOBAL_POSITION_INT and HEARTBEAT, CRC verified. MQTT: JSON with lat/lon/alt_m/heading_deg.',
           )}
         </p>
       </section>

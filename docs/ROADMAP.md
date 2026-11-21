@@ -301,7 +301,9 @@ curl http://127.0.0.1:8080/health
   altitude modes, экспорт QGC `.plan`.
 - [x] Экспорт миссии в DJI WPML KMZ.
 - [x] Экспорт миссии в MAVLink (QGC WPL 110).
-- [ ] Read-only телеметрия: MAVLink, ROS2 `/odom`/`/path`, MQTT.
+- [x] Read-only телеметрия MAVLink (UDP).
+- [x] Read-only телеметрия MQTT: JSON, QoS 0, wildcard-топики.
+- [ ] ROS2 `/odom`/`/path` через мост.
 - [x] ARM64-сборка в CI (`ubuntu-24.04-arm`, проверка бинарника и CLI).
 - [ ] Smoke-тест на Rock Pi 4A и NanoPi M4.
 - [ ] Tile-server на борту, раздача паков по LAN/QR.

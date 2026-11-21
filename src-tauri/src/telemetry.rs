@@ -11,6 +11,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
+use mappa_core::mqtt::{MqttConfig, run_mqtt};
+use mappa_core::telemetry::JsonFix;
+
 /// Latest telemetry position.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,20 +30,24 @@ pub struct Fix {
 #[serde(rename_all = "camelCase")]
 pub struct TelemetryStatus {
     pub running: bool,
+    pub source: String,
     pub port: u16,
     pub frames: u64,
     pub track_points: usize,
     pub fix: Option<Fix>,
     pub last_heartbeat_ms: Option<u64>,
+    pub error: Option<String>,
 }
 
 struct Inner {
     running: bool,
+    source: String,
     port: u16,
     frames: u64,
     fix: Option<Fix>,
     track: Vec<Fix>,
     last_heartbeat_ms: Option<u64>,
+    error: Option<String>,
 }
 
 /// Shared receiver state managed by Tauri.
@@ -54,11 +61,13 @@ impl Default for Telemetry {
         Self {
             inner: Arc::new(Mutex::new(Inner {
                 running: false,
+                source: "none".to_owned(),
                 port: 14550,
                 frames: 0,
                 fix: None,
                 track: Vec::new(),
                 last_heartbeat_ms: None,
+                error: None,
             })),
             stop: Arc::new(AtomicBool::new(false)),
         }
@@ -86,7 +95,9 @@ impl Telemetry {
                 return Err("telemetry is already running".to_owned());
             }
             inner.running = true;
+            inner.source = "mavlink".to_owned();
             inner.port = port;
+            inner.error = None;
         }
         // Fail fast when the port is taken, before the thread starts.
         let socket = UdpSocket::bind(("0.0.0.0", port))
@@ -109,31 +120,7 @@ impl Telemetry {
                         if let Some(update) = parse_frame(&buffer[..size])
                             && let Ok(mut state) = inner.lock()
                         {
-                            {
-                                state.frames += 1;
-                                match update {
-                                    Update::Heartbeat => {
-                                        state.last_heartbeat_ms = Some(now_ms());
-                                    }
-                                    Update::Fix(fix) => {
-                                        if let Some(previous) = state.fix.as_ref() {
-                                            let moved = (fix.lat - previous.lat).abs() > 1e-6
-                                                || (fix.lon - previous.lon).abs() > 1e-6;
-                                            let aged =
-                                                fix.at_ms.saturating_sub(previous.at_ms) > 1000;
-                                            if moved || aged {
-                                                state.track.push(fix.clone());
-                                                if state.track.len() > 200_000 {
-                                                    state.track.remove(0);
-                                                }
-                                            }
-                                        } else {
-                                            state.track.push(fix.clone());
-                                        }
-                                        state.fix = Some(fix);
-                                    }
-                                }
-                            }
+                            apply_update(&mut state, update);
                         }
                     }
                     Err(error)
@@ -144,6 +131,43 @@ impl Telemetry {
             }
             if let Ok(mut state) = inner.lock() {
                 state.running = false;
+            }
+        });
+        Ok(())
+    }
+
+    fn start_mqtt(&self, config: MqttConfig) -> Result<(), String> {
+        if config.port == 0 || config.topic.trim().is_empty() {
+            return Err("broker port and topic are required".to_owned());
+        }
+        {
+            let mut inner = self
+                .inner
+                .lock()
+                .map_err(|_| "telemetry state is poisoned")?;
+            if inner.running {
+                return Err("telemetry is already running".to_owned());
+            }
+            inner.running = true;
+            inner.source = "mqtt".to_owned();
+            inner.port = config.port;
+            inner.error = None;
+        }
+        self.stop.store(false, Ordering::Relaxed);
+        let inner = Arc::clone(&self.inner);
+        let stop = Arc::clone(&self.stop);
+        std::thread::spawn(move || {
+            let ingest_inner = Arc::clone(&inner);
+            let result = run_mqtt(&config, &stop, move |fix| {
+                if let Ok(mut state) = ingest_inner.lock() {
+                    apply_update(&mut state, Update::Fix(fix_from_json(fix)));
+                }
+            });
+            if let Ok(mut state) = inner.lock() {
+                state.running = false;
+                if let Err(error) = result {
+                    state.error = Some(error);
+                }
             }
         });
         Ok(())
@@ -160,11 +184,13 @@ impl Telemetry {
         let state = self.inner.lock().expect("telemetry state");
         TelemetryStatus {
             running: state.running,
+            source: state.source.clone(),
             port: state.port,
             frames: state.frames,
             track_points: state.track.len(),
             fix: state.fix.clone(),
             last_heartbeat_ms: state.last_heartbeat_ms,
+            error: state.error.clone(),
         }
     }
 
@@ -187,6 +213,41 @@ impl Telemetry {
 enum Update {
     Heartbeat,
     Fix(Fix),
+}
+
+fn apply_update(state: &mut Inner, update: Update) {
+    state.frames += 1;
+    match update {
+        Update::Heartbeat => {
+            state.last_heartbeat_ms = Some(now_ms());
+        }
+        Update::Fix(fix) => {
+            if let Some(previous) = state.fix.as_ref() {
+                let moved =
+                    (fix.lat - previous.lat).abs() > 1e-6 || (fix.lon - previous.lon).abs() > 1e-6;
+                let aged = fix.at_ms.saturating_sub(previous.at_ms) > 1000;
+                if moved || aged {
+                    state.track.push(fix.clone());
+                    if state.track.len() > 200_000 {
+                        state.track.remove(0);
+                    }
+                }
+            } else {
+                state.track.push(fix.clone());
+            }
+            state.fix = Some(fix);
+        }
+    }
+}
+
+fn fix_from_json(fix: JsonFix) -> Fix {
+    Fix {
+        lat: fix.lat,
+        lon: fix.lon,
+        alt_m: fix.alt_m,
+        heading_deg: fix.heading_deg,
+        at_ms: fix.at_ms,
+    }
 }
 
 /// CRC-16/MCRF4XX used by MAVLink.
@@ -282,6 +343,37 @@ pub async fn start_mavlink(
     port: Option<u16>,
 ) -> Result<(), String> {
     telemetry.start(port.unwrap_or(14550))
+}
+
+/// Starts a read-only MQTT subscriber.
+#[tauri::command]
+pub async fn start_mqtt(
+    telemetry: tauri::State<'_, Telemetry>,
+    host: String,
+    port: u16,
+    topic: String,
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<(), String> {
+    let mut config = MqttConfig::new(host, port, topic);
+    config.username = username.filter(|value| !value.trim().is_empty());
+    config.password = password.filter(|value| !value.is_empty());
+    telemetry.start_mqtt(config)
+}
+
+/// Stops whichever receiver is active.
+#[tauri::command]
+pub async fn telemetry_stop(telemetry: tauri::State<'_, Telemetry>) -> Result<(), String> {
+    telemetry.stop();
+    Ok(())
+}
+
+/// Current receiver status for any source.
+#[tauri::command]
+pub async fn telemetry_status(
+    telemetry: tauri::State<'_, Telemetry>,
+) -> Result<TelemetryStatus, String> {
+    Ok(telemetry.status())
 }
 
 /// Stops the UDP receiver.

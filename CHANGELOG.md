@@ -17,6 +17,9 @@
   `absoluteAltitude`; кнопка «DJI KMZ» в панели миссии.
 - Экспорт миссии в MAVLink: QGC WPL 110 (`.waypoints`), home + waypoints +
   RTL, кадр 3 для AGL и 0 для ASL; кнопка «MAVLink».
+- Телеметрия MQTT: встроенный подписчик 3.1.1 (QoS 0, wildcard-топики,
+  keepalive), JSON `lat/lon/alt_m/heading_deg`; выбор источника и поля
+  брокера в панели телеметрии.
 
 ## [1.33.0] — 2026-11-07
 

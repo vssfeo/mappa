@@ -84,15 +84,21 @@ GitHub — зеркало, а не единственная копия: кано
 - Ограничения: viewshed приближённый (один луч на азимут), миссии без
   геозон, полигонов-съёмки и телеметрии.
 
-## Телеметрия MAVLink
+## Телеметрия MAVLink и MQTT
 
-- `src-tauri/src/telemetry.rs`: UDP-приёмник, разбор v1/v2,
+- `src-tauri/src/telemetry.rs`: UDP-приёмник MAVLink, разбор v1/v2,
   `GLOBAL_POSITION_INT`/`HEARTBEAT`, CRC-16/MCRF4XX, трек до 200 тыс.
-  точек; команды `start_mavlink`, `stop_mavlink`, `mavlink_status`,
-  `mavlink_track`, `mavlink_clear`.
-- `ui/src/TelemetryPanel.tsx`: порт, старт/стоп, живая позиция, трек на
-  карту, GPX. Только приём.
-- 5 Rust-тестов на кадры, CRC и мусор.
+  точек; команды `start_mavlink`, `start_mqtt`, `telemetry_status`,
+  `telemetry_stop`, `mavlink_track`, `mavlink_clear`.
+- `crates/mappa-core/src/mqtt.rs`: минимальный MQTT 3.1.1-подписчик
+  (CONNECT/SUBSCRIBE QoS 0/PUBLISH/PINGREQ), wildcard-топики, тест с
+  фейковым брокером.
+- `crates/mappa-core/src/telemetry.rs`: JSON-фикс `lat/lon/alt_m/heading_deg`
+  с алиасами и вложенным `position`; локальные ROS2 `x/y` отвергаются с
+  подсказкой про мост.
+- `ui/src/TelemetryPanel.tsx`: выбор источника MAVLink UDP или MQTT,
+  порт, хост, топик, логин/пароль, живая позиция, трек на карту, GPX.
+  Только приём.
 
 ## Диагностика
 

@@ -7,8 +7,10 @@
 pub mod bbox;
 pub mod crs;
 pub mod inflate;
+pub mod mqtt;
 pub mod polygon;
 pub mod provider;
+pub mod telemetry;
 pub mod tile;
 
 pub use bbox::Bbox;

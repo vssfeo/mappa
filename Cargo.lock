@@ -2985,6 +2985,7 @@ version = "1.33.0"
 dependencies = [
  "proj4rs",
  "serde",
+ "serde_json",
  "serde_yaml_ng",
 ]
 

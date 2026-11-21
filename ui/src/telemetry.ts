@@ -13,16 +13,51 @@ export interface TelemetryFix {
 
 export interface TelemetryStatus {
   running: boolean
+  source: string
   port: number
   frames: number
   trackPoints: number
   fix: TelemetryFix | null
   lastHeartbeatMs: number | null
+  error: string | null
+}
+
+export interface MqttOptions {
+  host: string
+  port: number
+  topic: string
+  username?: string
+  password?: string
 }
 
 export const startMavlink = async (port: number): Promise<void> => {
   if (!isNative) throw new Error('telemetry is available in the desktop app')
   await invoke('start_mavlink', { port })
+}
+
+export const startMqtt = async (options: MqttOptions): Promise<void> => {
+  if (!isNative) throw new Error('telemetry is available in the desktop app')
+  await invoke('start_mqtt', {
+    host: options.host,
+    port: options.port,
+    topic: options.topic,
+    username: options.username ?? null,
+    password: options.password ?? null,
+  })
+}
+
+export const telemetryStop = async (): Promise<void> => {
+  if (!isNative) return
+  await invoke('telemetry_stop')
+}
+
+export const telemetryStatus = async (): Promise<TelemetryStatus | null> => {
+  if (!isNative) return null
+  try {
+    return await invoke<TelemetryStatus>('telemetry_status')
+  } catch {
+    return null
+  }
 }
 
 export const stopMavlink = async (): Promise<void> => {
