@@ -12,6 +12,8 @@
 - Релиз `v1.33.0` содержит AppImage 86 МБ, deb 11 МБ, Windows beta 9 МБ.
 - GitHub Actions пересобирает проект после push.
 - Анонс опубликован в GitHub Discussions: https://github.com/vssfeo/mappa/discussions/7
+- Карточка на FreshCode: https://freshcode.club/projects/mappa
+- Заявка в OpenSourceProjects.cc отправлена, ждёт ручной проверки.
 
 Публичная ссылка для всех постов:
 `https://github.com/vssfeo/mappa/releases/latest`
@@ -21,6 +23,9 @@
 | Канал | Аудитория | Как | Ограничение |
 |---|---|---|---|
 | GitHub Discussions | Linux/dev | **опубликовано #7** | бот создал через Actions |
+| FreshCode.club | Linux/FOSS | **опубликовано** | карточка Mappa 1.33.0 |
+| OpenSourceProjects.cc | FOSS-каталог | заявка отправлена | ручная модерация |
+| OpenSourceAlternatives.to | SAS/Avenza | заявка отправлена | подтверждения нет |
 | `@gsi_ru` | геодезия, изыскания | реклама у админа | это канал поставщика, не форум |
 | `@rifat_geo` | геодезисты | личный контакт админа | без разрешения — спам |
 | `@uav_tech` | БПЛА | предложить новость | новостной канал, не доска объявлений |
@@ -31,7 +36,7 @@
 | PX4/ArduPilot Discuss | дроны | ветка/ответ | аккаунт |
 | r/gis, r/drones, r/linux, r/rust | англоязычные | пост | аккаунт Reddit |
 | Hacker News Show HN | dev | пост | аккаунт HN |
-| LinuxLinks | Linux | форма «Suggest a program» | нужен email и Turnstile |
+| LinuxLinks | Linux | форма «Suggest a program» | Turnstile отклонил бота; отправить вручную |
 | It's FOSS, OMG! Ubuntu | Linux | контактная форма/почта | нужен email |
 
 ## 3. Что нужно от владельца
