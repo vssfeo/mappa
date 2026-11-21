@@ -296,9 +296,10 @@ curl http://127.0.0.1:8080/health
   минимальный AGL по профилю линии.
 - [x] DEM 2.1: GeoTIFF/COG напрямую: strips/tiles, DEFLATE/PackBits,
   predictor 2/3, georeferencing WGS84.
-- [ ] Viewshed/LOS + Fresnel для радиолинков.
-- [ ] Планирование миссий: waypoint/полигон/коридор/геозона, altitude
-  modes, экспорт QGC `.plan`/MAVLink/DJI KMZ.
+- [x] Viewshed/LOS + Fresnel для радиолинков (с 1.3.0; сверка с QGIS — отдельный критерий ниже).
+- [x] Планирование миссий: waypoint, полигон-съёмка, коридор-геозона,
+  altitude modes, экспорт QGC `.plan`.
+- [ ] Экспорт миссии в MAVLink и DJI KMZ.
 - [ ] Read-only телеметрия: MAVLink, ROS2 `/odom`/`/path`, MQTT.
 - [x] ARM64-сборка в CI (`ubuntu-24.04-arm`, проверка бинарника и CLI).
 - [ ] Smoke-тест на Rock Pi 4A и NanoPi M4.
