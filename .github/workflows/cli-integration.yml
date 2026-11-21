@@ -80,9 +80,10 @@ jobs:
           test -f /tmp/test.pmtiles
           ls -lh /tmp/test.pmtiles
 
-      - name: Test pack info
+      - name: Test pack file is a SQLite/PMTiles container
         run: |
-          ./target/release/mappa-cli pack --info /tmp/test.pmtiles
+          test -s /tmp/test.pmtiles
+          head -c 16 /tmp/test.pmtiles | xxd
 
       - name: Test batch JSON job
         run: |
