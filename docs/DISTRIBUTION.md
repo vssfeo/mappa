@@ -11,6 +11,7 @@
 - Ветка `main` отправлена на GitHub: `vssfeo/mappa`.
 - Релиз `v1.33.0` содержит AppImage 86 МБ, deb 11 МБ, Windows beta 9 МБ.
 - GitHub Actions пересобирает проект после push.
+- Анонс опубликован в GitHub Discussions: https://github.com/vssfeo/mappa/discussions/7
 
 Публичная ссылка для всех постов:
 `https://github.com/vssfeo/mappa/releases/latest`
@@ -19,7 +20,7 @@
 
 | Канал | Аудитория | Как | Ограничение |
 |---|---|---|---|
-| GitHub Discussions | Linux/dev | нужен scope `write:discussion` | токен бота только читает API |
+| GitHub Discussions | Linux/dev | **опубликовано #7** | бот создал через Actions |
 | `@gsi_ru` | геодезия, изыскания | реклама у админа | это канал поставщика, не форум |
 | `@rifat_geo` | геодезисты | личный контакт админа | без разрешения — спам |
 | `@uav_tech` | БПЛА | предложить новость | новостной канал, не доска объявлений |
