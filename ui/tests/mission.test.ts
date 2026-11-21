@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { missionKml, missionKmz, qgcPlan, surveyWaypoints, type MissionPoint } from '../src/mission.ts'
+import { corridorPolygon, missionKml, missionKmz, qgcPlan, surveyWaypoints, type MissionPoint } from '../src/mission.ts'
 
 const points: MissionPoint[] = [
   { name: 'Start', lon: 34.1, lat: 44.9, alt: 100 },
@@ -75,6 +75,28 @@ test('adds an inclusion geofence circle', () => {
 test('no geofence when the radius is zero', () => {
   const plan = JSON.parse(qgcPlan(points))
   assert.equal(plan.geoFence.circles.length, 0)
+  assert.equal(plan.geoFence.polygons.length, 0)
+})
+
+test('buffers a corridor line into a closed ring', () => {
+  const ring = corridorPolygon([[34.1, 44.9], [34.2, 44.9], [34.2, 45.0]], 200)
+  assert.ok(ring.length >= 6)
+  assert.deepEqual(ring[0], ring[ring.length - 1])
+  const latitudes = ring.map((point) => point[1])
+  assert.ok(Math.min(...latitudes) < 44.9)
+  assert.ok(Math.max(...latitudes) >= 45.0 - 1e-9)
+  assert.deepEqual(corridorPolygon([[34.1, 44.9]], 200), [])
+  assert.deepEqual(corridorPolygon([[34.1, 44.9], [34.2, 44.9]], 0), [])
+})
+
+test('adds a corridor as a QGC inclusion polygon', () => {
+  const ring = corridorPolygon([[34.1, 44.9], [34.2, 44.9]], 150)
+  const plan = JSON.parse(qgcPlan(points, { geofencePolygons: [ring] }))
+  assert.equal(plan.geoFence.polygons.length, 1)
+  assert.equal(plan.geoFence.polygons[0].inclusion, true)
+  assert.equal(plan.geoFence.polygons[0].polygon.length, ring.length)
+  assert.equal(plan.geoFence.polygons[0].polygon[0][0], Number(ring[0][1].toFixed(7)))
+  assert.equal(plan.geoFence.polygons[0].polygon[0][1], Number(ring[0][0].toFixed(7)))
 })
 
 test('builds a lawnmower survey inside a polygon', () => {

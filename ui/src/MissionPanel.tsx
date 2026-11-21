@@ -4,7 +4,7 @@ import { Download, Send, X } from 'lucide-react'
 import { useText } from './i18n'
 import { useAppStore } from './store'
 import { writeBinaryFile, writeTextFile } from './native'
-import { missionKml, missionKmz, qgcPlan, surveyWaypoints, type MissionPoint } from './mission'
+import { corridorPolygon, missionKml, missionKmz, qgcPlan, surveyWaypoints, type MissionPoint } from './mission'
 import { useDialogFocus } from './useDialogFocus'
 
 interface MissionPanelProps {
@@ -32,12 +32,23 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
   const [error, setError] = useState<string | null>(null)
   const [geofenceRadius, setGeofenceRadius] = useState(0)
   const [polygonId, setPolygonId] = useState('')
+  const [corridorId, setCorridorId] = useState('')
+  const [corridorWidth, setCorridorWidth] = useState(200)
   const [spacing, setSpacing] = useState(100)
 
   const polygons = useMemo(
     () => features.filter((feature) => feature.kind === 'polygon'),
     [features],
   )
+  const lines = useMemo(
+    () => features.filter((feature) => feature.kind === 'line'),
+    [features],
+  )
+  const corridor = useMemo(() => {
+    const line = features.find((feature) => feature.id === corridorId)
+    if (!line) return []
+    return corridorPolygon(line.coordinates, corridorWidth)
+  }, [features, corridorId, corridorWidth])
   const points: MissionPoint[] = useMemo(() => {
     if (polygonId) {
       const polygon = features.find((feature) => feature.id === polygonId)
@@ -88,7 +99,12 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
       if (kind === 'plan') {
         await writeTextFile(
           target,
-          qgcPlan(points, { name, mode, geofenceRadiusM: geofenceRadius }),
+          qgcPlan(points, {
+            name,
+            mode,
+            geofenceRadiusM: geofenceRadius,
+            geofencePolygons: corridor.length > 0 ? [corridor] : [],
+          }),
         )
       } else if (kind === 'kml') {
         await writeTextFile(target, missionKml(points, name, mode))
@@ -136,6 +152,12 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
           {tx(
             'Без полигона каждая метка становится путевой точкой. С полигоном строится «змейка» с заданным шагом линий. Высота общая; для QGC это AGL или ASL.',
             'Without a polygon every marker becomes a waypoint. With a polygon a lawnmower grid is built with the given line spacing. One altitude for all points; QGC treats it as AGL or ASL.',
+          )}
+        </p>
+        <p className="settings-hint">
+          {tx(
+            'Линия-коридор добавляет в QGC.geoFence полигон-включение заданной ширины.',
+            'A corridor line adds an inclusion polygon of the given width to the QGC geoFence.',
           )}
         </p>
 
@@ -203,6 +225,29 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
               value={spacing}
               disabled={!polygonId}
               onChange={(event) => setSpacing(Number(event.target.value))}
+            />
+          </label>
+          <label>
+            <span>{tx('Коридор', 'Corridor line')}</span>
+            <select value={corridorId} onChange={(event) => setCorridorId(event.target.value)}>
+              <option value="">{tx('Нет', 'None')}</option>
+              {lines.map((feature) => (
+                <option key={feature.id} value={feature.id}>
+                  {feature.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{tx('Ширина коридора, м', 'Corridor width, m')}</span>
+            <input
+              type="number"
+              min={10}
+              max={20000}
+              step={10}
+              value={corridorWidth}
+              disabled={!corridorId}
+              onChange={(event) => setCorridorWidth(Number(event.target.value))}
             />
           </label>
           <label>

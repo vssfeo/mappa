@@ -3,6 +3,16 @@
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версии — [SemVer](https://semver.org/lang/ru/).
 
+## [Unreleased]
+
+### Добавлено
+
+- Миссии: линия-коридор буферизуется в замкнутый полигон заданной ширины
+  и попадает в `geoFence.polygons` QGC `.plan` как зона включения.
+  Новый `corridorPolygon` в `ui/src/mission.ts` и тесты на буфер и экспорт.
+- `qgcPlan` принимает несколько полигонов геозоны (`geofencePolygons`),
+  а не только круг.
+
 ## [1.33.0] — 2026-11-07
 
 ### Исправлено

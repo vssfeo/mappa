@@ -16,6 +16,8 @@ export interface MissionOptions {
   cruiseSpeed?: number
   /** Inclusion circle around the home point. */
   geofenceRadiusM?: number
+  /** Inclusion polygons as WGS84 lon/lat rings. */
+  geofencePolygons?: [number, number][][]
 }
 
 const round = (value: number, digits = 7) =>
@@ -89,6 +91,14 @@ export function qgcPlan(
     type: 'SimpleItem',
   })
 
+  const fencePolygons = (options.geofencePolygons ?? [])
+    .filter((ring) => ring.length >= 3)
+    .map((ring) => ({
+      polygon: ring.map(([lon, lat]) => [round(lat), round(lon)]),
+      inclusion: true,
+      version: 1,
+    }))
+
   return JSON.stringify(
     {
       fileType: 'Plan',
@@ -106,7 +116,7 @@ export function qgcPlan(
                 },
               ]
             : [],
-        polygons: [],
+        polygons: fencePolygons,
         version: 2,
       },
       groundStation: 'Mappa',
@@ -188,6 +198,54 @@ export function missionKmz(
   ])
 }
 
+
+/**
+ * Buffers an open polyline into a closed WGS84 ring `widthM` wide.
+ * The local metric frame uses an equirectangular approximation around the
+ * line centroid; good enough for corridors of a few kilometres.
+ */
+export function corridorPolygon(
+  line: [number, number][],
+  widthM: number,
+): [number, number][] {
+  if (line.length < 2 || !(widthM > 0)) return []
+  const lon0 = line.reduce((sum, point) => sum + point[0], 0) / line.length
+  const lat0 = line.reduce((sum, point) => sum + point[1], 0) / line.length
+  const metresPerDegreeLat = 111_320
+  const metresPerDegreeLon = 111_320 * Math.cos((lat0 * Math.PI) / 180)
+  const local = line.map(([lon, lat]): [number, number] => [
+    (lon - lon0) * metresPerDegreeLon,
+    (lat - lat0) * metresPerDegreeLat,
+  ])
+  const half = widthM / 2
+  const left: [number, number][] = []
+  const right: [number, number][] = []
+  for (let index = 0; index < local.length - 1; index += 1) {
+    const [x1, y1] = local[index]
+    const [x2, y2] = local[index + 1]
+    const dx = x2 - x1
+    const dy = y2 - y1
+    const length = Math.hypot(dx, dy)
+    if (length < 1e-9) continue
+    const nx = (-dy / length) * half
+    const ny = (dx / length) * half
+    if (left.length === 0) {
+      left.push([x1 + nx, y1 + ny])
+      right.push([x1 - nx, y1 - ny])
+    }
+    left.push([x2 + nx, y2 + ny])
+    right.push([x2 - nx, y2 - ny])
+  }
+  if (left.length < 2) return []
+  const ring = [...left, ...right.reverse()]
+  const toWgs = ([x, y]: [number, number]): [number, number] => [
+    round(lon0 + x / metresPerDegreeLon),
+    round(lat0 + y / metresPerDegreeLat),
+  ]
+  const closed = ring.map(toWgs)
+  closed.push(closed[0])
+  return closed
+}
 
 /**
  * Lawnmower survey: parallel lines inside a polygon, spaced `spacingM`
