@@ -198,6 +198,131 @@ export function missionKmz(
   ])
 }
 
+export interface DjiMissionOptions extends MissionOptions {
+  /** Speed in m/s written to both templates. */
+  speed?: number
+  /** ISO timestamp; fixed in tests so the archive is deterministic. */
+  createdAt?: string
+}
+
+const WPML_NS = 'http://www.dji.com/wpmz/1.0.6'
+
+const haversineM = (a: MissionPoint, b: MissionPoint): number => {
+  const rad = Math.PI / 180
+  const dLat = (b.lat - a.lat) * rad
+  const dLon = (b.lon - a.lon) * rad
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2
+  return 2 * 6_371_000 * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+const wpmlMissionConfig = (speed: number, takeoffHeight: number): string => `    <wpml:missionConfig>
+      <wpml:flyToWaylineMode>safely</wpml:flyToWaylineMode>
+      <wpml:finishAction>goHome</wpml:finishAction>
+      <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
+      <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
+      <wpml:takeOffSecurityHeight>${takeoffHeight}</wpml:takeOffSecurityHeight>
+      <wpml:globalTransitionalSpeed>${speed}</wpml:globalTransitionalSpeed>
+      <wpml:droneInfo>
+        <wpml:droneEnumValue>68</wpml:droneEnumValue>
+        <wpml:droneSubEnumValue>0</wpml:droneSubEnumValue>
+      </wpml:droneInfo>
+    </wpml:missionConfig>`
+
+const wpmlPoint = (point: MissionPoint, index: number, speed: number): string => `      <Placemark>
+        <Point>
+          <coordinates>${round(point.lon)},${round(point.lat)}</coordinates>
+        </Point>
+        <wpml:index>${index}</wpml:index>
+        <wpml:executeHeight>${round(point.alt, 2)}</wpml:executeHeight>
+        <wpml:waypointSpeed>${speed}</wpml:waypointSpeed>
+        <wpml:waypointHeadingParam>
+          <wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode>
+          <wpml:waypointHeadingAngle>0</wpml:waypointHeadingAngle>
+          <wpml:waypointPoiPoint>0,0,0</wpml:waypointPoiPoint>
+          <wpml:waypointHeadingAngleEnable>0</wpml:waypointHeadingAngleEnable>
+          <wpml:waypointHeadingPathMode>followBadArc</wpml:waypointHeadingPathMode>
+        </wpml:waypointHeadingParam>
+        <wpml:waypointTurnParam>
+          <wpml:waypointTurnMode>toPointAndStopWithDiscontinuityCurvature</wpml:waypointTurnMode>
+          <wpml:waypointTurnDampingDist>0.2</wpml:waypointTurnDampingDist>
+        </wpml:waypointTurnParam>
+        <wpml:useStraightLine>1</wpml:useStraightLine>
+      </Placemark>`
+
+/**
+ * DJI WPML KMZ: `wpmz/template.kml` plus `wpmz/waylines.wpml`.
+ * AGL maps to `relativeToStartPoint`, ASL to `absoluteAltitude`.
+ */
+export function djiKmz(
+  points: MissionPoint[],
+  options: DjiMissionOptions = {},
+): Uint8Array {
+  if (points.length === 0) {
+    throw new Error('a mission needs at least one waypoint')
+  }
+  const mode = options.mode ?? 'agl'
+  const speed = options.speed ?? options.cruiseSpeed ?? 15
+  const heightMode = mode === 'agl' ? 'relativeToStartPoint' : 'absoluteAltitude'
+  const createdAt = options.createdAt ?? new Date().toISOString()
+  const height = round(points[0].alt, 2)
+  const distance = points
+    .slice(1)
+    .reduce((sum, point, index) => sum + haversineM(points[index], point), 0)
+  const duration = speed > 0 ? distance / speed : 0
+  const pointsXml = points.map((point, index) => wpmlPoint(point, index, speed)).join('\n')
+
+  const template = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="${WPML_NS}">
+  <Document>
+    <wpml:author>Mappa</wpml:author>
+    <wpml:createTime>${createdAt}</wpml:createTime>
+    <wpml:updateTime>${createdAt}</wpml:updateTime>
+${wpmlMissionConfig(speed, Math.max(20, height))}
+    <Folder>
+      <wpml:templateType>waypoint</wpml:templateType>
+      <wpml:templateId>0</wpml:templateId>
+      <wpml:waylineCoordinateSysParam>
+        <wpml:coordinateMode>WGS84</wpml:coordinateMode>
+        <wpml:heightMode>${heightMode}</wpml:heightMode>
+        <wpml:globalShootHeight>${height}</wpml:globalShootHeight>
+        <wpml:positioningType>GPS</wpml:positioningType>
+      </wpml:waylineCoordinateSysParam>
+      <wpml:autoFlightSpeed>${speed}</wpml:autoFlightSpeed>
+      <wpml:globalHeight>${height}</wpml:globalHeight>
+      <wpml:gimbalPitchMode>usePointSetting</wpml:gimbalPitchMode>
+      <wpml:globalWaypointTurnMode>toPointAndStopWithDiscontinuityCurvature</wpml:globalWaypointTurnMode>
+      <wpml:globalUseStraightLine>1</wpml:globalUseStraightLine>
+${pointsXml}
+    </Folder>
+  </Document>
+</kml>
+`
+
+  const waylines = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="${WPML_NS}">
+  <Document>
+${wpmlMissionConfig(speed, Math.max(20, height))}
+    <Folder>
+      <wpml:templateId>0</wpml:templateId>
+      <wpml:executeHeightMode>${heightMode}</wpml:executeHeightMode>
+      <wpml:waylineId>0</wpml:waylineId>
+      <wpml:distance>${distance.toFixed(1)}</wpml:distance>
+      <wpml:duration>${duration.toFixed(1)}</wpml:duration>
+      <wpml:autoFlightSpeed>${speed}</wpml:autoFlightSpeed>
+${pointsXml}
+    </Folder>
+  </Document>
+</kml>
+`
+
+  return createStoredZip([
+    { name: 'wpmz/template.kml', data: new TextEncoder().encode(template) },
+    { name: 'wpmz/waylines.wpml', data: new TextEncoder().encode(waylines) },
+  ])
+}
+
 
 /**
  * Buffers an open polyline into a closed WGS84 ring `widthM` wide.

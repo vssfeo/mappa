@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { corridorPolygon, missionKml, missionKmz, qgcPlan, surveyWaypoints, type MissionPoint } from '../src/mission.ts'
+import { corridorPolygon, djiKmz, missionKml, missionKmz, qgcPlan, surveyWaypoints, type MissionPoint } from '../src/mission.ts'
 
 const points: MissionPoint[] = [
   { name: 'Start', lon: 34.1, lat: 44.9, alt: 100 },
@@ -61,6 +61,26 @@ test('packs the KML into a stored ZIP', () => {
   const text = new TextDecoder().decode(kmz)
   assert.match(text, /doc\.kml/)
   assert.match(text, /<LineString>/)
+})
+
+test('builds a DJI WPML KMZ with both templates', () => {
+  const kmz = djiKmz(points, { createdAt: '2026-01-01T00:00:00Z', speed: 12 })
+  const text = new TextDecoder().decode(kmz)
+  assert.match(text, /wpmz\/(template\.kml|waylines\.wpml)/)
+  assert.match(text, /xmlns:wpml="http:\/\/www\.dji\.com\/wpmz\/1\.0\.6"/)
+  assert.match(text, /<wpml:executeHeightMode>relativeToStartPoint<\/wpml:executeHeightMode>/)
+  assert.match(text, /34\.1,44\.9/)
+  assert.match(text, /<wpml:autoFlightSpeed>12<\/wpml:autoFlightSpeed>/)
+  assert.match(text, /<wpml:duration>/)
+})
+
+test('DJI export switches to absolute altitude for ASL', () => {
+  const text = new TextDecoder().decode(djiKmz(points, { mode: 'asl' }))
+  assert.match(text, /<wpml:executeHeightMode>absoluteAltitude<\/wpml:executeHeightMode>/)
+})
+
+test('DJI export rejects an empty mission', () => {
+  assert.throws(() => djiKmz([]))
 })
 
 

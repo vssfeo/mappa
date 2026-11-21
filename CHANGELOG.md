@@ -12,6 +12,9 @@
   Новый `corridorPolygon` в `ui/src/mission.ts` и тесты на буфер и экспорт.
 - `qgcPlan` принимает несколько полигонов геозоны (`geofencePolygons`),
   а не только круг.
+- Экспорт миссии в DJI WPML KMZ: `wpmz/template.kml` и
+  `wpmz/waylines.wpml`, AGL как `relativeToStartPoint`, ASL как
+  `absoluteAltitude`; кнопка «DJI KMZ» в панели миссии.
 
 ## [1.33.0] — 2026-11-07
 

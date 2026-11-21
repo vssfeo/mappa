@@ -4,7 +4,7 @@ import { Download, Send, X } from 'lucide-react'
 import { useText } from './i18n'
 import { useAppStore } from './store'
 import { writeBinaryFile, writeTextFile } from './native'
-import { corridorPolygon, missionKml, missionKmz, qgcPlan, surveyWaypoints, type MissionPoint } from './mission'
+import { corridorPolygon, djiKmz, missionKml, missionKmz, qgcPlan, surveyWaypoints, type MissionPoint } from './mission'
 import { useDialogFocus } from './useDialogFocus'
 
 interface MissionPanelProps {
@@ -74,7 +74,7 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
       }))
   }, [markers, features, folder, altitude, polygonId, spacing])
 
-  const exportFile = async (kind: 'plan' | 'kml' | 'kmz') => {
+  const exportFile = async (kind: 'plan' | 'kml' | 'kmz' | 'dji') => {
     if (points.length === 0) return
     setBusy(true)
     setError(null)
@@ -86,13 +86,17 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
             ? 'mission.plan'
             : kind === 'kml'
               ? 'mission.kml'
-              : 'mission.kmz',
+              : kind === 'dji'
+                ? 'mission-dji.kmz'
+                : 'mission.kmz',
         filters: [
           kind === 'plan'
             ? { name: 'QGroundControl plan', extensions: ['plan'] }
             : kind === 'kml'
               ? { name: 'KML', extensions: ['kml'] }
-              : { name: 'KMZ', extensions: ['kmz'] },
+              : kind === 'dji'
+                ? { name: 'DJI WPML', extensions: ['kmz'] }
+                : { name: 'KMZ', extensions: ['kmz'] },
         ],
       })
       if (typeof target !== 'string') return
@@ -108,6 +112,8 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
         )
       } else if (kind === 'kml') {
         await writeTextFile(target, missionKml(points, name, mode))
+      } else if (kind === 'dji') {
+        await writeBinaryFile(target, djiKmz(points, { mode, name }))
       } else {
         await writeBinaryFile(target, missionKmz(points, name, mode))
       }
@@ -293,6 +299,15 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
           >
             <Download size={15} />
             {tx('KMZ', 'KMZ')}
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={busy || points.length === 0}
+            onClick={() => void exportFile('dji')}
+          >
+            <Download size={15} />
+            DJI KMZ
           </button>
         </div>
 

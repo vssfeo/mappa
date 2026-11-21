@@ -299,7 +299,8 @@ curl http://127.0.0.1:8080/health
 - [x] Viewshed/LOS + Fresnel для радиолинков (с 1.3.0; сверка с QGIS — отдельный критерий ниже).
 - [x] Планирование миссий: waypoint, полигон-съёмка, коридор-геозона,
   altitude modes, экспорт QGC `.plan`.
-- [ ] Экспорт миссии в MAVLink и DJI KMZ.
+- [x] Экспорт миссии в DJI WPML KMZ.
+- [ ] Экспорт миссии в MAVLink.
 - [ ] Read-only телеметрия: MAVLink, ROS2 `/odom`/`/path`, MQTT.
 - [x] ARM64-сборка в CI (`ubuntu-24.04-arm`, проверка бинарника и CLI).
 - [ ] Smoke-тест на Rock Pi 4A и NanoPi M4.
