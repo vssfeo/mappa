@@ -89,26 +89,28 @@ jobs:
         run: |
           cat > /tmp/batch.json << 'EOF'
           {
+            "version": 1,
+            "cache": "/tmp/mappa-test-cache",
             "jobs": [
               {
-                "kind": "download",
-                "provider_id": "usgs",
+                "type": "download",
+                "id": "batch-download",
+                "provider": "usgs",
                 "bbox": [-122.50, 37.70, -122.40, 37.80],
-                "min_zoom": 12,
-                "max_zoom": 12
+                "zoom": 12
               },
               {
-                "kind": "pack",
-                "provider_id": "usgs",
+                "type": "pack",
+                "id": "batch-pack",
+                "provider": "usgs",
                 "bbox": [-122.50, 37.70, -122.40, 37.80],
-                "min_zoom": 12,
-                "max_zoom": 12,
+                "zoom": "12",
                 "output": "/tmp/batch.pmtiles"
               }
             ]
           }
           EOF
-          ./target/release/mappa-cli batch /tmp/batch.json --cache /tmp/mappa-test-cache
+          ./target/release/mappa-cli batch /tmp/batch.json
 
       - name: Test serve command (background + health check)
         run: |
