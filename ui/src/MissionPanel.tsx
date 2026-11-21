@@ -4,7 +4,7 @@ import { Download, Send, X } from 'lucide-react'
 import { useText } from './i18n'
 import { useAppStore } from './store'
 import { writeBinaryFile, writeTextFile } from './native'
-import { corridorPolygon, djiKmz, missionKml, missionKmz, qgcPlan, surveyWaypoints, type MissionPoint } from './mission'
+import { corridorPolygon, djiKmz, mavlinkWaypoints, missionKml, missionKmz, qgcPlan, surveyWaypoints, type MissionPoint } from './mission'
 import { useDialogFocus } from './useDialogFocus'
 
 interface MissionPanelProps {
@@ -74,7 +74,7 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
       }))
   }, [markers, features, folder, altitude, polygonId, spacing])
 
-  const exportFile = async (kind: 'plan' | 'kml' | 'kmz' | 'dji') => {
+  const exportFile = async (kind: 'plan' | 'kml' | 'kmz' | 'dji' | 'mavlink') => {
     if (points.length === 0) return
     setBusy(true)
     setError(null)
@@ -88,7 +88,9 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
               ? 'mission.kml'
               : kind === 'dji'
                 ? 'mission-dji.kmz'
-                : 'mission.kmz',
+                : kind === 'mavlink'
+                  ? 'mission.waypoints'
+                  : 'mission.kmz',
         filters: [
           kind === 'plan'
             ? { name: 'QGroundControl plan', extensions: ['plan'] }
@@ -96,7 +98,9 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
               ? { name: 'KML', extensions: ['kml'] }
               : kind === 'dji'
                 ? { name: 'DJI WPML', extensions: ['kmz'] }
-                : { name: 'KMZ', extensions: ['kmz'] },
+                : kind === 'mavlink'
+                  ? { name: 'MAVLink waypoints', extensions: ['waypoints'] }
+                  : { name: 'KMZ', extensions: ['kmz'] },
         ],
       })
       if (typeof target !== 'string') return
@@ -114,6 +118,8 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
         await writeTextFile(target, missionKml(points, name, mode))
       } else if (kind === 'dji') {
         await writeBinaryFile(target, djiKmz(points, { mode, name }))
+      } else if (kind === 'mavlink') {
+        await writeTextFile(target, mavlinkWaypoints(points, { mode }))
       } else {
         await writeBinaryFile(target, missionKmz(points, name, mode))
       }
@@ -308,6 +314,15 @@ export function MissionPanel({ onClose }: MissionPanelProps) {
           >
             <Download size={15} />
             DJI KMZ
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={busy || points.length === 0}
+            onClick={() => void exportFile('mavlink')}
+          >
+            <Download size={15} />
+            MAVLink
           </button>
         </div>
 

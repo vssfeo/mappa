@@ -15,6 +15,8 @@
 - Экспорт миссии в DJI WPML KMZ: `wpmz/template.kml` и
   `wpmz/waylines.wpml`, AGL как `relativeToStartPoint`, ASL как
   `absoluteAltitude`; кнопка «DJI KMZ» в панели миссии.
+- Экспорт миссии в MAVLink: QGC WPL 110 (`.waypoints`), home + waypoints +
+  RTL, кадр 3 для AGL и 0 для ASL; кнопка «MAVLink».
 
 ## [1.33.0] — 2026-11-07
 

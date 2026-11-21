@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { corridorPolygon, djiKmz, missionKml, missionKmz, qgcPlan, surveyWaypoints, type MissionPoint } from '../src/mission.ts'
+import { corridorPolygon, djiKmz, mavlinkWaypoints, missionKml, missionKmz, qgcPlan, surveyWaypoints, type MissionPoint } from '../src/mission.ts'
 
 const points: MissionPoint[] = [
   { name: 'Start', lon: 34.1, lat: 44.9, alt: 100 },
@@ -81,6 +81,21 @@ test('DJI export switches to absolute altitude for ASL', () => {
 
 test('DJI export rejects an empty mission', () => {
   assert.throws(() => djiKmz([]))
+})
+
+test('writes a QGC WPL 110 MAVLink mission', () => {
+  const text = mavlinkWaypoints(points)
+  const lines = text.trimEnd().split('\n')
+  assert.equal(lines[0], 'QGC WPL 110')
+  assert.equal(lines.length, points.length + 3)
+  assert.match(lines[1], /^0\t1\t3\t16\t/)
+  assert.match(lines[2], /\t44\.9\t34\.1\t100\t1$/)
+  assert.match(lines[lines.length - 1], /\t20\t/)
+})
+
+test('MAVLink export uses absolute frame for ASL and rejects empty', () => {
+  assert.match(mavlinkWaypoints(points, { mode: 'asl' }).split('\n')[1], /^0\t1\t0\t16\t/)
+  assert.throws(() => mavlinkWaypoints([]))
 })
 
 

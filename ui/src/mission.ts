@@ -198,6 +198,39 @@ export function missionKmz(
   ])
 }
 
+/**
+ * QGC WPL 110 (`MAVLink` mission) as plain text: home, waypoints, RTL.
+ * Frame 3 = relative altitude (AGL), frame 0 = absolute (ASL).
+ */
+export function mavlinkWaypoints(
+  points: MissionPoint[],
+  options: MissionOptions = {},
+): string {
+  if (points.length === 0) {
+    throw new Error('a mission needs at least one waypoint')
+  }
+  const mode = options.mode ?? 'agl'
+  const frame = frameFor(mode)
+  const home = points[0]
+  const lines = ['QGC WPL 110']
+  const row = (
+    index: number,
+    current: number,
+    command: number,
+    lat: number,
+    lon: number,
+    alt: number,
+  ) =>
+    `${index}\t${current}\t${frame}\t${command}\t0\t0\t0\t0\t${round(lat)}\t${round(lon)}\t${round(alt, 2)}\t1`
+  lines.push(row(0, 1, 16, home.lat, home.lon, home.alt))
+  points.forEach((point, index) => {
+    lines.push(row(index + 1, 0, 16, point.lat, point.lon, point.alt))
+  })
+  const last = points[points.length - 1]
+  lines.push(row(points.length + 1, 0, 20, last.lat, last.lon, last.alt))
+  return `${lines.join('\n')}\n`
+}
+
 export interface DjiMissionOptions extends MissionOptions {
   /** Speed in m/s written to both templates. */
   speed?: number

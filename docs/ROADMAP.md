@@ -300,7 +300,7 @@ curl http://127.0.0.1:8080/health
 - [x] Планирование миссий: waypoint, полигон-съёмка, коридор-геозона,
   altitude modes, экспорт QGC `.plan`.
 - [x] Экспорт миссии в DJI WPML KMZ.
-- [ ] Экспорт миссии в MAVLink.
+- [x] Экспорт миссии в MAVLink (QGC WPL 110).
 - [ ] Read-only телеметрия: MAVLink, ROS2 `/odom`/`/path`, MQTT.
 - [x] ARM64-сборка в CI (`ubuntu-24.04-arm`, проверка бинарника и CLI).
 - [ ] Smoke-тест на Rock Pi 4A и NanoPi M4.
