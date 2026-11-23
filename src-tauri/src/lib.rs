@@ -16,6 +16,7 @@ mod geotiff;
 mod gnss;
 mod gpkg;
 mod inflate;
+mod mera;
 mod mobile;
 mod packs;
 mod power;
@@ -44,6 +45,7 @@ pub fn run() {
         .manage(mobile::MobileServer::default())
         .manage(power::ScreenAwake::default())
         .manage(telemetry::Telemetry::default())
+        .manage(mera::MeraRunner::default())
         .on_permission_request(|_, kind| match kind {
             tauri::webview::PermissionKind::Geolocation => {
                 tauri::webview::PermissionResponse::Allow
@@ -191,6 +193,9 @@ pub fn run() {
             gnss::stop_nmea_tcp,
             gnss::start_gpsd_tcp,
             gnss::stop_gpsd_tcp,
+            mera::mera_ppk_status,
+            mera::mera_ppk_run,
+            mera::mera_ppk_cancel,
             files::read_text_file,
             files::read_binary_file,
             files::write_binary_file,

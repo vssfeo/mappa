@@ -14,3 +14,4 @@
 /dist/
 src-tauri/binaries/mappa-cli
 src-tauri/binaries/mappa-cli.exe
+src-tauri/binaries/mera-rtk*
