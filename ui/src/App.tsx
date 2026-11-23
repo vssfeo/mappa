@@ -50,6 +50,7 @@ import { GeorefPanel } from './GeorefPanel'
 import { LosPanel } from './LosPanel'
 import { MissionPanel } from './MissionPanel'
 import { TelemetryPanel } from './TelemetryPanel'
+import { MeraPanel } from './MeraPanel'
 import { AlmanacPanel } from './AlmanacPanel'
 import { importedTracks, listTracks, markTrackImported, readTrack } from './tracks'
 import { parseTracksFromGpx } from './featureTransfer'
@@ -190,6 +191,7 @@ function App() {
   const [losOpen, setLosOpen] = useState(false)
   const [missionOpen, setMissionOpen] = useState(false)
   const [telemetryOpen, setTelemetryOpen] = useState(false)
+  const [meraOpen, setMeraOpen] = useState(false)
   const [almanacOpen, setAlmanacOpen] = useState(false)
   const [syncOpen, setSyncOpen] = useState(false)
   const [tracksOpen, setTracksOpen] = useState(false)
@@ -1334,6 +1336,13 @@ function App() {
         action: () => setTelemetryOpen(true),
       },
       {
+        id: 'mera-ppk',
+        label: tx('Постобработка MERA RTK/PPK', 'MERA RTK/PPK post-processing'),
+        group: tx('Инструменты', 'Tools'),
+        icon: Satellite,
+        action: () => setMeraOpen(true),
+      },
+      {
         id: 'mission',
         label: tx('Миссия из меток', 'Mission from markers'),
         group: tx('Инструменты', 'Tools'),
@@ -1426,6 +1435,7 @@ function App() {
       setTracksOpen,
       setMissionOpen,
       setTelemetryOpen,
+      setMeraOpen,
       setMeasureMode,
       setPanel,
       setPlacingMarker,
@@ -1584,6 +1594,18 @@ function App() {
             map?.flyTo({
               center: [lon, lat],
               zoom: Math.max(map.getZoom(), 14),
+              duration: 800,
+            })
+          }
+        />
+      )}
+      {meraOpen && (
+        <MeraPanel
+          onClose={() => setMeraOpen(false)}
+          onCenter={(lon, lat) =>
+            map?.flyTo({
+              center: [lon, lat],
+              zoom: Math.max(map.getZoom(), 15),
               duration: 800,
             })
           }
