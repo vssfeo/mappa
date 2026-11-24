@@ -4,6 +4,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { isNative } from './native.ts'
 
+export type MeraSolver = 'fgo' | 'ekf'
+
 export type MeraProfile =
   | 'core-causal'
   | 'core-causal-tuned'
@@ -22,6 +24,7 @@ export interface MeraPpkRequest {
   navPath: string
   atxPath?: string | null
   antBase?: string | null
+  solver?: MeraSolver
   profile?: MeraProfile
   elevMaskDeg?: number
   cn0MinDbHz?: number
@@ -66,6 +69,23 @@ export interface ParsedMeraTrack {
   segments: MeraTrackSegment[]
   allCoordinates: [number, number][]
 }
+
+export const MERA_SOLVERS: {
+  id: MeraSolver
+  labelRu: string
+  labelEn: string
+}[] = [
+  {
+    id: 'fgo',
+    labelRu: 'FGO v2 (фактор-граф, реком.)',
+    labelEn: 'FGO v2 (factor graph, recommended)',
+  },
+  {
+    id: 'ekf',
+    labelRu: 'EKF v1 (фильтр Калмана)',
+    labelEn: 'EKF v1 (Kalman filter)',
+  },
+]
 
 export const MERA_PROFILES: {
   id: MeraProfile

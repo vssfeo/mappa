@@ -21,6 +21,8 @@ const VALID_PROFILES: &[&str] = &[
     "core-postprocess",
 ];
 
+const VALID_SOLVERS: &[&str] = &["fgo", "ekf"];
+
 #[derive(Default)]
 pub struct MeraRunner {
     running: Arc<AtomicBool>,
@@ -43,6 +45,7 @@ pub struct MeraPpkRequest {
     pub nav_path: String,
     pub atx_path: Option<String>,
     pub ant_base: Option<String>,
+    pub solver: Option<String>,
     pub profile: Option<String>,
     pub elev_mask_deg: Option<f64>,
     pub cn0_min_db_hz: Option<f64>,
@@ -153,6 +156,10 @@ fn build_cli_args(
     if !VALID_PROFILES.contains(&profile) {
         return Err(format!("unsupported MERA profile: {profile}"));
     }
+    let solver = req.solver.as_deref().unwrap_or("fgo");
+    if !VALID_SOLVERS.contains(&solver) {
+        return Err(format!("unsupported MERA solver: {solver}"));
+    }
     if req.rover_path.trim().is_empty()
         || req.base_path.trim().is_empty()
         || req.nav_path.trim().is_empty()
@@ -169,7 +176,7 @@ fn build_cli_args(
         "--profile".to_owned(),
         profile.to_owned(),
         "--solver".to_owned(),
-        "ekf".to_owned(),
+        solver.to_owned(),
         "--progress".to_owned(),
         "--out-pos".to_owned(),
         out_pos.to_string_lossy().into_owned(),
@@ -353,6 +360,7 @@ mod tests {
             nav_path: "/tmp/base.nav".into(),
             atx_path: Some("/tmp/igs20.atx".into()),
             ant_base: Some("TRM57971.00".into()),
+            solver: None,
             profile: Some("core-causal".into()),
             elev_mask_deg: Some(15.0),
             cn0_min_db_hz: None,
@@ -369,7 +377,22 @@ mod tests {
         .expect("args");
         assert!(args.contains(&"--profile".to_owned()));
         assert!(args.contains(&"core-causal".to_owned()));
+        assert!(args.contains(&"--solver".to_owned()));
+        assert!(args.contains(&"fgo".to_owned()));
         assert!(args.contains(&"--out-nmea".to_owned()));
+
+        req.solver = Some("invalid-solver".into());
+        assert!(
+            build_cli_args(
+                &req,
+                Path::new("/tmp/a.pos"),
+                Path::new("/tmp/a.geojson"),
+                None,
+                Path::new("/tmp/s.json"),
+            )
+            .is_err()
+        );
+        req.solver = Some("ekf".into());
 
         req.profile = Some("invalid-profile".into());
         assert!(

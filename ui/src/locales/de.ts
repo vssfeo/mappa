@@ -1156,4 +1156,7 @@ export const de: Record<string, string> = {
   'Epoch {p0}/{p1} ({p2}%) · Fixed: {p3}': 'Epoche {p0}/{p1} ({p2}%) · Fixed: {p3}',
   'Done in {p0} s · epochs: {p1} · Fixed: {p2} ({p3}%) · median σH: {p4} m · mode: {p5}': 'Fertig in {p0} s · Epochen: {p1} · Fixed: {p2} ({p3}%) · Median σH: {p4} m · Modus: {p5}',
   'Engine: {p0}': 'Engine: {p0}',
+  'Solver': 'Solver',
+  'FGO v2 (factor graph, recommended)': 'FGO v2 (Faktorgraph, empfohlen)',
+  'EKF v1 (Kalman filter)': 'EKF v1 (Kalman-Filter)',
 }

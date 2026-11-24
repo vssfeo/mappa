@@ -5,6 +5,7 @@ import { featureId } from './features.ts'
 import { useText } from './i18n.ts'
 import {
   MERA_PROFILES,
+  MERA_SOLVERS,
   meraPpkCancel,
   meraPpkRun,
   meraPpkStatus,
@@ -13,6 +14,7 @@ import {
   type MeraPpkResult,
   type MeraProfile,
   type MeraProgressEvent,
+  type MeraSolver,
   type MeraStatus,
 } from './mera.ts'
 import { readTextFile } from './native.ts'
@@ -41,6 +43,7 @@ export function MeraPanel({ onClose, onCenter }: MeraPanelProps) {
   const [atxPath, setAtxPath] = useState('')
   const [antBase, setAntBase] = useState('TRM57971.00')
   const [outDir, setOutDir] = useState('')
+  const [solver, setSolver] = useState<MeraSolver>('fgo')
   const [profile, setProfile] = useState<MeraProfile>('core-postprocess')
   const [elevMaskDeg, setElevMaskDeg] = useState(10)
   const [cn0MinDbHz, setCn0MinDbHz] = useState(30)
@@ -185,6 +188,7 @@ export function MeraPanel({ onClose, onCenter }: MeraPanelProps) {
         navPath: navPath.trim(),
         atxPath: atxPath.trim() || null,
         antBase: antBase.trim() || null,
+        solver,
         profile,
         elevMaskDeg,
         cn0MinDbHz,
@@ -370,6 +374,21 @@ export function MeraPanel({ onClose, onCenter }: MeraPanelProps) {
               disabled={running}
               onChange={(event) => setAntBase(event.target.value)}
             />
+          </label>
+
+          <label>
+            <span>{tx('Решатель', 'Solver')}</span>
+            <select
+              value={solver}
+              disabled={running}
+              onChange={(event) => setSolver(event.target.value as MeraSolver)}
+            >
+              {MERA_SOLVERS.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {tx(item.labelRu, item.labelEn)}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label>
