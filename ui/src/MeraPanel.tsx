@@ -107,8 +107,8 @@ export function MeraPanel({ onClose, onCenter }: MeraPanelProps) {
     }
 
     const summaryDesc = tx(
-      'MERA ({p0}): фиксировано {p1}%, σH={p2} м',
-      'MERA ({p0}): fixed {p1}%, σH={p2} m',
+      'MERA ({p0}): фиксировано {p1}%, sigmaH={p2} м',
+      'MERA ({p0}): fixed {p1}%, sigmaH={p2} m',
       {
         p0: res.summary.profile,
         p1: res.summary.fixedSharePct.toFixed(1),
@@ -509,8 +509,8 @@ export function MeraPanel({ onClose, onCenter }: MeraPanelProps) {
         {result && (
           <p className="georef-ok">
             {tx(
-              'Готово за {p0} с · эпох: {p1} · Fixed: {p2} ({p3}%) · медиана σH: {p4} м · режим: {p5}',
-              'Done in {p0} s · epochs: {p1} · Fixed: {p2} ({p3}%) · median σH: {p4} m · mode: {p5}',
+              'Готово за {p0} с · эпох: {p1} · Fixed: {p2} ({p3}%) · медиана sigmaH: {p4} м · режим: {p5}',
+              'Done in {p0} s · epochs: {p1} · Fixed: {p2} ({p3}%) · median sigmaH: {p4} m · mode: {p5}',
               {
                 p0: result.summary.wallSeconds.toFixed(1),
                 p1: result.summary.epochs,

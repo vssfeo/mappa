@@ -288,9 +288,7 @@ pub async fn mera_ppk_run(
     let cancel = Arc::clone(&state.cancel);
     let out_pos_s = out_pos.to_string_lossy().into_owned();
     let out_geojson_s = out_geojson.to_string_lossy().into_owned();
-    let out_nmea_s = out_nmea
-        .as_ref()
-        .map(|p| p.to_string_lossy().into_owned());
+    let out_nmea_s = out_nmea.as_ref().map(|p| p.to_string_lossy().into_owned());
     let out_summary_s = out_summary.to_string_lossy().into_owned();
 
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -322,10 +320,7 @@ pub async fn mera_ppk_run(
             return Err("MERA PPK run cancelled".to_owned());
         }
         if !output.status.success() {
-            return Err(format!(
-                "mera-rtk exited with status {}",
-                output.status
-            ));
+            return Err(format!("mera-rtk exited with status {}", output.status));
         }
 
         let summary_bytes = std::fs::read_to_string(&out_summary)
@@ -409,10 +404,9 @@ mod tests {
 
     #[test]
     fn parses_jsonl_progress_and_summary() {
-        let ev = parse_progress_line(
-            r#"{"event":"progress","epoch":250,"total":5201,"fixed":120}"#,
-        )
-        .expect("progress");
+        let ev =
+            parse_progress_line(r#"{"event":"progress","epoch":250,"total":5201,"fixed":120}"#)
+                .expect("progress");
         assert_eq!(
             ev,
             MeraProgressEvent {
